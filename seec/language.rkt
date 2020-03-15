@@ -200,7 +200,6 @@
     (pattern (p:production ...))))
 
 (define-syntax (define-language stx)
-  ; TODO: write syntax patterns for allowable productions
   (syntax-parse stx
     #:datum-literals (::=)
     [(_ name:id (nt:nonterminal ::= prod:production ...) ...)
