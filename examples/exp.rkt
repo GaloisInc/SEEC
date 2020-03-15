@@ -1,7 +1,4 @@
-#lang rosette
-
-(require seec/language
-         seec/bonsai2)
+#lang seec
 
 (define-language exp
   (exp   ::= boolean natural (S exp) (binop exp exp))

@@ -143,76 +143,7 @@
        (match-rule (set)
                    (set)
                    #'(bonsai-null #,tmp)
-                   (λ (b) b))]))
-  
-#;
-  (define (pattern-decls stx)
-    (syntax-parse stx
-      #:literals (list bonsai-list bonsai-integer bonsai-boolean bonsai-terminal bonsai-null)
-      #:datum-literals (? _)
-      [_ (set)]
-      [var:id
-       (set #'var)]
-      [(? pred pat)
-       (pattern-decls #'pat)]
-      [(list pat ...)
-       (foldl (λ (s1 s2)
-                (let ([i (set-intersect s1 s2)])
-                  (unless (set-empty? i)
-                    (wrong-syntax (set-first i) "duplicate pattern variable"))
-                  (set-union s1 s2)))
-              (set)
-              (map pattern-decls (syntax->list #'(pat ...))))]
-      [(bonsai-list pat ...)
-       (foldl (λ (s1 s2)
-                (let ([i (set-intersect s1 s2)])
-                  (unless (set-empty? i)
-                    (wrong-syntax (set-first i) "duplicate pattern variable"))
-                  (set-union s1 s2)))
-              (set)
-              (map pattern-decls (syntax->list #'(pat ...))))]
-      [(bonsai-integer pat)
-       (pattern-decls #'pat)]
-      [(bonsai-boolean pat)
-       (pattern-decls #'pat)]
-      [(bonsai-terminal pat)
-       (pattern-decls #'pat)]
-      [bonsai-null (set)]))
-
-#;
-  (define (pattern-cond tmp stx)
-    (syntax-parse stx
-      #:literals (list bonsai-list bonsai-integer bonsai-boolean bonsai-terminal bonsai-null)
-      #:datum-literals (? _)
-      [_ #'#t]
-      [var:id
-       #`(begin (set! var #,tmp) #t)]
-      [(? pred pat)
-       #`(and (pred #,tmp) #,(pattern-cond tmp #'pat))]
-      [(list pat ...)
-       #`(and #,@(map (λ (i p) #`(let ([element (list-ref #,tmp #,(datum->syntax tmp i))]) #,(pattern-cond #'element p)))
-                      (range (length (syntax->list #'(pat ...))))
-                      (syntax->list #'(pat ...))))]
-      [(bonsai-list pat ...)
-       #`(and (bonsai-list? #,tmp)
-              #,@(map (λ (i p) #`(let ([element (list-ref (bonsai-list-nodes #,tmp) #,(datum->syntax tmp i))]) #,(pattern-cond #'element p)))
-                      (range (length (syntax->list #'(pat ...))))
-                      (syntax->list #'(pat ...)))
-              (andmap bonsai-null? (drop (bonsai-list-nodes #,tmp) #,(datum->syntax tmp (length (syntax->list #'(pat ...)))))))]
-      [(bonsai-integer pat)
-       #`(and (bonsai-integer? #,tmp)
-              (let ([element (bonsai-integer-value #,tmp)])
-                #,(pattern-cond #'element #'pat)))]
-      [(bonsai-boolean pat)
-       #`(and (bonsai-boolean? #,tmp)
-              (let ([element (bonsai-boolean-value #,tmp)])
-                #,(pattern-cond #'element #'pat)))]
-      [(bonsai-terminal pat)
-       #`(and (bonsai-terminal? #,tmp)
-              (let ([element (bonsai-terminal-value #,tmp)])
-                #,(pattern-cond #'element #'pat)))]
-      [bonsai-null
-       #`(bonsai-null #,tmp)])))
+                   (λ (b) b))])))
 
 (define-syntax (define-match-expander stx)
   (syntax-parse stx
@@ -261,11 +192,3 @@
                    [check body]
                    ...
                    [else (assert #f "inexhaustive match")]))))))]))
-
-#;
-(with-syntax ([(decl ...) (set->list (apply set-union (map pattern-decls (syntax->list #'(pat ...)))))])
-  #`(let ([tmp val])
-      (let ([decl #f] ...)
-        (cond #,@(let ([checks (map (λ (p) (pattern-cond #'tmp p)) (syntax->list #'(pat ...)))])
-                   (map (λ (l r) #`(#,l #,r)) checks (syntax->list #'(body ...))))
-              [else (assert #f "inexhaustive match")]))))

@@ -1,10 +1,7 @@
 #lang rosette/safe
 
 (provide define-language
-         match
-         enumerate
-         concretize
-         instantiate)
+         enumerate)
 
 (require "bonsai2.rkt"
          "match.rkt")
