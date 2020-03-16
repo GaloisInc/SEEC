@@ -138,43 +138,21 @@
                                    (add1 (apply max (syntax->datum #'(p.depth ...)))))))
 
   (define-syntax-class (concrete-term lang-name terminals special)
-    #:attributes (match-pattern stx-pattern depth)
+    #:literals (unquote)
     #:description (format "concrete ~a pattern ~a" lang-name terminals)
     #:opaque
     (pattern n:id
              #:when (and (= (length (string-split (syntax->string #'n) ":")) 1)
-                         (set-member? terminals (syntax->datum #'n)))
-             #:attr match-pattern #'_
-             #:attr stx-pattern   #'n
-             #:attr depth         #'1)
-    (pattern n:id
-             #:when (and (= (length (string-split (syntax->string #'n) ":")) 2)
-                         (set-member? terminals (string->symbol (second (string-split (syntax->string #'n) ":")))))
-             #:attr match-pattern (string->syntax #'n (first (string-split (syntax->string #'n) ":")))
-             #:attr stx-pattern   (string->syntax #'n (second (string-split (syntax->string #'n) ":")))
-             #:attr depth         #'1)
+                         (set-member? terminals (syntax->datum #'n))))
     (pattern n:integer
-             #:when (and (set-member? special 'natural) (>= (syntax->datum #'n) 0))
-             #:attr match-pattern #'(bonsai-integer (? (λ (v) (equal? n v)) _))
-             #:attr stx-pattern   #'integer
-             #:attr depth         #'1)
+             #:when (and (set-member? special 'natural) (>= (syntax->datum #'n) 0)))
     (pattern n:integer
-             #:when (set-member? special 'integer)
-             #:attr match-pattern #'(bonsai-integer (? (λ (v) (equal? n v)) _))
-             #:attr stx-pattern   #'integer
-             #:attr depth         #'1)
+             #:when (set-member? special 'integer))
     (pattern b:boolean
-             #:when (set-member? special 'boolean)
-             #:attr match-pattern #'(bonsai-boolean (? (λ (v) (equal? b v)) _))
-             #:attr stx-pattern   #'boolean
-             #:attr depth         #'1)
+             #:when (set-member? special 'boolean))
+    (pattern (unquote expr))
     (pattern (p ...)
-             #:declare p (term lang-name terminals)
-             #:attr match-pattern #'(bonsai-list p.match-pattern ...)
-             #:attr stx-pattern   #'(p.stx-pattern ...)
-             #:attr depth         (datum->syntax
-                                   #'(p ...)
-                                   (add1 (apply max (syntax->datum #'(p.depth ...)))))))
+             #:declare p (concrete-term lang-name terminals special)))
 
   (define-syntax-class nonterminal
     #:description "nonterminal"
@@ -238,6 +216,8 @@
      #`(bonsai-boolean b)]
     [(_ lang:id s:id)
      #`(bonsai-terminal (symbol->enum 's))]
+    [(_ lang:id (unquote e:expr))
+     #'e]
     [(_ lang:id (pat ...))
      #`(bonsai-list (list (make-concrete-term! lang pat) ...))]))
 
