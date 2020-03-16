@@ -15,15 +15,12 @@
 
 (define (interp-fmt f)
   (match f
-    ;[(printf-lang (? (%d natural) (bonsai-list _ n))) #t]
-    [(? (%d natural) (bonsai-list _ n)) #t]
-   ; [(printf-lang (%d n:natural)) (number->string n)]
+    [(printf-lang (%d n:natural)) n]
     [(printf-lang (%n natural)) #t]
-    [(lang (++ f1 f2)) #t]
+    [(printf-lang (++ f1:fmt f2:fmt)) #t]
     ))
 
-
-;(interp-fmt (%d 5))
+(interp-fmt (printf-lang (%d 5)))
 #|
 
 (define lang

@@ -1,6 +1,7 @@
 #lang rosette/safe
 
 (provide define-language
+         syntax-match?
          enumerate)
 
 (require "bonsai2.rkt"
@@ -76,12 +77,12 @@
                                (cond
                                  [(< i pattern-length) (syntax-match? lang (list-ref pattern i) n)]
                                  [else (bonsai-null? n)])))
-                      (to-indexed (bonsai-list-nodes tree)))))]                       
+                      (to-indexed (bonsai-list-nodes tree)))))]
       [(equal? 'integer pattern)
        (bonsai-integer? tree)]
       [(equal? 'natural pattern)
        (and (bonsai-integer? tree)
-            (>= 0 (bonsai-integer-value tree)))]
+            (>= (bonsai-integer-value tree) 0))]
       [(equal? 'boolean pattern)
        (bonsai-boolean? tree)]
       [(member pattern (language-nonterminals lang))
@@ -210,6 +211,7 @@
 
 (define-syntax (make-concrete-term! stx)
   (syntax-parse stx
+    #:literals (unquote)
     [(_ lang:id n:integer)
      #`(bonsai-integer n)]
     [(_ lang:id b:boolean)
