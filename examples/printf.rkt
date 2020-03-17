@@ -80,7 +80,7 @@
             [s-2      (car s-conf-2)             ]
             [conf-2   (cdr s-conf-2)             ]
             )
-       (cons (string-append (car s-conf-1) (car s-conf-2)) (cdr s-conf-2)))]
+       (cons (string-append s1 s2) conf-2))]
     ))
 
 (define format-string-example (printf-lang (++ (%d 1) (%d 0))))
