@@ -1,5 +1,10 @@
 #lang seec
 
+(require (only-in racket
+                  with-handlers
+                  exn:fail?
+                  exn-message))
+
 (define-language exp
   (exp   ::= boolean natural (S exp) (binop exp exp))
   (binop ::= = and or)
@@ -45,45 +50,38 @@
        [(list (exp #f) (exp #f)) (exp #f)]
        [_ (exp #t)])]))
 
-(module+ test
+(define eq-example (exp (= #t #f)))
 
-  (require (only-in racket
-                    with-handlers
-                    exn:fail?
-                    exn-message))
+(define test-exps
+  (list (exp 0)
+        eq-example
+        (exp (or ,eq-example #t))
+        (exp (= 0 0))))
 
-  (define eq-example (exp (= #t #f)))
-  
-  (define test-exps
-    (list (exp 0)
-          eq-example
-          (exp (or ,eq-example #t))
-          (exp (= 0 0))))
+(for-each (λ (e)
+            (let ([v (instantiate e)])
+              (printf "Testing expression ~a of size ~a~n" v (bonsai-depth v))
+              (printf "Running the interpreter...~n")
+              (printf "~a~n" (instantiate (eval-exp v)))
+              (printf "Running the type checker...~n")
+              (printf "~a~n~n" (instantiate (type-exp v)))))
+          test-exps)
 
-  (for-each (λ (e)
-              (let ([v (instantiate e)])
-                (printf "Testing expression ~a of size ~a~n" v (bonsai-depth v))
-                (printf "Running the interpreter...~n")
-                (printf "~a~n" (instantiate (eval-exp v)))
-                (printf "Running the type checker...~n")
-                (printf "~a~n~n" (instantiate (type-exp v)))))
-            test-exps)
-
-  (displayln "Building tree...")
-  (define t* (time (exp exp 5)))
-  (displayln "Evaluating...")
-  (void (time (eval-exp t*)))
-  (displayln "Type-checking...")
-  (define-values (v a) (with-asserts (time (type-exp t*))))
-  (displayln "Searching for ill-typed terms that evaluate successfully...")
-  (define sol
-    (time (optimize #:minimize  (list (bonsai-leaves t*))
-                    #:guarantee (assert (! (apply && a))))))
-  (define t (concretize t* sol))
-  (displayln "Bad tree:")
-  (displayln t)
-  (displayln "Bad tree evaluation:")
-  (displayln (eval-exp t))
-  (displayln "Bad tree typing")
-  (with-handlers ([exn:fail? (λ (e) (printf "Caught expected assertion failure: ~a~n" (exn-message e)))])
-    (displayln (type-exp t))))
+(displayln "Building tree...")
+(define t* (time (exp exp 5)))
+(displayln "Evaluating...")
+(void (time (eval-exp t*)))
+(displayln "Type-checking...")
+(define-values (v a) (with-asserts (time (type-exp t*))))
+(displayln "Searching for ill-typed terms that evaluate successfully...")
+(define sol
+  (time (optimize #:minimize  (list (bonsai-leaves t*))
+                  #:guarantee (assert (! (apply && a))))))
+(define t (concretize t* sol))
+(displayln "Bad tree:")
+(displayln t)
+(displayln "Bad tree evaluation:")
+(displayln (eval-exp t))
+(displayln "Bad tree typing")
+(with-handlers ([exn:fail? (λ (e) (printf "Caught expected assertion failure: ~a~n" (exn-message e)))])
+  (displayln (type-exp t)))
