@@ -30,13 +30,13 @@
       [(= ll lr) (recur (bonsai-list-nodes l)
                         (bonsai-list-nodes r))]
       [(< ll lr) (and (recur (bonsai-list-nodes l)
-                             (take ll (bonsai-list-nodes r)))
+                             (take (bonsai-list-nodes r) ll))
                       (andmap bonsai-null?
-                              (drop ll (bonsai-list-nodes r))))]
-      [(> ll lr) (and (recur (take lr (bonsai-list-nodes l))
+                              (drop (bonsai-list-nodes r) ll)))]
+      [(> ll lr) (and (recur (take (bonsai-list-nodes l) lr)
                              (bonsai-list-nodes r))
                       (andmap bonsai-null?
-                              (drop lr (bonsai-list-nodes l))))])))
+                              (drop (bonsai-list-nodes l) lr)))])))
 
 (define (bonsai-list-hash l recur)
   (recur (bonsai-list-nodes l)))
