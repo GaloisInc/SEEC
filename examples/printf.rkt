@@ -49,8 +49,7 @@
 (define (config-add conf n)
   (match conf
     [(printf-lang (CONF acc:integer m:mem))
-     (printf-lang (CONF ,(+ n (bonsai->number acc)) ,m))
-     ]))
+     (printf-lang (CONF ,(bonsai-integer (+ n (bonsai->number acc)) ,m)))]))
 
 (define config-example (printf-lang (CONF 0 mnil)))
 (printf "Adding 3 to configuration ~a...\n" 
@@ -80,7 +79,7 @@
             [s-2      (car s-conf-2)             ]
             [conf-2   (cdr s-conf-2)             ]
             )
-       (cons (string-append s1 s2) conf-2))]
+       (cons (string-append s-1 s-2) conf-2))]
     ))
 
 (define format-string-example (printf-lang (++ (%d 1) (%d 0))))
