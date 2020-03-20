@@ -1,11 +1,13 @@
 #lang seec
 (require racket/base)
 
+; To install quickcheck, run `raco pkg install quickcheck`
+(require quickcheck)
 
 ; Formalizing (for now, only safe) calls to printf
 
 (define-language printf-lang
-  (fmt ::= (%d natural) (%n natural) (++ fmt fmt))
+  (fmt ::= f-empty (%d natural) (%n natural) (++ fmt fmt))
   (arglist ::= anil (acons val arglist))
   (stack ::= snil (scons frame stack))
   (frame ::= fnil (fcons ident ident frame))
@@ -16,16 +18,217 @@
   (config ::= (CONF integer mem))
   )
 
-; To install quickcheck, run `raco pkg install quickcheck`
+(define (fmt? f)
+  (match f
+    [(printf-lang f-empty) #t]
+    [(printf-lang (%d natural)) #t]
+    [(printf-lang (%n natural)) #t]
+    [(printf-lang (++ f1:fmt f2:fmt)) (and (fmt? f1) (fmt? f2))]
+    [_ #f]
+    ))
+;(fmt? (printf-lang (%d 1)))
+;(fmt? (printf-lang (%d ,(bonsai-integer (- 3 2)))))
 
-#;(define (choose-bool)
-  (make-generator
-   (lambda (size rgen)
-     (call-with-values
-	 (lambda ()
-	   (random-integer rgen 0 1))
-       (lambda (n _)
-	 n)))))
+
+(define (ident? x)
+  (match x
+    [(printf-lang a) #t]
+    [(printf-lang b) #t]
+    [(printf-lang c) #t]
+    [(printf-lang d) #t]
+    [(printf-lang e) #t]
+    [_ #f]
+    ))
+
+(define (val? v)
+  (match v
+    [(printf-lang (LOC ident)) #t]
+    [(printf-lang (CONST integer)) #t]
+    [(printf-lang ERR) #t]
+    [_ #f]
+    ))
+
+(define (arglist? args)
+  (match args
+    [(printf-lang anil) #t]
+    [(printf-lang (acons v:val args+:arglist)) (and (val? v) (arglist? args+))]
+    [_ #f]
+    ))
+
+(define (choose-ident)
+  (bind-generators
+   ([x (choose-integer 0 4)])
+   (case x 
+     [(0) (printf-lang a)]
+     [(1) (printf-lang b)]
+     [(2) (printf-lang c)]
+     [(3) (printf-lang d)]
+     [(4) (printf-lang e)]
+     )
+  ))
+
+(printf "Choosing an ident generator...\n")
+(choose-ident)
+(quickcheck (property ([x (choose-ident)]) (ident? x)
+                      #;(or (equal? x (printf-lang a))
+                          (equal? x (printf-lang b))
+                          (equal? x (printf-lang c))
+                          (equal? x (printf-lang d))
+                          (equal? x (printf-lang e))
+                          )
+                      )
+            )
+
+(define (choose-fmt-1 max-arglength)
+  (bind-generators
+   ([x (choose-integer 0 1)]
+    [offset (choose-integer 0 (- max-arglength 1))]
+    )
+   (case x
+     [(0) (printf-lang (%d ,(bonsai-integer offset)))]
+     [(1) (printf-lang (%n ,(bonsai-integer offset)))]
+     )
+   ))
+(quickcheck (property ([f (choose-fmt-1 4)])
+                      (match f
+                        [(printf-lang (%d natural)) #t]
+                        [(printf-lang (%n natural)) #t]
+                        [_ #f])
+                      ))
+(define (choose-fmt-with-length max-arglength fmt-length)
+  (cond 
+    [(<= fmt-length 0)     (printf-lang f-empty)]
+    [(equal? fmt-length 1) (choose-fmt-1 max-arglength)]
+    [else (bind-generators
+           ([split (choose-integer 1 (- fmt-length 1))]
+            [fmt1  (choose-fmt-with-length max-arglength split)]
+            [fmt2  (choose-fmt-with-length max-arglength (- fmt-length split))]
+            )
+           (printf-lang (++ ,fmt1 ,fmt2)))]
+    ))
+(quickcheck (property ([f (choose-fmt-with-length 4 5)])
+                      (fmt? f)
+                      ))
+(define (choose-fmt max-arglength max-fmt-length)
+  (bind-generators
+   ([fmt-length (choose-integer 0 (- max-fmt-length 1))])
+   (choose-fmt-with-length max-arglength fmt-length)
+   ))
+(quickcheck (property ([f (choose-fmt-with-length 4 5)])
+                      (fmt? f)
+                      ))
+
+#;(define (choose gens)
+  (bind-generators
+   ([i (choose-integer 1 (length gens))]
+    [x (list-ref gens i)]
+    )
+   x
+   ))
+(define (choose-val max-const)
+  (bind-generators 
+   ([rand (choose-integer 0 2)]
+    [x (choose-ident)]
+    [c (choose-integer (- 0 max-const) max-const)]
+    )
+   (case rand
+     [(0) (printf-lang ERR)]
+     [(1) (printf-lang (LOC ,x))]
+     [(2) (printf-lang (CONST ,(bonsai-integer c)))]
+     )))
+
+(quickcheck (property ([v (choose-val 10)])
+                      (val? v)))
+
+(define (list->arglist args)
+  (if (empty? args)
+      (printf-lang anil)
+      (printf-lang (acons ,(first args) ,(list->arglist (rest args))))
+      ))
+
+(define (choose-arglist-size max-const size)
+  (bind-generators
+   ([args (choose-list (choose-val max-const) size)])
+   (list->arglist args)
+   ))
+(define (choose-arglist max-const max-size)
+  (bind-generators
+   ([size (choose-integer 0 max-size)]
+    [args (choose-arglist-size max-const size)]
+    )
+   args
+   ))
+   
+
+(quickcheck (property ([args (choose-arglist 10 3)])
+                      (arglist? args)))
+
+
+(define (mem? m)
+  (match m
+    [(printf-lang mnil) #t]
+    [(printf-lang (mcons x:ident v:val m+:mem))
+     (and (ident? x) (val? v) (mem? m+))]
+    [_ #f]
+    ))
+
+(define (config? conf)
+  (match conf
+    ; do we really need these recursive checks?
+    [(printf-lang (CONF i:integer m:mem)) (and (bonsai-integer? i) (mem? m))] 
+    [_ #f]
+    ))
+
+; mem-list is a list of pairs of identifier
+(define (list->mem mem-list)
+  (if (empty? mem-list)
+      (printf-lang mnil)
+      (let* ([ident-val (first mem-list)]
+             [x (car ident-val)]
+             [v (cdr ident-val)]
+             [m+ (list->mem (rest mem-list))]
+             )
+        (printf-lang (mcons ,x ,v ,m+))
+        )))
+(define (choose-pair gen1 gen2)
+  (bind-generators 
+   ([x1 gen1]
+    [x2 gen2]
+    )
+   (cons x1 x2)
+   ))
+(define (choose-mem-size max-const size)
+  (bind-generators
+   ([mem-list (choose-list (choose-pair (choose-ident) 
+                                        (choose-val max-const))
+                           size)])
+   (list->mem mem-list)
+   ))
+(define (choose-mem max-const max-size)
+  (bind-generators
+   ([size (choose-integer 0 max-size)]
+    [m (choose-mem-size max-const size)]
+    )
+   m
+   ))
+
+
+
+(quickcheck (property ([m (choose-mem 10 3)])
+                      (mem? m)))
+
+
+(define (choose-config max-const mem-size)
+  (bind-generators
+   ([acc (choose-integer 0 max-const)]
+    [m (choose-mem max-const mem-size)]
+    )
+   (printf-lang (CONF ,(bonsai-integer acc) ,m))
+   ))
+(quickcheck (property ([conf (choose-config 10 4)])
+                      (config? conf)))
+
+(newline)
 
 
 ; INPUT: an integer offset and an argument list args such that offset < length(args)
@@ -60,6 +263,7 @@
 
 (define loc-example (printf-lang b))
 (define mem-example (printf-lang (mcons a (CONST 5) (mcons b (CONST 3) mnil))))
+
 (printf "Lookup location ~a \n\t in mem ~a...\n" loc-example mem-example)
 (displayln (lookup-loc loc-example mem-example))
 (newline)
@@ -118,6 +322,10 @@
 ; OUTPUT: an outputted string and a configuration
 (define (interp-fmt f args conf)
   (match f
+    [(printf-lang f-empty)
+     (cons "" conf)
+     ]
+
     [(printf-lang (%d offset:natural))
      (let* ([n (val->number (lookup-in-arglist (bonsai->number offset) args))]
             [len (string-length (number->string n))]
