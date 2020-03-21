@@ -12,6 +12,7 @@
          symbol->enum
          register-enum
          make-tree!
+         havoc!
          concretize
          instantiate)
 
