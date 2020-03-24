@@ -1,6 +1,7 @@
 #lang rosette/safe
 
 (provide match
+         match-let*
          define-match-expander)
 
 (require (for-syntax racket/syntax
@@ -67,6 +68,30 @@
                      (match-rule-tmps compiled)
                      #`(and (pred #,tmp) #,(match-rule-condition compiled))
                      (match-rule-body-transformer compiled)))]
+      [(cons pata patb)
+       (with-syntax ([elementa #'elementa]
+                     [elementb #'elementb])
+         (let* ([compileda (compile-rule #'elementa #'pata)]
+                [compiledb (compile-rule #'elementb #'patb)]
+                [varsa (match-rule-vars compileda)]
+                [varsb (match-rule-vars compiledb)]
+                [vars     (let ([i (set-intersect varsa varsb)])
+                                     (unless (set-empty? i)
+                                       (wrong-syntax (set-first i) "duplicate pattern variable"))
+                                     (set-union varsa varsb))]
+                [tmpsa (match-rule-tmps compileda)]
+                [tmpsb (match-rule-tmps compiledb)]
+                [tmps  (set-union tmpsa tmpsb)]
+                [conditiona (match-rule-condition compileda)]
+                [conditionb (match-rule-condition compiledb)])
+           (match-rule vars
+                       tmps
+                       #`(and (pair? #,tmp)
+                              (let ([elementa (car tmp)])
+                                #,conditiona)
+                              (let ([elementb (cdr tmp)])
+                                #,conditionb))
+                       (compose (match-rule-body-transformer compileda) (match-rule-body-transformer compiledb)))))]
       [(list pat ...)
        (with-syntax ([element #'element])
          (let* ([compiled (map (λ (p) (compile-rule #'element p)) (syntax->list #'(pat ...)))]
@@ -174,6 +199,15 @@
      (with-syntax ([(newpat ...) (map rewrite-expander (syntax->list #'(pat ...)))]
                    [(newres ...) (syntax->list #'((begin body ...) ...))])
      #`(match/int val [newpat newres] ...))]))
+
+(define-syntax (match-let* stx)
+  (syntax-parse stx
+    [(_ ([pat val:expr] ...) body ...+)
+     (foldr (lambda (pat val nbody)
+              #`(match #,val [#,pat #,nbody]))
+            #'(body ...)
+            (syntax->list #'(pat ...))
+            (syntax->list #'(val ...)))]))
 
 (define-syntax (match/int stx)
   (syntax-parse stx
