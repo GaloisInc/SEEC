@@ -68,7 +68,7 @@
                      (match-rule-tmps compiled)
                      #`(and (pred #,tmp) #,(match-rule-condition compiled))
                      (match-rule-body-transformer compiled)))]
-      [(cons pata patb)
+      #;[(cons pata patb)
        (with-syntax ([elementa #'elementa]
                      [elementb #'elementb])
          (let* ([compileda (compile-rule #'elementa #'pata)]
