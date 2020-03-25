@@ -112,7 +112,7 @@
 (define (interp-fmt f args conf)
   (match f
     [(printf-lang f-empty)
-     (if (conf? conf) (cons "" conf) 
+     (if (conf? conf) (list "" conf)
          ;else
          (raise-argument-error 'printf-lang "conf? in f-empty" conf))
      ]
@@ -124,10 +124,20 @@
                [len (string-length (number->string n+))]
                [new-conf (config-add conf len)]
                )
-          (cons (number->string n+) new-conf)
+          (list (number->string n+) new-conf)
           )]
        [_ ; if the offset does not map to a number, then do nothing
-        (cons "" conf)]
+        (list "" conf)]
+       )
+
+     #;(let* ([n (val->number (lookup-in-arglist (bonsai->number offset) args))]
+            [len (string-length (number->string n))]
+            [new-conf (config-add conf len)]
+            )
+       (if (conf? new-conf)
+           (list (number->string n) new-conf)
+           ; else
+           (raise-argument-error 'printf-lang "conf? in %d" conf))
        )
      ]
 
@@ -138,32 +148,38 @@
                [acc-val (printf-lang (CONST ,acc))]
                [new-mem (mem-update (conf->mem conf) l acc-val)]
                )
-          (cons "" (printf-lang (CONF ,acc ,new-mem)))
+          (list "" (printf-lang (CONF ,acc ,new-mem)))
           )]
        [_ ; if the offset does not map to a location, then do nothing
-        (cons "" conf)]
+        (list "" conf)]
        )
-       ]
+     ]
 
     [(printf-lang (++ f1:fmt f2:fmt))
-     #;(match-let* ([(cons s-1 conf-1) (interp-fmt f1 args conf)]
-                     [(cons s-2 conf-2) (interp-fmt f2 args conf-1)])
+     (match-let* ([(list s-1 conf-1) (interp-fmt f1 args conf)]
+                  [(list s-2 conf-2) (interp-fmt f2 args conf-1)])
        (cons (string-append s-1 s-2) conf-2))
-     (let* ([s-conf-1 (interp-fmt f1 args conf)  ]
+     #;(let* ([s-conf-1 (interp-fmt f1 args conf)  ]
             [s-1      (car s-conf-1)             ]
             [conf-1   (cdr s-conf-1)             ]
             )
-       (if (conf? conf-1) (let*
-                              ([s-conf-2 (interp-fmt f2 args conf-1)]
-                               [s-2      (car s-conf-2)             ]
-                               [conf-2   (cdr s-conf-2)             ]
-                               )
-                            (cons (string-append s-1 s-2) conf-2))
-           ; else
-           (raise-arguments-error 'printf-lang "expected conf? in ++" "conf" conf "f" f)))
+       (let* ([s-conf-2 (interp-fmt f2 args conf-1)]
+              [s-2      (car s-conf-2)             ]
+              [conf-2   (cdr s-conf-2)             ]
+              )
+         (list (string-append s-1 s-2) conf-2)))
+     #;(match (interp-fmt f1 args conf)
+       [(list s-1 conf-1) 
+        (match (interp-fmt f2 args conf-1)
+          [(list s-2 conf-2)
+           (list (string-append s-1 s-2) conf-2)
+           ]
+          )
+        ]
+       )
      ]
 
-    ;[_ (cons "" (printf-lang ERR))]
+    ;[_ (list "" (printf-lang ERR))]
     [_ (raise-argument-error 'interp-fmt "(printf-lang fmt)" f)]
     ))
 

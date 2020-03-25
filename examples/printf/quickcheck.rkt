@@ -293,7 +293,11 @@
              [args (choose-arglist max-const max-arglength)]
              [conf (choose-config max-const mem-size)]
              )
-            (let* ([res (interp-fmt f args conf)]
+            (match (interp-fmt f args conf)
+              [(list str conf)
+               (and (string? str) (conf? conf))]
+              )
+            #;(let* ([res (interp-fmt f args conf)]
                    [str (car res)]
                    [conf (cdr res)]
                    )
