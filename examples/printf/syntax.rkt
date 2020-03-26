@@ -1,6 +1,7 @@
 #lang seec
 (require racket/base)
 
+
 (provide printf-lang
          bonsai->number
          val->number
@@ -10,7 +11,7 @@
          lookup-loc
          config-add
          mem-update
-         interp-fmt
+         interp-fmt-safe
          fmt?
          ident?
          val?
@@ -109,12 +110,10 @@
 
 ; INPUT: a format string, an argument list, and a configuration
 ; OUTPUT: an outputted string and a configuration
-(define (interp-fmt f args conf)
+(define (interp-fmt-safe f args conf)
   (match f
     [(printf-lang f-empty)
-     (if (conf? conf) (list "" conf)
-         ;else
-         (raise-argument-error 'printf-lang "conf? in f-empty" conf))
+     (list "" conf)
      ]
 
     [(printf-lang (%d offset:natural))
@@ -127,7 +126,9 @@
           (list (number->string n+) new-conf)
           )]
        [_ ; if the offset does not map to a number, then do nothing
-        (list "" conf)]
+        #;(list "" conf)
+        (raise-argument-error 'interp-fmt-safe "offset is not less than ")
+        ]
        )
 
      #;(let* ([n (val->number (lookup-in-arglist (bonsai->number offset) args))]
@@ -156,21 +157,21 @@
      ]
 
     [(printf-lang (++ f1:fmt f2:fmt))
-     (match-let* ([(list s-1 conf-1) (interp-fmt f1 args conf)]
-                  [(list s-2 conf-2) (interp-fmt f2 args conf-1)])
+     #;(match-let* ([(list s-1 conf-1) (interp-fmt-safe f1 args conf)]
+                  [(list s-2 conf-2) (interp-fmt-safe f2 args conf-1)])
        (cons (string-append s-1 s-2) conf-2))
-     #;(let* ([s-conf-1 (interp-fmt f1 args conf)  ]
+     #;(let* ([s-conf-1 (interp-fmt-safe f1 args conf)  ]
             [s-1      (car s-conf-1)             ]
             [conf-1   (cdr s-conf-1)             ]
             )
-       (let* ([s-conf-2 (interp-fmt f2 args conf-1)]
+       (let* ([s-conf-2 (interp-fmt-safe f2 args conf-1)]
               [s-2      (car s-conf-2)             ]
               [conf-2   (cdr s-conf-2)             ]
               )
          (list (string-append s-1 s-2) conf-2)))
-     #;(match (interp-fmt f1 args conf)
+     (match (interp-fmt-safe f1 args conf)
        [(list s-1 conf-1) 
-        (match (interp-fmt f2 args conf-1)
+        (match (interp-fmt-safe f2 args conf-1)
           [(list s-2 conf-2)
            (list (string-append s-1 s-2) conf-2)
            ]
@@ -180,8 +181,9 @@
      ]
 
     ;[_ (list "" (printf-lang ERR))]
-    [_ (raise-argument-error 'interp-fmt "(printf-lang fmt)" f)]
+    [_ (raise-argument-error 'interp-fmt-safe "(printf-lang fmt)" f)]
     ))
+
 
 #|||||||||||||||||||||||||||||||||||||#
 #| Classifiers for printf-lang forms |#
