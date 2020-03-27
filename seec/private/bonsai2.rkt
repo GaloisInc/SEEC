@@ -12,9 +12,16 @@
          symbol->enum
          register-enum
          make-tree!
-         havoc!
+         nondet!
+         capture-nondeterminism
          concretize
          instantiate)
+
+(require (for-syntax syntax/parse)
+         (only-in racket/base
+                  make-parameter
+                  parameterize
+                  values))
 
 (define bonsai-width 32)
 
@@ -128,6 +135,21 @@
     [(bonsai-list? b) (foldl + 0 (map bonsai-leaves (bonsai-list-nodes b)))]
     [(bonsai-null? b) 0]
     [else 1]))
+
+(define nondeterminism (make-parameter (list)))
+
+(define (nondet!)
+  (define-symbolic* nondet boolean?)
+  (nondeterminism (cons nondet (nondeterminism)))
+  nondet)
+
+(define-syntax (capture-nondeterminism stx)
+  (syntax-parse stx
+    [(_ body ...)
+     #'(parameterize ([nondeterminism (list)])
+         (define result
+           body ...)
+         (values result (nondeterminism)))]))
 
 (define (havoc!)
   (define-symbolic* havoc boolean?)

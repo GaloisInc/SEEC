@@ -2,11 +2,12 @@
 
 (require seec/private/bonsai2)
 
+(current-bitwidth 4)
+
 (define-language set-api
   (value       ::= integer boolean)
   (list        ::= empty (value list))
-  (method      ::= (insert integer) (remove integer) (member? integer) #;select
-               )
+  (method      ::= (insert integer) (remove integer) (member? integer) select)
   (interaction ::= empty (method interaction))
   (context     ::= empty ((insert integer) context) ((remove integer) context)))
 
@@ -53,7 +54,7 @@
   (match s
     [(set-api (x:value empty)) x]
     [(set-api (x:value r:list))
-     (if (havoc!) x (abstract-select-nondet r))]))
+     (if (nondet!) x (abstract-select-nondet r))]))
 
 (define (abstract-interpret interaction state)
   (match interaction
@@ -64,7 +65,6 @@
      (abstract-interpret r (abstract-remove state v))]
     [(set-api ((member? v:value) r:interaction))
      (set-api (,(abstract-member? state v) ,(abstract-interpret r state)))]
-    #;
     [(set-api (select r:interaction))
      (set-api (,(abstract-select state) ,(abstract-interpret r state)))]))
 
@@ -118,7 +118,6 @@
      (concrete-interpret r (concrete-remove state v))]
     [(set-api ((member? v:value) r:interaction))
      (set-api (,(concrete-member? state v) ,(concrete-interpret r state)))]
-    #;
     [(set-api (select r:interaction))
      (set-api (,(concrete-select state) ,(concrete-interpret r state)))]))
 
@@ -139,7 +138,6 @@
      (buggy-concrete-interpret r (buggy-concrete-remove state v))]
     [(set-api ((member? v:value) r:interaction))
      (set-api (,(concrete-member? state v) ,(buggy-concrete-interpret r state)))]
-    #;
     [(set-api (select r:interaction))
      (set-api (,(concrete-select state) ,(buggy-concrete-interpret r state)))]))
 
@@ -160,6 +158,17 @@
        [(set-api #t) #f])]
     [_ #f]))
 
+(define (select-free? trace)
+  (match trace
+    [(set-api empty) #t]
+    [(set-api (select r:interaction)) #f]
+    [(set-api ((insert integer) r:interaction))
+     (select-free? r)]
+    [(set-api ((remove integer) r:interaction))
+     (select-free? r)]
+    [(set-api ((member? integer) r:interaction))
+     (select-free? r)]))
+
 (define (output-free? trace)
   (match trace
     [(set-api empty) #t]
@@ -175,30 +184,7 @@
     [(set-api (m:method r:interaction))
      (set-api (,m ,(compose r t2)))]))
 
-(define (set-context-experiment)
-  (displayln "Building trees...")
-  (define trace (time (set-api interaction 5)))
-  (define initial-set (time (set-api list 5)))
-  (time (assert (valid-set? initial-set)))
-  (displayln "Abstract interpretation...")
-  (define abstract (time (abstract-interpret trace initial-set)))
-  (displayln "Concrete interpretation...")
-  (define concrete (time (concrete-interpret trace initial-set)))
-  (displayln "Solving...")
-  (define sol
-    #;(time (verify (assert (equal? abstract concrete))))
-    (time (optimize #:minimize (list (bonsai-leaves trace))
-                    #:guarantee (assert (! (equal? abstract concrete))))))
-  (displayln "Found initial set with divergent traces...")
-  (define trace-instance (concretize trace sol))
-  (define set-instance (concretize initial-set sol))
-  (displayln trace-instance)
-  (displayln set-instance)
-  (printf "Abstract interpretation: ~a~n"
-          (instantiate (abstract-interpret trace-instance set-instance)))
-  (printf "Concrete interpretation: ~a~n"
-          (instantiate (concrete-interpret trace-instance set-instance))))
-
+#;
 (define (trace-context-experiment buggy)
   (define test-interpret-in-context
     (if buggy
@@ -271,22 +257,28 @@
                      trace-instance
                      (set-api empty)))))))
 
-(define (set-context-experiment-2 buggy)
+(define (set-context-experiment buggy)
   (define test-interpret
     (if buggy
         buggy-concrete-interpret
         concrete-interpret))
-  (displayln "Building trees...")
+  (displayln "Building symbolic interaction traces of size 6... ")
   (define trace (time (set-api interaction 6)))
-  (define concrete-set (time (set-api list 2)))
-  (time (assert (valid-set? concrete-set)))
-  (define abstract-set (time (set-api list 2)))
-  (time (assert (valid-set? abstract-set)))
+  (displayln "Building symbolic initial set of size 2 for concrete execution...")
+  (define concrete-set
+    (time (let ([s (set-api list 2)])
+            (assert (valid-set? s))
+            s)))
+  (displayln "Building symbolic initial set of size 2 for concrete execution...")
+  (define abstract-set
+    (time (let ([s (set-api list 2)])
+            (assert (valid-set? s))
+            s)))
   (newline)
-  (displayln "Abstract interpretation...")
-  (define abstract
-    (time (abstract-interpret trace abstract-set)))
-  (displayln "Concrete interpretation...")
+  (displayln "Symbolically executing with the abstract implementation...")
+  (define-values (abstract nondet)
+    (capture-nondeterminism (time (abstract-interpret trace abstract-set))))
+  (displayln "Symbolically executing with the concrete implementation...")
   (define concrete
     (time (test-interpret trace concrete-set)))
   (newline)
@@ -318,7 +310,7 @@
   (newline)
   (displayln "Solving for trace with different behavior under all contexts...")
   (define universal-sol
-    (time (synthesize #:forall abstract-set
+    (time (synthesize #:forall (cons abstract-set nondet)
                       #:guarantee (assert (! (apply && equality-assertions))))))
   (if (unsat? universal-sol)
       (displayln "Synthesis failed")
@@ -340,7 +332,7 @@
                      concrete-set-instance)))))
   (newline))
 
-(displayln "Experiment with buggy concrete interpretation...")
-(set-context-experiment-2 #t)
+(displayln "Experiment with incorrect concrete interpretation...")
+(set-context-experiment #t)
 (displayln "Experiment with correct concrete interpretation...")
-(set-context-experiment-2 #f)
+(set-context-experiment #f)
