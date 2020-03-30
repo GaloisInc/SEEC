@@ -17,6 +17,9 @@
 
          make-tree!
 
+         nondet!
+         capture-nondeterminism
+
          concretize
          instantiate
 
