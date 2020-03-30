@@ -58,7 +58,7 @@
 
 (define (mk-symbolic-char)
   (define-symbolic c integer?)
-  #;(assert (<= 0 c 256))
+  (assert (<= 0 c 256))
   c)
 ; create a symbolic string of length len
 (define (mk-symbolic-string len)
