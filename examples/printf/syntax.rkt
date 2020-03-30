@@ -8,6 +8,7 @@
          val->loc
          conf->mem
          lookup-in-arglist
+         arglist-length
          lookup-loc
          config-add
          mem-update
@@ -15,9 +16,12 @@
          fmt?
          ident?
          val?
+         const?
+         loc?
          arglist?
          mem?
          conf?
+         fmt-consistent-with-arglist?
          )
 
 ; Formalizing (for now, only safe) calls to printf
@@ -82,6 +86,14 @@
     )
   )
 
+(define (arglist-length args)
+  (match args
+    [(printf-lang anil) 0]
+    [(printf-lang (acons val args+:arglist))
+     (+ 1 (arglist-length args+))]
+    [_ (raise-argument-error 'arglist-length "arglist?" args)]
+    ))
+
 ; INPUT: a location identifier l and a memory value m with l in the domain of m
 ; OUTPUT: the value mapped to by the identifier
 (define (lookup-loc l m)
@@ -108,6 +120,7 @@
 (define (mem-update m l v)
   (printf-lang (mcons ,l ,v ,m)))
 
+
 ; INPUT: a format string, an argument list, and a configuration
 ; OUTPUT: an outputted string and a configuration
 (define (interp-fmt-safe f args conf)
@@ -127,7 +140,10 @@
           )]
        [_ ; if the offset does not map to a number, then do nothing
         #;(list "" conf)
-        (raise-argument-error 'interp-fmt-safe "offset is not less than ")
+        (raise-arguments-error 'interp-fmt-safe
+                               "Offset does not map to a number in the arglist"
+                               "offset" (bonsai->number offset)
+                               "arglist" args)
         ]
        )
 
@@ -214,6 +230,17 @@
     [(printf-lang ERR) #t]
     [_ #f]
     ))
+(define (const? v)
+  (match v
+    [(printf-lang (CONST integer)) #t]
+    [_ #f]
+    ))
+(define (loc? v)
+  (match v
+    [(printf-lang (LOC integer)) #t]
+    [_ #f]
+    ))
+
 
 (define (arglist? args)
   (match args
@@ -221,6 +248,20 @@
     [(printf-lang (acons v:val args+:arglist)) (and (val? v) (arglist? args+))]
     [_ #f]
     ))
+
+
+(define (fmt-consistent-with-arglist? f args)
+  (match f
+    [(printf-lang f-empty) #t]
+    [(printf-lang (%d offset:natural))
+     (const? (lookup-in-arglist (bonsai->number offset) args))]
+    [(printf-lang (%n offset:natural))
+     (loc? (lookup-in-arglist (bonsai->number offset) args))]
+    [(printf-lang (++ f1:fmt f2:fmt)) 
+     (and (fmt-consistent-with-arglist? f1 args)
+          (fmt-consistent-with-arglist? f2 args))]
+    ))
+
 (define (mem? m)
   (match m
     [(printf-lang mnil) #t]

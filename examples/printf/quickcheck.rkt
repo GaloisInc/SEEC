@@ -35,6 +35,8 @@
    (cons x1 x2)
    ))
 
+
+
 #||||||||||||||||||||||||||#
 #| printf-lang generators |#
 #||||||||||||||||||||||||||#
@@ -61,60 +63,6 @@
 (quickcheck (property ([n (choose-bonsai-nat 10)]) (bonsai-integer? n)))
 (newline)
 
-; generate a format string of length 1, with argument offsets less than
-; max-arglength
-(define (choose-fmt-1 max-arglength)
-  (bind-generators
-   ([offset (choose-bonsai-nat (- max-arglength 1))]
-    [f (choose (list (choice (printf-lang (%d ,offset)))
-                     (choice (printf-lang (%n ,offset)))
-                     ))]
-    )
-   f))
-(printf "Testing choose-fmt-1 generator...\n")
-(quickcheck (property ([f (choose-fmt-1 4)])
-                      (match f
-                        [(printf-lang (%d natural)) #t]
-                        [(printf-lang (%n natural)) #t]
-                        [_ #f])
-                      ))
-(newline)
-
-; generate a format string of length fmt-length, with argument offsets less than
-; max-arglength
-(define (choose-fmt-with-length max-arglength fmt-length)
-  (cond
-    [(<= fmt-length 0)     (printf-lang f-empty)]
-    [(equal? fmt-length 1) (choose-fmt-1 max-arglength)]
-    [else (bind-generators
-           ([split (choose-integer 1 (- fmt-length 1))]
-            [fmt1  (choose-fmt-with-length max-arglength split)]
-            [fmt2  (choose-fmt-with-length max-arglength (- fmt-length split))]
-            )
-           (printf-lang (++ ,fmt1 ,fmt2)))]
-    ))
-
-(printf "Testing choose-fmt-with-length...\n")
-(quickcheck (property ([f (choose-fmt-with-length 4 5)])
-                      (fmt? f)
-                      ))
-(newline)
-
-; generate a format string of length at most max-fmt-length, with argument
-; offsets less than max-arglength
-(define (choose-fmt max-arglength max-fmt-length)
-  (bind-generators
-   ([fmt-length (choose-integer 0 (- max-fmt-length 1))]
-    [f          (choose-fmt-with-length max-arglength fmt-length)]
-    )
-   f
-   ))
-
-(printf "Testing choose-fmt...\n")
-(quickcheck (property ([f (choose-fmt 4 5)])
-                      (fmt? f)
-                      ))
-(newline)
 
 ; generate a value with constants between -max-const and max-const
 (define (choose-val max-const)
@@ -175,6 +123,102 @@
 (quickcheck (property ([args (choose-arglist 10 3)])
                       (arglist? args)))
 (newline)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Generate format strings ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; generate a format string of length 1, with argument offsets less than
+; max-arglength
+(define (choose-fmt-1 max-arglength)
+  (bind-generators
+   ([offset (choose-bonsai-nat (- max-arglength 1))]
+    [f (choose (list (choice (printf-lang (%d ,offset)))
+                     (choice (printf-lang (%n ,offset)))
+                     ))]
+    )
+   f))
+(printf "Testing choose-fmt-1 generator...\n")
+(quickcheck (property ([f (choose-fmt-1 4)])
+                      (match f
+                        [(printf-lang (%d natural)) #t]
+                        [(printf-lang (%n natural)) #t]
+                        [_ #f])
+                      ))
+(newline)
+
+
+; turns an arglist into a list of those offsets that map to constant values *)
+(define (arglist-to-dlist args)
+  (match args
+      [(printf-lang anil) '()]
+      [(printf-lang (acons (CONST integer) args+:arglist)) 
+       (cons 0 (map (+1) (arglist-to-dlist args+)))]
+      [(printf-lang (acons val args+:arglist))
+       (map (+1) (arglist-to-dlist args+))]
+      ))
+
+; generate an offset into the arglist that maps to a constant value in the arglist
+(define (choose-d-consistent-with args)
+  (arbitrary-list (arglist-to-dlist args)))
+
+
+(printf "Testing choose-d-consistent-with...\n")
+(quickcheck (property ([args (choose-arglist 100 10)]
+                       )
+                      (bind-generators
+                       ([offset (choose-d-consistent-with args)])
+                       (const? (lookup-in-arglist offset args)))))
+
+; generate a format string of length 1 consistent with the arglist given
+#;(define (choose-fmt-1-consistent-with args)
+  (bind-generators
+   ([d-or-n (arbitrary-boolean)]
+    [offset (if d-or-n (choose-d-consistent-with args)
+                       (choose-n-consistent-with args))]
+    )
+   (if d-or-n (printf-lang (%d ,offset))
+              (printf-lang (%n ,offset)))
+   ))
+       
+
+; generate a format string of length fmt-length, with argument offsets less than
+; max-arglength
+(define (choose-fmt-with-length max-arglength fmt-length)
+  (cond
+    [(<= fmt-length 0)     (printf-lang f-empty)]
+    [(equal? fmt-length 1) (choose-fmt-1 max-arglength)]
+    [else (bind-generators
+           ([split (choose-integer 1 (- fmt-length 1))]
+            [fmt1  (choose-fmt-with-length max-arglength split)]
+            [fmt2  (choose-fmt-with-length max-arglength (- fmt-length split))]
+            )
+           (printf-lang (++ ,fmt1 ,fmt2)))]
+    ))
+
+(printf "Testing choose-fmt-with-length...\n")
+(quickcheck (property ([f (choose-fmt-with-length 4 5)])
+                      (fmt? f)
+                      ))
+(newline)
+
+; generate a format string of length at most max-fmt-length, with argument
+; offsets less than max-arglength
+(define (choose-fmt max-arglength max-fmt-length)
+  (bind-generators
+   ([fmt-length (choose-integer 0 (- max-fmt-length 1))]
+    [f          (choose-fmt-with-length max-arglength fmt-length)]
+    )
+   f
+   ))
+
+(printf "Testing choose-fmt...\n")
+(quickcheck (property ([f (choose-fmt 4 5)])
+                      (fmt? f)
+                      ))
+(newline)
+
+
 
 
 ;;;;;;;;;;;;;;;;;;
@@ -287,13 +331,13 @@
 ; interp-fmt ;
 ;;;;;;;;;;;;;;
 
-(printf "Testing interp-fmt...\n")
-(define (interp-fmt-property max-const max-arglength max-fmt-length mem-size)
+#;(printf "Testing interp-fmt...\n")
+#;(define (interp-fmt-property max-const max-arglength max-fmt-length mem-size)
   (property ([f    (choose-fmt max-arglength max-fmt-length)]
              [args (choose-arglist max-const max-arglength)]
              [conf (choose-config max-const mem-size)]
              )
-            (match (interp-fmt f args conf)
+            (match (interp-fmt-safe f args conf)
               [(list str conf)
                (and (string? str) (conf? conf))]
               )
@@ -305,5 +349,5 @@
                    (conf? conf)
                    )
               )))
-(quickcheck (interp-fmt-property 100 10 10 10))
+#;(quickcheck (interp-fmt-property 100 10 10 10))
 (newline)
