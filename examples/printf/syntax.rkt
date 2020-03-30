@@ -143,7 +143,6 @@
           (list (number->string n+) new-conf)
           )]
        [_ ; if the offset does not map to a number, then do nothing
-        #;(list "" conf)
         (raise-arguments-error 'interp-fmt-safe
                                "Offset does not map to a number in the arglist"
                                "offset" (bonsai->number offset)
@@ -169,10 +168,10 @@
                [acc-val (printf-lang (CONST ,acc))]
                [new-mem (mem-update (conf->mem conf) l acc-val)]
                )
-          (list "" (printf-lang (CONF ,acc ,new-mem)))
+          (list (mk-string "") (printf-lang (CONF ,acc ,new-mem)))
           )]
        [_ ; if the offset does not map to a location, then do nothing
-        (list "" conf)]
+        (list (mk-string "") conf)]
        )
      ]
 
@@ -200,7 +199,6 @@
        )
      ]
 
-    ;[_ (list "" (printf-lang ERR))]
     [_ (raise-argument-error 'interp-fmt-safe "(printf-lang fmt)" f)]
     ))
 
