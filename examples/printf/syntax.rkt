@@ -1,5 +1,9 @@
 #lang seec
-(require racket/base)
+#;(require racket/base)
+(require (only-in racket/base
+                  raise-argument-error
+                  raise-arguments-error))
+(require (file "../string.rkt"))
 
 
 (provide printf-lang
@@ -126,7 +130,7 @@
 (define (interp-fmt-safe f args conf)
   (match f
     [(printf-lang f-empty)
-     (list "" conf)
+     (list (mk-string "") conf)
      ]
 
     [(printf-lang (%d offset:natural))

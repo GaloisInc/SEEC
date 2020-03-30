@@ -36,9 +36,9 @@
 
 (define (test-interp-fmt-safe)
   (displayln "Testing interp-fmt-safe")
-  (define f (printf-lang fmt 5))
-  (define args (printf-lang arglist 5))
-  (define conf (printf-lang config 5))
+  (define f (printf-lang fmt 2))
+  (define args (printf-lang arglist 2))
+  (define conf (printf-lang config 2))
   (assert (fmt-consistent-with-arglist? f args))
   (define sol (verify (match (interp-fmt-safe f args conf)
                         [(list str conf+) (conf? conf+)]
