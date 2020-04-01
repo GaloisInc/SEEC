@@ -51,7 +51,7 @@
   
   (define (compile-rule tmp stx)
     (syntax-parse stx
-      #:literals (list bonsai-list bonsai-integer bonsai-boolean bonsai-terminal bonsai-null)
+      #:literals (list cons bonsai-list bonsai-integer bonsai-boolean bonsai-terminal bonsai-null)
       #:datum-literals (? _)
       [_ (match-rule (set) (set) #'#t (λ (b) b))]
       [var:id
@@ -68,7 +68,7 @@
                      (match-rule-tmps compiled)
                      #`(and (pred #,tmp) #,(match-rule-condition compiled))
                      (match-rule-body-transformer compiled)))]
-      #;[(cons pata patb)
+      [(cons pata patb)
        (with-syntax ([elementa #'elementa]
                      [elementb #'elementb])
          (let* ([compileda (compile-rule #'elementa #'pata)]
