@@ -24,6 +24,7 @@
          instantiate
 
          match
+         match-let*
          
          define-language
          enumerate)
