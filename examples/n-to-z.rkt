@@ -96,21 +96,6 @@
 (define (apply-ctxn c e)
   (eval-expn (lang (Envn ,e empty)) c))
 
-(define test-expn1
-  (lang (Var 0)))
-(define test-expn2
-  (lang (+ (Sn (Valn 2)) (Var 0))))
-(define test-expn3
-  (lang (+ (Sn (Valn 2)) (Valn 3))))
-
-(define test-env1
-  (lang empty))
-(define test-env2
-  (lang (Envn ,test-expn3 empty)))
-(define test-env3
-  (lang (Envn ,test-expn3 (Envn ,test-expn2 empty))))
-
-
 
 #||||||||||||||||||||||||||||#
 #| Language expZ            |#
@@ -202,9 +187,12 @@
     [(lang (Var n:name))
      (lang (Var ,n))]
     [(lang (Sn e1:expn))
-     (lang (Sz ,e1))]
+     (let ([e1z (n-to-z e1)])
+     (lang (Sz ,e1z)))]
     [(lang (op:binop e1:expn e2:expn))
-     (lang (,op ,e1 ,e2))]
+     (let ([e1z (n-to-z e1)]
+           [e2z (n-to-z e2)])
+       (lang (,op ,e1z ,e2z)))]
     [(lang (Valn n:natural))
      (lang (Valz ,n))]))
 
@@ -218,9 +206,40 @@
              (lang (,e1z ,env1z)))]))
 
 
+#||||||||||||||||||||||||||||#
+#| Tests                    |#
+#||||||||||||||||||||||||||||#
+
+
+(define test-expn1
+  (lang (Var 0)))
+(define test-expn2
+  (lang (+ (Sn (Valn 2)) (Var 0))))
+(define test-expn3
+  (lang (+ (Sn (Valn 2)) (Valn 3))))
+
+(define test-env1
+  (lang empty))
+(define test-env2
+  (lang (Envn ,test-expn3 empty)))
+(define test-env3
+  (lang (Envn ,test-expn3 (Envn ,test-expn2 empty))))
+
+(define test-expz1
+  (lang (Var 0)))
+(define test-expz2
+  (lang (+ (Sz (Valz 2)) (Var 0))))
+(define test-expz3
+  (lang (+ (Sz (Valz 2)) (Valz 3))))
+
+
+;(displayln (apply-ctxz (n-to-z test-expn2) (n-to-z test-expn3)))
+;(displayln (apply-ctxz test-expz2 test-expz3))
+;(displayln (apply-ctxz (n-to-z test-expn2) (n-to-z test-expn3)))
+
 
 #||||||||||||||||||||||||||||#
-#| Synthesis test           |#
+#| Synthesis                |#
 #||||||||||||||||||||||||||||#
 
 
@@ -280,6 +299,7 @@
 (displayln (eval-expz (lang empty) z))
 |#
 
+
 ; find an expression En and context Cz s.t. Cz[n-to-z En] != Cn[En] for Cn of bounded size
 (displayln "Creating a symbolic expression, restricting it to closed expression and compiling it")
 (define n* (time (lang expn 4)))
@@ -294,7 +314,7 @@
 (void (time (ctx-expz cz*)))
 
 ;(displayln "Restricting target context and expression to compatible ones")
-(void (time (apply-ctxz cz* z*)))
+;(void (time (apply-ctxz cz* z*)))
 
 (displayln "Finding a target context and an expression s.t. no source context exhibit the same behaviors")
 (define-values (v a) (with-asserts (time (assert (equal? (apply-ctxn cn* n*) (apply-ctxz cz* z*))))))
@@ -317,7 +337,6 @@
 
 (displayln "Target Evaluation:")
 (displayln (apply-ctxz cz z))
-
 
 
 
