@@ -1,6 +1,5 @@
 #lang seec
 
-
 (define (bonsai->number n)
   (match n
     [(bonsai-integer i) i]
@@ -19,9 +18,9 @@
 (define (interp-binop op n1 n2)
   (match op
   [(lang +)
-   n1 + n2]
+   (+ n1 n2)]
   [(lang *)
-   n1 * n2]))
+   (* n1 n2)]))
 
 
 #||||||||||||||||||||||||||||#
@@ -178,7 +177,8 @@
 (define (eval-expz env e)
   (match e
     [(lang (Var n:name))
-     (eval-expz (lang empty) (lookup-envz (bonsai->number n) env))]
+     (let ([e1 (lookup-envz (bonsai->number n) env)])
+     (eval-expz (lang empty) e1))]
     [(lang (Sz e1:expz))
      (+ (eval-expz env e1) 1)]
     [(lang (Pz e1:expz))
@@ -293,7 +293,7 @@
 (define cz* (time (lang expz 4)))
 (void (time (ctx-expz cz*)))
 
-(displayln "Restricting target context and expression to compatible ones")
+;(displayln "Restricting target context and expression to compatible ones")
 (void (time (apply-ctxz cz* z*)))
 
 (displayln "Finding a target context and an expression s.t. no source context exhibit the same behaviors")
