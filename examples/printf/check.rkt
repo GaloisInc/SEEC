@@ -1,24 +1,24 @@
 #lang seec
 (require (file "syntax.rkt"))
 
-(define (test-lookup-in-arglist)
-  (displayln "Testing lookup-in-arglist...")
+(define (test-lookup-offset)
+  (displayln "Testing lookup-offset...")
   (define-symbolic* offset integer?)
-  (define args (printf-lang arglist 5))
-  (assert (< offset (arglist-length args)))
+  (define args (printf-lang vlist 5))
+  (assert (< offset (vlist-length args)))
   (define sol
-    (verify (val? (lookup-in-arglist offset args))))
+    (verify (val? (lookup-offset offset args))))
   (if (unsat? sol)
       (displayln "Verified.")
       (begin
         (displayln "Counterexample found.")
         (displayln "Offset...")
         (concretize offset sol)
-        (displayln "Arglist...")
+        (displayln "Vlist...")
         (concretize args sol)
         ))
 )
-(test-lookup-in-arglist)
+(test-lookup-offset)
 
 
 (define (test-mem-update)
@@ -36,11 +36,11 @@
 
 (define (test-interp-fmt-safe)
   (displayln "Testing interp-fmt-safe")
-  (displayln "NOTE: times out when increasing size of arglist beyond 2")
+  (displayln "NOTE: times out when increasing size of vlist beyond 2")
   (define f (printf-lang fmt 5))
-  (define args (printf-lang arglist 2))
+  (define args (printf-lang vlist 2))
   (define conf (printf-lang config 5))
-  (assert (fmt-consistent-with-arglist? f args))
+  (assert (fmt-consistent-with-vlist? f args))
   (define sol (verify (match (interp-fmt-safe f args conf)
                         [(list str conf+) (conf? conf+)]
                         )))
@@ -61,3 +61,6 @@
         (displayln res-instance)
         )))
 (test-interp-fmt-safe)
+
+
+
