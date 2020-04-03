@@ -43,7 +43,7 @@
     [(lang (Envn e1:expn env1:envn))
      (+ (size-envn env1) 1)]))
 
-
+; Returns the highest occurence of "Var" in the expn
 (define (scope-expn e)
   (match e
     [(lang (Var n:name))
@@ -55,10 +55,26 @@
     [_
      0]))
 
+; Returns the number of occurences of "Var" in the expn
+(define (numhole-expn e)
+  (match e
+    [(lang (Var n:name))
+     1]
+    [(lang (Sn e1:expn))
+     (numhole-expn e1)]
+    [(lang (op:binop e1:expn e2:expn))
+     (+ (numhole-expn e1) (numhole-expn e2))]
+    [_
+     0]))
+
+; expn with a single hole (Var 0)
+(define (ctx-expn e)
+    (assert (and (equal? (scope-expn e) 1) (equal? (numhole-expn e) 1))))
+
 (define (well-scopedn? env e)
   (let* ([s-e (scope-expn e)]
          [s-env (size-envn env)])
-          (<= s-e s-env)))
+          (assert (<= s-e s-env))))
 
 (define (wf-envn? env)
    (match env
@@ -76,8 +92,10 @@
     [(lang (op:binop e1:expn e2:expn))
      (interp-binop op (eval-expn env e1) (eval-expn env e2))]
     [(lang (Valn n:natural))
-     n]))
+     (bonsai->number n)]))
 
+(define (apply-ctxn c e)
+  (eval-expn (lang (Envn ,e empty)) c))
 
 (define test-expn1
   (lang (Var 0)))
@@ -126,10 +144,27 @@
     [_
      0]))
 
+(define (numhole-expz e)
+  (match e
+    [(lang (Var n:name))
+     1]
+    [(lang (Sz e1:expz))
+     (numhole-expz e1)]
+    [(lang (Pz e1:expz))
+     (numhole-expz e1)]
+    [(lang (op:binop e1:expz e2:expz))
+     (+ (numhole-expz e1) (numhole-expz e2))]
+    [_
+     0]))
+
+; expz with a single hole (Var 0)
+(define (ctx-expz e)
+  (assert (and (equal? (scope-expz e) 1) (equal? (numhole-expz e) 1))))
+
 (define (well-scopedz? env e)
   (let* ([s-e (scope-expz e)]
          [s-env (size-envz env)])
-          (<= s-e s-env)))
+          (assert (<= s-e s-env))))
 
 
 (define (wf-envz? env)
@@ -151,7 +186,16 @@
     [(lang (op:binop e1:expz e2:expz))
      (interp-binop op (eval-expz env e1) (eval-expz env e2))]
     [(lang (Valz z:integer))
-     z]))
+     (bonsai->number z)]))
+
+
+(define (apply-ctxz c e)
+  (eval-expz (lang (Envz ,e empty)) c))
+
+
+#||||||||||||||||||||||||||||#
+#| Compilation              |#
+#||||||||||||||||||||||||||||#
 
 (define (n-to-z e)
   (match e
@@ -237,20 +281,23 @@
 |#
 
 ; find an expression En and context Cz s.t. Cz[n-to-z En] != Cn[En] for Cn of bounded size
-
-(displayln "Building tree...")
+(displayln "Creating a symbolic expression, restricting it to closed expression and compiling it")
 (define n* (time (lang expn 4)))
-(define z* (time (n-to-z n*)))
-(define cn* (time (lang envn 4)))
-(define cz* (time (lang envz 4)))
+(void (time (well-scopedn? (lang empty) n*)))
+(define z* (n-to-z n*))
 
 
-(displayln "Restricting to well-formed contexts and expressions")
-(void (time (eval-expn cn* n*)))
-(void (time (eval-expz cz* z*)))
+(displayln "Creating symbolic contexts (expn/expz with a single hole)")
+(define cn* (time (lang expn 4)))
+(void (time (ctx-expn cn*)))
+(define cz* (time (lang expz 4)))
+(void (time (ctx-expz cz*)))
+
+(displayln "Restricting target context and expression to compatible ones")
+(void (time (apply-ctxz cz* z*)))
 
 (displayln "Finding a target context and an expression s.t. no source context exhibit the same behaviors")
-(define-values (v a) (with-asserts (time (assert (equal? (eval-expn cn* n*) (eval-expz cz* z*))))))
+(define-values (v a) (with-asserts (time (assert (equal? (apply-ctxn cn* n*) (apply-ctxz cz* z*))))))
 (newline)
 
 (define sol
@@ -269,7 +316,9 @@
 (displayln cz)
 
 (displayln "Target Evaluation:")
-(displayln (eval-expz cz z))
+(displayln (apply-ctxz cz z))
+
+
 
 
 
