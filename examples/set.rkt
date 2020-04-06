@@ -1,8 +1,11 @@
 #lang seec
 
-(require seec/private/bonsai2)
-
+; Performance tweak: model integers using 4-bit bitvectors
 (current-bitwidth 4)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Define a language of API calls for a set datastructure
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-language set-api
   (value       ::= integer boolean)
@@ -11,6 +14,17 @@
   (interaction ::= empty (method interaction))
   (context     ::= empty ((insert integer) context) ((remove integer) context)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Define an abstract semantics of operations on sets
+;
+; * The semantics will represent a set as a list of unique values.
+; * Inserting and removing an element inserts or removes the corresponding
+;   element from the list.
+; * member? searches the list for the requested element
+; * select *non-deterministically* chooses and element from the list to return
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Convenience functions for manipulating lists
 (define (head s)
   (match s
     [(set-api empty)
@@ -50,6 +64,7 @@
     [(set-api empty) (set-api #f)]
     [(set-api list)  (abstract-select-nondet s)]))
 
+; The (nondet!) construct introduces a non-deterministic choice
 (define (abstract-select-nondet s)
   (match s
     [(set-api (x:value empty)) x]
@@ -68,13 +83,22 @@
     [(set-api (select r:interaction))
      (set-api (,(abstract-select state) ,(abstract-interpret r state)))]))
 
-(define (abstract-interpret-in-context context interaction state)
-  (match context
-    [(set-api empty) (abstract-interpret interaction state)]
-    [(set-api ((insert v:value) r:interaction))
-     (abstract-interpret-in-context r interaction (abstract-insert state v))]
-    [(set-api ((remove v:value) r:interaction))
-     (abstract-interpret-in-context r interaction (abstract-remove state v))]))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Define an concrete implementation of the set API
+;
+; * Like the abstract semantics, the implementation represents sets as lists of
+;   elements in the set.
+; * Inserting and removing an element inserts or removes the corresponding
+;   element from the list. If an item is in the list already, inserting it will
+;   add a second occurence. Removing an item will remove all occurences of the
+;   item in the list.
+; * member? searches the list for the requested element
+; * select returns the most-recently inserted item (the item at the head of the
+;   list
+;
+; Also define a "buggy" implementation of the API where remove is implemented
+; incorrectly and only removes the first instance of element.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (concrete-insert s v)
   (set-api (,v ,s)))
@@ -121,14 +145,6 @@
     [(set-api (select r:interaction))
      (set-api (,(concrete-select state) ,(concrete-interpret r state)))]))
 
-(define (concrete-interpret-in-context context interaction state)
-  (match context
-    [(set-api empty) (concrete-interpret interaction state)]
-    [(set-api ((insert v:value) r:interaction))
-     (concrete-interpret-in-context r interaction (concrete-insert state v))]
-    [(set-api ((remove v:value) r:interaction))
-     (concrete-interpret-in-context r interaction (concrete-remove state v))]))
-
 (define (buggy-concrete-interpret interaction state)
   (match interaction
     [(set-api empty) (set-api empty)]
@@ -141,13 +157,9 @@
     [(set-api (select r:interaction))
      (set-api (,(concrete-select state) ,(buggy-concrete-interpret r state)))]))
 
-(define (buggy-concrete-interpret-in-context context interaction state)
-  (match context
-    [(set-api empty) (buggy-concrete-interpret interaction state)]
-    [(set-api ((insert v:value) r:interaction))
-     (buggy-concrete-interpret-in-context r interaction (concrete-insert state v))]
-    [(set-api ((remove v:value) r:interaction))
-     (buggy-concrete-interpret-in-context r interaction (buggy-concrete-remove state v))]))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Helper function for constraining the synthesis search problem
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (valid-set? xs)
   (match xs
@@ -158,104 +170,9 @@
        [(set-api #t) #f])]
     [_ #f]))
 
-(define (select-free? trace)
-  (match trace
-    [(set-api empty) #t]
-    [(set-api (select r:interaction)) #f]
-    [(set-api ((insert integer) r:interaction))
-     (select-free? r)]
-    [(set-api ((remove integer) r:interaction))
-     (select-free? r)]
-    [(set-api ((member? integer) r:interaction))
-     (select-free? r)]))
-
-(define (output-free? trace)
-  (match trace
-    [(set-api empty) #t]
-    [(set-api ((insert integer) r:interaction))
-     (output-free? r)]
-    [(set-api ((remove integer) r:interaction))
-     (output-free? r)]
-    [_ #f]))
-
-(define (compose t1 t2)
-  (match t1
-    [(set-api empty) t2]
-    [(set-api (m:method r:interaction))
-     (set-api (,m ,(compose r t2)))]))
-
-#;
-(define (trace-context-experiment buggy)
-  (define test-interpret-in-context
-    (if buggy
-        buggy-concrete-interpret-in-context
-        concrete-interpret-in-context))
-  (displayln "Building trees...")
-  (define trace (time (set-api interaction 5)))
-  (define concrete-context (time (set-api context 5)))
-  (define abstract-context (time (set-api context 5)))
-  ;(define concrete-context (time (set-api interaction 5)))
-  ;(time (assert (output-free? concrete-context)))
-  ;(define abstract-context (time (set-api interaction 5)))
-  ;(time (assert (output-free? abstract-context)))
-  (displayln "Abstract interpretation...")
-  (define abstract
-    (time (abstract-interpret-in-context abstract-context trace (set-api empty))))
-  (displayln "Concrete interpretation...")
-  (define concrete
-    (time (test-interpret-in-context concrete-context trace (set-api empty))))
-  (displayln "Generating equality assertion...")
-  (define equality-assertions (with-asserts-only (time (assert (equal? abstract concrete)))))
-  (displayln "Solving for trace with different behavior...")
-  (define sol
-    (time (verify #:assume (assert (equal? concrete-context abstract-context))
-                  #:guarantee (assert (apply && equality-assertions)))))
-  (if (unsat? sol)
-      (displayln "Synthesis failed")
-      (begin
-        (displayln "Found initial set with divergent traces...")
-        (define trace-instance (concretize trace sol))
-        (define concrete-context-instance (concretize concrete-context sol))
-        (displayln trace-instance)
-        (displayln concrete-context-instance)
-        (printf "Abstract interpretation: ~a~n"
-                (instantiate
-                    (abstract-interpret-in-context
-                     concrete-context-instance
-                     trace-instance
-                     (set-api empty))))
-        (printf "Concrete interpretation: ~a~n"
-                (instantiate
-                    (test-interpret-in-context
-                     concrete-context-instance
-                     trace-instance
-                     (set-api empty))))))
-  #;(displayln "Solving for trace with different behavior under all contexts...")
-  #;
-  (define universal-sol
-    (time (synthesize #:forall abstract-context
-                      #:guarantee (assert (! (apply && equality-assertions))))))
-  #;
-  (if (unsat? universal-sol)
-      (displayln "Synthesis failed")
-      (begin
-        (displayln "Found initial set with divergent traces...")
-        (define trace-instance (concretize trace universal-sol))
-        (define concrete-context-instance (concretize concrete-context universal-sol))
-        (displayln trace-instance)
-        (displayln concrete-context-instance)
-        (printf "Abstract interpretation: ~a~n"
-                (instantiate
-                    (abstract-interpret-in-context
-                     concrete-context-instance
-                     trace-instance
-                     (set-api empty))))
-        (printf "Concrete interpretation: ~a~n"
-                (instantiate
-                    (test-interpret-in-context
-                     concrete-context-instance
-                     trace-instance
-                     (set-api empty)))))))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Demonstration synthesis tasks
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (set-context-experiment buggy)
   (define test-interpret
@@ -332,7 +249,16 @@
                      concrete-set-instance)))))
   (newline))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Attempt to synthesis weird behavior in the buggy concrete implementation
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (displayln "Experiment with incorrect concrete interpretation...")
 (set-context-experiment #t)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Attempt to synthesis weird behavior in the buggy concrete implementation
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (displayln "Experiment with correct concrete interpretation...")
 (set-context-experiment #f)
