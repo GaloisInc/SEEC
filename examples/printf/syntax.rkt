@@ -17,6 +17,7 @@
          config-add
          mem-update
          interp-fmt-safe
+         interp-fmt-unsafe
          fmt?
          ident?
          val?
@@ -122,6 +123,30 @@
 (define (mem-update m l v)
   (printf-lang (mcons ,l ,v ,m)))
 
+; INPUT: a config conf and an integer n
+; OUTPUT: a pair of the string representing n and an updated configuration
+(define (print-d-integer conf n)
+  (let* ([s (number->string n)]
+         [new-conf (config-add conf (string-length s))])
+    (list s new-conf)))
+
+; INPUT: a config conf and a location identifier l
+; OUTPUT: an updated configuration that assigns l the value of the accumulator.
+(define (print-n-loc conf l)
+  (let* ([acc (bonsai-integer (conf->acc conf))]
+         [acc-val (printf-lang (CONST ,acc))]
+         [new-mem (mem-update (conf->mem conf) l acc-val)]
+         )
+    (printf-lang (CONF ,acc ,new-mem))
+    ))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Define an abstract "safe" implementation of printf                          ;
+;                                                                             ;
+; If an argument in the format string is not in scope with respect to the     ;
+; argument list, or if it maps to a value of the wrong type, it will throw an ;
+; error.                                                                      ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; INPUT: a format string, an argument list, and a configuration
 ; OUTPUT: an outputted string and a configuration
@@ -133,35 +158,23 @@
 
     [(printf-lang (%d offset:natural))
      (match (lookup-offset (bonsai->number offset) args)
-       [(printf-lang (CONST n:integer))
-        (let* ([n+ (bonsai->number n)]
-               [len (string-length (number->string n+))]
-               [new-conf (config-add conf len)]
-               )
-          (list (number->string n+) new-conf)
-          )]
-       [_ ; if the offset does not map to a number, then do nothing
+       [(printf-lang (CONST n:integer)) (print-d-integer conf (bonsai->number n))]
+       [_ ; if the offset does not map to a number, throw an error
         (raise-arguments-error 'interp-fmt-safe
                                "Offset does not map to a number in the vlist"
                                "offset" (bonsai->number offset)
-                               "vlist" args)
-        ]
-       )
-     ]
+                               "vlist" args)]
+       )]
 
     [(printf-lang (%n offset:natural))
      (match (lookup-offset (bonsai->number offset) args)
-       [(printf-lang (LOC l:ident))
-        (let* ([acc (bonsai-integer (conf->acc conf))]
-               [acc-val (printf-lang (CONST ,acc))]
-               [new-mem (mem-update (conf->mem conf) l acc-val)]
-               )
-          (list (mk-string "") (printf-lang (CONF ,acc ,new-mem)))
-          )]
-       [_ ; if the offset does not map to a location, then do nothing
-        (list (mk-string "") conf)]
-       )
-     ]
+       [(printf-lang (LOC l:ident)) (list (mk-string "") (print-n-loc conf l))]
+       [_ ; if the offset does not map to a location, throw an error
+        (raise-arguments-error 'interp-fmt-safe
+                               "Offset does not map to a location in the vlist"
+                               "offset" (bonsai->number offset)
+                               "vlist" args)]
+       )]
 
     [(printf-lang (++ f1:fmt f2:fmt))
      #;(match-let* ([(list s-1 conf-1) (interp-fmt-safe f1 args conf)]
@@ -172,18 +185,25 @@
         (match (interp-fmt-safe f2 args conf-1)
           [(list s-2 conf-2)
            (list (string-append s-1 s-2) conf-2)
-           ]
-          )
-        ]
-       )
-     ]
+           ])])]
 
     [_ (raise-argument-error 'interp-fmt-safe "(printf-lang fmt)" f)]
     ))
 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Define an concrete "unsafe" implementation of printf                          ;
+;                                                                               ;
+; If an argument in the format string is not in scope with respect to the       ;
+; argument list, or if it maps to a value of the wrong type, it will return the ;
+; empty string and proceed silently.                                            ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
 ; INPUT: a format string, a stack (we assume that the arguments have been pushed
-; onto the stack, and a configuration OUTPUT: an outputted string and a
-; configuration
+; onto the stack, and a configuration
+; OUTPUT: an outputted string and a configuration
 (define (interp-fmt-unsafe f args conf)
   (match f
     [(printf-lang f-empty)
@@ -191,38 +211,18 @@
      ]
 
     [(printf-lang (%d offset:natural))
-     ; the safe version will only print constant values, while the unsafe
-     ; version will print the value of pointers as well.
      (match (lookup-offset (bonsai->number offset) args)
-       [(printf-lang (CONST n:integer))
-        (let* ([n+ (bonsai->number n)]
-               [len (string-length (number->string n+))]
-               [new-conf (config-add conf len)]
-               )
-          (list (number->string n+) new-conf)
-          )]
-       [_ ; if the offset does not map to a number, then do nothing
-        (raise-arguments-error 'interp-fmt-unsafe
-                               "Offset does not map to a number in the vlist"
-                               "offset" (bonsai->number offset)
-                               "vlist" args)
-        ]
-       )
-     ]
+       [(printf-lang (CONST n:integer)) (print-d-integer conf (bonsai->number n))]
+       [_ ; if the offset does not map to a number, do nothing
+        (list (mk-string "") conf)]
+       )]
 
     [(printf-lang (%n offset:natural))
      (match (lookup-offset (bonsai->number offset) args)
-       [(printf-lang (LOC l:ident))
-        (let* ([acc (bonsai-integer (conf->acc conf))]
-               [acc-val (printf-lang (CONST ,acc))]
-               [new-mem (mem-update (conf->mem conf) l acc-val)]
-               )
-          (list (mk-string "") (printf-lang (CONF ,acc ,new-mem)))
-          )]
-       [_ ; if the offset does not map to a location, then do nothing
+       [(printf-lang (LOC l:ident)) (list (mk-string "") (print-n-loc conf l))]
+       [_ ; if the offset does not map to a location, do nothing
         (list (mk-string "") conf)]
-       )
-     ]
+       )]
 
     [(printf-lang (++ f1:fmt f2:fmt))
      #;(match-let* ([(list s-1 conf-1) (interp-fmt-unsafe f1 args conf)]
@@ -233,11 +233,7 @@
         (match (interp-fmt-unsafe f2 args conf-1)
           [(list s-2 conf-2)
            (list (string-append s-1 s-2) conf-2)
-           ]
-          )
-        ]
-       )
-     ]
+           ])])]
 
     [_ (raise-argument-error 'interp-fmt-safe "(printf-lang fmt)" f)]
     ))
@@ -315,7 +311,6 @@
 
 (define (conf? conf)
   (match conf
-    ; do we really need these recursive checks?
     [(printf-lang (CONF i:integer m:mem)) (and (bonsai-integer? i) (mem? m))] 
     [_ #f]
     ))
