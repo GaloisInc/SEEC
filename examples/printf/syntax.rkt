@@ -190,7 +190,10 @@
     [_ (raise-argument-error 'interp-fmt-safe "(printf-lang fmt)" f)]
     ))
 
-
+(displayln "Running test case demonstrating match-let failure...")
+(interp-fmt-safe (printf-lang (++ f-empty f-empty))
+                 (printf-lang anil)
+                 (printf-lang (CONF 0 mnil)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Define an concrete "unsafe" implementation of printf                          ;
