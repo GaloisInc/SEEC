@@ -1,6 +1,7 @@
 #lang seec
 (require (file "syntax.rkt"))
 
+
 (define (test-lookup-offset)
   (displayln "Testing lookup-offset...")
   (define-symbolic* offset integer?)
@@ -60,7 +61,7 @@
         (define res-instance (interp-fmt-safe f-instance args-instance conf-instance))
         (displayln res-instance)
         )))
-#;(test-interp-fmt-safe)
+(test-interp-fmt-safe)
 
 
 (define (test-interp-fmt-unsafe)
@@ -89,7 +90,7 @@
         (define res-instance (interp-fmt-unsafe f-instance args-instance conf-instance))
         (displayln res-instance)
         )))
-#;(test-interp-fmt-unsafe)
+(test-interp-fmt-unsafe)
 
 (define (find-exploit)
   (define f (printf-lang fmt 5))
