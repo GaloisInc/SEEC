@@ -205,7 +205,7 @@
     [(_ ([pat val:expr] ...) body ...+)
      (foldr (lambda (pat val nbody)
               #`(match #,val [#,pat #,nbody]))
-            #'(body ...)
+            #'(begin body ...)
             (syntax->list #'(pat ...))
             (syntax->list #'(val ...)))]))
 
