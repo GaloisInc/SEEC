@@ -1,10 +1,11 @@
-#lang seec
+#lang rosette/safe
 
 (require (only-in racket/base
                   [string->list racket/string->list]
                   [char->integer racket/char->integer]
                   [integer->char racket/integer->char]
                   [list->string racket/list->string]
+                  [string? racket/string?]
                   ))
 (require (only-in racket/base
                   raise-argument-error
@@ -16,19 +17,21 @@
          symbolic-string?
          print-char
          print-string
-         mk-char
-         mk-string
-         mk-symbolic-char
-         mk-symbolic-string
+         string
+         new-symbolic-char
+         new-symbolic-char*
+         new-symbolic-string
+         new-symbolic-string*
          string-length
          number->string
          string-append
+         string
          )
 
 ;; A character is just a number between 0 and 256
 (define (char? c) (<= 0 c 256))
 ;; A string is just a list of characters
-(define (string? s) (listof char?))
+(define string? (listof char?))
 
 (define (symbolic-string? s)
   (ormap term? s))
@@ -56,42 +59,63 @@
 (define (char->string c)
   (list c))
 
-(define (mk-symbolic-char)
-  (define-symbolic c integer?)
-  (assert (<= 0 c 256))
-  c)
+; construct either a concrete OR symbolic string
+; if the input is already a rosette string, do nothing
+; if the input is a concrete string, apply mk-string
+(define (string s)
+  (cond
+    [(string? s) s]
+    [(not (term? s)) (mk-string s)]
+    ))
+
+(define (new-symbolic-char)
+  (begin
+    (define-symbolic c integer?)
+    (assert (<= 0 c 256))
+    c))
+(define (new-symbolic-char*)
+  (begin
+    (define-symbolic* c integer?)
+    (assert (<= 0 c 256))
+    c))
 ; create a symbolic string of length len
-(define (mk-symbolic-string len)
-  (if (<= len 0)
-      '()
-      (cons (mk-symbolic-char) (mk-symbolic-string (- len 1)))
-      ))
+; len must not be symbolic or termination could occur
+(define (new-symbolic-string len)
+  (letrec ([make-string (lambda (n)
+                          (if (<= n 0)
+                              '()
+                              (cons new-symbolic-char (make-string (- len 1)))))]
+           )
+    (make-string len)))
+(define (new-symbolic-string* len)
+  (letrec ([c new-symbolic-char*]
+           [make-string (lambda (n)
+                          (if (<= n 0)
+                              '()
+                              (cons c (make-string (- len 1)))))]
+           )
+    (make-string len)))
+
 
 #|
+; TESTING
+
 (mk-char #\x)
 (print-char (mk-char #\x))
 (mk-string "Hello, world!")
 (symbolic-string? (mk-string "Hello, world!"))
 (print-string (mk-string "Hello, world!"))
-(mk-symbolic-char)
-(print-char (mk-symbolic-char))
-(mk-symbolic-string 5)
-(symbolic-string? (mk-symbolic-string 5))
-(print-string (mk-symbolic-string 5))
+(define-symbolic-char)
+(print-char (define-symbolic-char))
+(define-symbolic-string 5)
+(symbolic-string? (define-symbolic-string 5))
+(print-string (define-symbolic-string 5))
+(string "Hello, world!")
+(string (define-symbolic-string 5))
 |#
-
   
 ;; functions on strings ;;
 (define (string-length s) (length s))
-
-; convert a number into a string encoding the number
-#|(define (number->string n)
-  (if (term? n)
-      ; if n is symbolic...
-      ?
-      ; else...
-      (racket/number->string n)
-|#
 
 ;; given a number n between 0 and 9 inclusive,
 ;; output the character corresponding to n

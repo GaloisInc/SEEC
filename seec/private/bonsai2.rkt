@@ -5,6 +5,8 @@
          (struct-out bonsai-terminal)
          (struct-out bonsai-boolean)
          (struct-out bonsai-integer)
+         (struct-out bonsai-string)
+         bonsai-string*
          (struct-out bonsai-list)
          bonsai-depth
          bonsai-leaves
@@ -22,6 +24,7 @@
                   make-parameter
                   parameterize
                   values))
+(require "string.rkt")
 
 (define bonsai-width 32)
 
@@ -67,6 +70,14 @@
   #:transparent
   #:methods gen:custom-write
   [(define write-proc bonsai-write)])
+(struct bonsai-string bonsai (value)
+  #:transparent
+  #:methods gen:custom-write
+  [(define write-proc bonsai-write)]
+  )
+;; additional constructor for bonsai strings that allows for string literals e.g.
+;;   (bonsai-string "Hello, world!")
+(define (bonsai-string* s) (bonsai-string (string s)))
 (struct bonsai-boolean bonsai (value)
   #:transparent
   #:methods gen:custom-write
@@ -82,6 +93,8 @@
      (out (enum->symbol (bonsai-terminal-value b)))]
     [(bonsai-integer? b)
      (out (bonsai-integer-value b))]
+    [(bonsai-string? b)
+     (out (print-string (bonsai-string-value b)))]
     [(bonsai-boolean? b)
      (out (bonsai-boolean-value b))]
     [(bonsai-null? b)
@@ -103,6 +116,10 @@
     [(bonsai-integer? b)
      (out "(bonsai-integer (")
      (out (bonsai-integer-value b))
+     (out "))")]
+    [(bonsai-string? b)
+     (out "(bonsai-string (")
+     (out (print-string (bonsai-string-value b)))
      (out "))")]
     [(bonsai-boolean? b)
      (out "(bonsai-boolean (")
@@ -162,6 +179,8 @@
 (define (new-integer!)
   (define-symbolic* int-val integer?)
   (bonsai-integer int-val))
+
+; we do not provide new-string! because strings are not primitive types
 
 (define (new-natural!)
   (define-symbolic* nat-val integer?)

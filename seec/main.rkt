@@ -2,7 +2,8 @@
 
 (require "private/bonsai2.rkt"
          "private/match.rkt"
-         "private/language.rkt")
+         "private/language.rkt"
+         "private/string.rkt")
 
 (provide (all-from-out rosette/safe)
 
@@ -10,6 +11,8 @@
          (struct-out bonsai-terminal)
          (struct-out bonsai-boolean)
          (struct-out bonsai-integer)
+         (struct-out bonsai-string)
+         bonsai-string*
          (struct-out bonsai-list)
          bonsai?
          bonsai-depth
