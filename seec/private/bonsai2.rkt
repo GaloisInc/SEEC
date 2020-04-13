@@ -5,8 +5,9 @@
          (struct-out bonsai-terminal)
          (struct-out bonsai-boolean)
          (struct-out bonsai-integer)
-         (struct-out bonsai-string)
-         bonsai-string*
+         (struct-out bonsai-string+)
+         bonsai-string?
+         bonsai-string-value
          (struct-out bonsai-list)
          bonsai-depth
          bonsai-leaves
@@ -70,14 +71,13 @@
   #:transparent
   #:methods gen:custom-write
   [(define write-proc bonsai-write)])
-(struct bonsai-string bonsai (value)
+(struct bonsai-string+ bonsai (value)
   #:transparent
   #:methods gen:custom-write
   [(define write-proc bonsai-write)]
   )
-;; additional constructor for bonsai strings that allows for string literals e.g.
-;;   (bonsai-string "Hello, world!")
-(define (bonsai-string* s) (bonsai-string (string s)))
+(define bonsai-string? bonsai-string+?)
+(define bonsai-string-value bonsai-string+-value)
 (struct bonsai-boolean bonsai (value)
   #:transparent
   #:methods gen:custom-write

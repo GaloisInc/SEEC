@@ -11,8 +11,9 @@
          (struct-out bonsai-terminal)
          (struct-out bonsai-boolean)
          (struct-out bonsai-integer)
-         (struct-out bonsai-string)
-         bonsai-string*
+         bonsai-string
+         bonsai-string?
+         bonsai-string-value
          (struct-out bonsai-list)
          bonsai?
          bonsai-depth

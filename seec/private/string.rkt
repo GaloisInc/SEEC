@@ -6,6 +6,7 @@
                   [integer->char racket/integer->char]
                   [list->string racket/list->string]
                   [string? racket/string?]
+                  [string-append racket/string-append]
                   ))
 (require (only-in racket/base
                   raise-argument-error
@@ -36,7 +37,7 @@
 (define (symbolic-string? s)
   (ormap term? s))
 
-(define (string-append s1 s2) (append s1 s2))
+(define string-append append)
 
 (define (print-char c)
   (if (term? c) ; if c is a symbolic term, then don't do anything special
@@ -46,7 +47,7 @@
 (define (print-string s)
   (if (symbolic-string? s)
       s
-      (racket/list->string (map print-char s))))
+      (racket/string-append "\"" (racket/list->string (map print-char s)) "\"")))
 
 ; You can construct a symbolic character using
 ; (define-symbolic c char?)
