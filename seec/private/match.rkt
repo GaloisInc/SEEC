@@ -2,14 +2,18 @@
 
 (provide match
          match-let*
-         define-match-expander)
+         define-match-expander
+         bonsai-string
+         )
 
 (require (for-syntax racket/syntax
                      syntax/parse
                      syntax/id-table
-                     (only-in racket/match/stxtime make-struct-type-property/accessor))                    
+                     (only-in racket/match/stxtime make-struct-type-property/accessor))
+
          (for-syntax "bonsai2.rkt")
-         "bonsai2.rkt")
+         "bonsai2.rkt"
+         "string.rkt")
 
 (begin-for-syntax
   (define-values (prop:match-expander match-expander? match-expander-proc) 
@@ -226,3 +230,18 @@
                    [check body]
                    ...
                    [else (assert #f "inexhaustive match")]))))))]))
+
+;;;;;;;;;;;;;;;;;;;;;
+;; match extenders ;;
+;;;;;;;;;;;;;;;;;;;;;
+
+(define-match-expander bonsai-string
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ x) #'(? bonsai-string? x)]
+      ))
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ s) #'(bonsai-string+ (string s))]
+      ))
+  )
