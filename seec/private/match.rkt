@@ -4,6 +4,7 @@
          match-let*
          define-match-expander
          bonsai-string
+         bonsai-char
          )
 
 (require (for-syntax racket/syntax
@@ -235,6 +236,17 @@
 ;; match extenders ;;
 ;;;;;;;;;;;;;;;;;;;;;
 
+
+(define-match-expander bonsai-char
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ x) #'(? bonsai-char? x)]
+      ))
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ c) #'(bonsai-char+ (char c))]
+      ))
+  )
 (define-match-expander bonsai-string
   (lambda (stx)
     (syntax-parse stx

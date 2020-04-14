@@ -8,6 +8,9 @@
          (struct-out bonsai-string+)
          bonsai-string?
          bonsai-string-value
+         (struct-out bonsai-char+)
+         bonsai-char?
+         bonsai-char-value
          (struct-out bonsai-list)
          bonsai-depth
          bonsai-leaves
@@ -71,6 +74,13 @@
   #:transparent
   #:methods gen:custom-write
   [(define write-proc bonsai-write)])
+(struct bonsai-char+ bonsai (value)
+  #:transparent
+  #:methods gen:custom-write
+  [(define write-proc bonsai-write)]
+  )
+(define bonsai-char? bonsai-char+?)
+(define bonsai-char-value bonsai-char+-value)
 (struct bonsai-string+ bonsai (value)
   #:transparent
   #:methods gen:custom-write
@@ -93,6 +103,8 @@
      (out (enum->symbol (bonsai-terminal-value b)))]
     [(bonsai-integer? b)
      (out (bonsai-integer-value b))]
+    [(bonsai-char? b)
+     (out (print-char (bonsai-char-value b)))]
     [(bonsai-string? b)
      (out (print-string (bonsai-string-value b)))]
     [(bonsai-boolean? b)
@@ -116,6 +128,10 @@
     [(bonsai-integer? b)
      (out "(bonsai-integer (")
      (out (bonsai-integer-value b))
+     (out "))")]
+    [(bonsai-char? b)
+     (out "(bonsai-char (")
+     (out (print-char (bonsai-char-value b)))
      (out "))")]
     [(bonsai-string? b)
      (out "(bonsai-string (")

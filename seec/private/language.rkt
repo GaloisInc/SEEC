@@ -41,7 +41,7 @@
 (define (make-language rules)
   (define-values (nonterminals metavars productions prod-max-width)
     (unsafe:for/fold ([nonterminals (unsafe:set)]
-               [metavars     (unsafe:set 'integer 'boolean 'natural 'string)]
+               [metavars     (unsafe:set 'integer 'boolean 'natural 'char 'string)]
                [productions  (unsafe:hash)]
                [prod-width   0])
               ([production (unsafe:in-list rules)])
@@ -83,6 +83,8 @@
       [(equal? 'natural pattern)
        (and (bonsai-integer? tree)
             (>= (bonsai-integer-value tree) 0))]
+      [(equal? 'char pattern)
+       (bonsai-char? tree)]
       [(equal? 'string pattern)
        (bonsai-string? tree)]
       [(equal? 'boolean pattern)
@@ -127,6 +129,11 @@
              #:attr match-pattern #'(bonsai-integer (? (λ (v) (equal? n v)) _))
              #:attr stx-pattern   #'integer
              #:attr depth         #'1)
+    (pattern c:char
+             #:when (set-member? terminals 'char)
+             #:attr match-pattern #'(bonsai-char (? (λ (v) (equal? c v)) _))
+             #:attr stx-pattern   #'char
+             #:attr depth         #'1)
     (pattern s:string
              #:when (set-member? terminals 'string)
              #:attr match-pattern #'(bonsai-string (? (λ (v) (equal? s v)) _))
@@ -156,6 +163,8 @@
              #:when (and (set-member? special 'natural) (>= (syntax->datum #'n) 0)))
     (pattern n:integer
              #:when (set-member? special 'integer))
+    (pattern c:char
+             #:when (set-member? special 'char))
     (pattern s:string
              #:when (set-member? special 'string))
     (pattern b:boolean
@@ -168,18 +177,18 @@
     #:description "nonterminal"
     #:opaque
     (pattern nt:id
-             #:when (not (member (syntax->datum #'nt) '(integer natural boolean string)))))
+             #:when (not (member (syntax->datum #'nt) '(integer natural boolean char string)))))
 
   (define-syntax-class builtin
     #:description "built-in nonterminal"
     #:opaque
     (pattern nt:id
-             #:when (member (syntax->datum #'nt) '(integer natural boolean string))))
+             #:when (member (syntax->datum #'nt) '(integer natural boolean char string))))
 
   (define-syntax-class production
     #:description "production"
     #:opaque
-    #:datum-literals (integer natural boolean string)
+    #:datum-literals (integer natural boolean char string)
     (pattern nt:nonterminal)
     (pattern nt:builtin)
     (pattern (p:production ...))))
@@ -211,7 +220,7 @@
                                  (set-subtract (list->set (flatten '#,prods))
                                                (list->set '#,nts))
                                  (set-intersect (list->set (flatten '#,prods))
-                                                (set 'integer 'boolean 'natural 'string)))
+                                                (set 'integer 'boolean 'natural 'char 'string)))
                   #'(make-concrete-term! name pat)]
                  [(_ pat depth)
                   #:declare pat (term #,(syntax->string #'name)
@@ -223,6 +232,8 @@
     #:literals (unquote)
     [(_ lang:id n:integer)
      #`(bonsai-integer n)]
+    [(_ lang:id c:char)
+     #`(bonsai-char c)]
     [(_ lang:id s:string)
      #`(bonsai-string s)]
     [(_ lang:id b:boolean)

@@ -18,6 +18,7 @@
          symbolic-string?
          print-char
          print-string
+         char
          string
          new-symbolic-char
          new-symbolic-char*
@@ -30,7 +31,7 @@
          )
 
 ;; A character is just a number between 0 and 256
-(define (char? c) (<= 0 c 256))
+(define (char? c) (and (integer? c) (<= 0 c 256)))
 ;; A string is just a list of characters
 (define string? (listof char?))
 
@@ -39,15 +40,16 @@
 
 (define string-append append)
 
-(define (print-char c)
+(define (char->racket c)
   (if (term? c) ; if c is a symbolic term, then don't do anything special
       c
       (racket/integer->char c)
       ))
+(define (print-char c) (char->racket c))
 (define (print-string s)
   (if (symbolic-string? s)
       s
-      (racket/string-append "\"" (racket/list->string (map print-char s)) "\"")))
+      (racket/string-append "\"" (racket/list->string (map char->racket s)) "\"")))
 
 ; You can construct a symbolic character using
 ; (define-symbolic c char?)
@@ -59,6 +61,12 @@
   (map mk-char (racket/string->list s)))
 (define (char->string c)
   (list c))
+
+(define (char c) (mk-char c))
+;  (cond 
+;    [(char? c) c]
+;    [(not (term? c)) (mk-char c)]
+;    ))
 
 ; construct either a concrete OR symbolic string
 ; if the input is already a rosette string, do nothing

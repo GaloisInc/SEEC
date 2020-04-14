@@ -14,6 +14,9 @@
          bonsai-string
          bonsai-string?
          bonsai-string-value
+         bonsai-char
+         bonsai-char?
+         bonsai-char-value
          (struct-out bonsai-list)
          bonsai?
          bonsai-depth
