@@ -57,7 +57,7 @@
   (define (compile-rule tmp stx)
     (syntax-parse stx
       #:literals (list cons bonsai-list bonsai-integer bonsai-boolean bonsai-terminal bonsai-null)
-      #:datum-literals (? _)
+      #:datum-literals (? ! _)
       [_ (match-rule (set) (set) #'#t (λ (b) b))]
       [var:id
        (with-syntax ([vartmp (quasisyntax/loc #'var #,(gensym (syntax->datum #'var)))])
@@ -73,6 +73,14 @@
                      (match-rule-tmps compiled)
                      #`(and (pred #,tmp) #,(match-rule-condition compiled))
                      (match-rule-body-transformer compiled)))]
+      [(! transformer pat)
+       (with-syntax ([transformed #'transformed])
+         (let ([compiled (compile-rule #'transformed #'pat)])
+           (match-rule (match-rule-vars compiled)
+                       (match-rule-tmps compiled)
+                       #`(let ([transformed (transformer #,tmp)])
+                           #,(match-rule-condition compiled))
+                       (match-rule-body-transformer compiled))))]
       [(cons pata patb)
        (with-syntax ([elementa #'elementa]
                      [elementb #'elementb])
@@ -92,9 +100,9 @@
            (match-rule vars
                        tmps
                        #`(and (pair? #,tmp)
-                              (let ([elementa (car tmp)])
+                              (let ([elementa (car #,tmp)])
                                 #,conditiona)
-                              (let ([elementb (cdr tmp)])
+                              (let ([elementb (cdr #,tmp)])
                                 #,conditionb))
                        (compose (match-rule-body-transformer compileda) (match-rule-body-transformer compiledb)))))]
       [(list pat ...)

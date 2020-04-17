@@ -12,3 +12,18 @@
 (match (bonsai-integer -5)
   [(negative x) x]
   [_ #f])
+
+(struct foo (value))
+
+(define-match-expander foom
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ x)
+       #'(? foo? (! foo-value x))]))
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ s ...)
+       #'(foo s ...)])))
+
+(match (foo 7)
+  [(foom x) x])
