@@ -41,19 +41,19 @@
 (define (make-language rules)
   (define-values (nonterminals metavars productions prod-max-width)
     (unsafe:for/fold ([nonterminals (unsafe:set)]
-               [metavars     (unsafe:set 'integer 'boolean 'natural 'char 'string)]
-               [productions  (unsafe:hash)]
-               [prod-width   0])
-              ([production (unsafe:in-list rules)])
-      (let* ([nt             (first production)]
-             [new-nts        (unsafe:set-add nonterminals nt)]
-             [new-meta       (unsafe:set-union metavars (unsafe:list->set (flatten production)))]
-             [new-prods      (unsafe:hash-set productions nt (rest production))]
-             [new-prod-width (apply max prod-width (map max-width (rest production)))])
-        (unsafe:values new-nts new-meta new-prods new-prod-width))))
+                      [metavars     (unsafe:set 'integer 'boolean 'natural 'char 'string 'list)]
+                      [productions  (unsafe:hash)]
+                      [prod-width   0])
+                     ([production (unsafe:in-list rules)])
+                     (let* ([nt             (first production)]
+                            [new-nts        (unsafe:set-add nonterminals nt)]
+                            [new-meta       (unsafe:set-union metavars (unsafe:list->set (flatten production)))]
+                            [new-prods      (unsafe:hash-set productions nt (rest production))]
+                            [new-prod-width (apply max prod-width (map max-width (rest production)))])
+                       (unsafe:values new-nts new-meta new-prods new-prod-width))))
   (let* ([terminals (unsafe:set-subtract metavars nonterminals)])
     (unsafe:for ([mv (unsafe:in-set metavars)])
-      (register-enum mv))
+                (register-enum mv))
     (language (unsafe:set->list nonterminals)
               (unsafe:set->list terminals)
               (unsafe:hash->list productions)
@@ -66,9 +66,27 @@
         (cons (cons i (car xs)) (to-indexed/int (cdr xs) (+ i 1)))))
   (to-indexed/int xs 0))
 
+; is the given tree a bonsai-linked-list of the shape
+; list-a ::= nil (cons x:a l:list-a)
+(define (bonsai-linked-list? syntax-match? a tree)
+  (andmap (λ (e) (let ([i (car e)]
+                       [d (cdr e)])
+                   (cond
+                     [(= i 0) (equal? d 'list)]
+                     [(= i 1) (syntax-match? a d)]
+                     [(= i 2) (bonsai-linked-list? syntax-match? a d)]
+                     [else (bonsai-null? d)])))))
+
 (define (syntax-match? lang pattern tree)
   (for/all [(tree tree)]
     (cond
+      ; test if pattern == (list pattern')
+      [(and (list? pattern)
+            (= (length pattern) 2)
+            (equal? (first pattern) 'list))
+       (let ([ty (second pattern)])
+         (and (bonsai-list? tree) (bonsai-linked-list? (syntax-match? lang) ty tree)))]
+      ; test if pattern is a list of patterns
       [(list? pattern)
        (let ([pattern-length (length pattern)])
          (and (bonsai-list? tree)
@@ -103,21 +121,43 @@
   (define (string->syntax stx str)
     (datum->syntax stx (string->symbol str)))
 
+  (define (syntax-has-colon? stx)
+    (string-contains? (syntax->string stx) ":"))
+  (define (before-colon stx)
+    (string->syntax stx (first (string-split (syntax->string stx) ":"))))
+  (define (after-colon stx)
+    (string->syntax stx (second (string-split (syntax->string stx) ":"))))
+
+  ; returns true if pats has the following form:
+  ; pats ::= nt | list pats
+  (define (is-nested-list-of-terminals? terminals pat)
+    (let ([pats (syntax->datum pat)])
+      (cond
+        [(and (list? pats)
+              (= (length pats) 1))
+         (set-member? terminals pats)]
+        [(and (list? pats)
+              (= (length pats) 2))
+         (and (equal? (first pats) 'list)
+              (is-nested-list-of-terminals? terminals (second pats)))]
+        [else #f])))
+
   (define-syntax-class (term lang-name terminals)
     #:attributes (match-pattern stx-pattern depth)
+    #:datum-literals (nil cons)
     #:description (format "~a pattern ~a" lang-name terminals)
     #:opaque
     (pattern n:id
-             #:when (and (= (length (string-split (syntax->string #'n) ":")) 1)
-                         (set-member? terminals (syntax->datum #'n)))
+             #:when (and (not (syntax-has-colon? #'n))
+                         (is-nested-list-of-terminals? terminals #'n))
              #:attr match-pattern #'_
              #:attr stx-pattern   #'n
              #:attr depth         #'1)
     (pattern n:id
-             #:when (and (= (length (string-split (syntax->string #'n) ":")) 2)
-                         (set-member? terminals (string->symbol (second (string-split (syntax->string #'n) ":")))))
-             #:attr match-pattern (string->syntax #'n (first (string-split (syntax->string #'n) ":")))
-             #:attr stx-pattern   (string->syntax #'n (second (string-split (syntax->string #'n) ":")))
+             #:when (and (syntax-has-colon? #'n)
+                         (is-nested-list-of-terminals? terminals (after-colon #'n)))
+             #:attr match-pattern (before-colon #'n)
+             #:attr stx-pattern   (after-colon #'n)
              #:attr depth         #'1)
     (pattern n:integer
              #:when (and (set-member? terminals 'natural) (>= (syntax->datum #'n) 0))
@@ -144,6 +184,20 @@
              #:attr match-pattern #'(bonsai-boolean (? (λ (v) (equal? b v)) _))
              #:attr stx-pattern   #'boolean
              #:attr depth         #'1)
+
+    (pattern nil
+             #:when (set-member? terminals 'list)
+             #:attr match-pattern #'(bonsai-null)
+             #:attr stx-pattern   #'nil
+             #:attr depth         #'0)
+    (pattern (cons p-first p-rest)
+             #:declare p-first    (term lang-name terminals)
+             #:declare p-rest     (term lang-name terminals)
+             #:attr match-pattern #'(bonsai-list p-first.match-pattern p-last.match-pattern)
+             #:attr stx-pattern   #'(cons p-first.stx-pattern p-rest.stx-pattern)
+             #:attr depth         (datum->syntax 
+                                   #'((~literal 'cons) p-first p-last)
+                                   (add1 (apply max (syntax->datum #'p-first.depth #'p-rest.depth)))))
     (pattern (p ...)
              #:declare p (term lang-name terminals)
              #:attr match-pattern #'(bonsai-list p.match-pattern ...)
@@ -153,12 +207,12 @@
                                    (add1 (apply max (syntax->datum #'(p.depth ...)))))))
 
   (define-syntax-class (concrete-term lang-name terminals special)
-    #:literals (unquote)
+    #:literals (unquote nil cons)
     #:description (format "concrete ~a pattern ~a" lang-name terminals)
     #:opaque
     (pattern n:id
-             #:when (and (= (length (string-split (syntax->string #'n) ":")) 1)
-                         (set-member? terminals (syntax->datum #'n))))
+             #:when (and (not (syntax-has-colon? #'n))
+                         (is-nested-list-of-terminals? terminals #'n)))
     (pattern n:integer
              #:when (and (set-member? special 'natural) (>= (syntax->datum #'n) 0)))
     (pattern n:integer
@@ -170,6 +224,10 @@
     (pattern b:boolean
              #:when (set-member? special 'boolean))
     (pattern (unquote expr))
+    (pattern nil)
+    (pattern (cons p-first p-rest)
+             #:declare p-first (concrete-term lang-name terminals special)
+             #:declare p-rest (concrete-term lang-name terminals special))
     (pattern (p ...)
              #:declare p (concrete-term lang-name terminals special)))
 
@@ -177,20 +235,21 @@
     #:description "nonterminal"
     #:opaque
     (pattern nt:id
-             #:when (not (member (syntax->datum #'nt) '(integer natural boolean char string)))))
+             #:when (not (member (syntax->datum #'nt) '(integer natural boolean char string list)))))
 
   (define-syntax-class builtin
     #:description "built-in nonterminal"
     #:opaque
     (pattern nt:id
-             #:when (member (syntax->datum #'nt) '(integer natural boolean char string))))
+             #:when (member (syntax->datum #'nt) '(integer natural boolean char string list))))
 
   (define-syntax-class production
     #:description "production"
     #:opaque
-    #:datum-literals (integer natural boolean char string)
+    #:datum-literals (integer natural boolean char string list)
     (pattern nt:nonterminal)
     (pattern nt:builtin)
+    (pattern (list p:production))
     (pattern (p:production ...))))
 
 (define-syntax (define-language stx)
@@ -227,9 +286,12 @@
                                       (list->set (flatten '#,prods)))
                   #'(make-term! name pat depth)])))))]))
 
+; what is the difference between make-concrete-term! and the match-pattern
+; attribute in the term syntax class? Just code duplication since one is at
+; compile time and not runtime?
 (define-syntax (make-concrete-term! stx)
   (syntax-parse stx
-    #:literals (unquote)
+    #:literals (unquote nil cons)
     [(_ lang:id n:integer)
      #`(bonsai-integer n)]
     [(_ lang:id c:char)
@@ -242,6 +304,10 @@
      #`(bonsai-terminal (symbol->enum 's))]
     [(_ lang:id (unquote e:expr))
      #'e]
+    [(_ lang:id nil)
+     #'(bonsai-null)]
+    [(_ lang:id (cons p-first p-rest))
+     #`(bonsai-list (list (make-concrete-term! lang p-first) (make-concrete-term! lang p-rest)))]
     [(_ lang:id (pat ...))
      #`(bonsai-list (list (make-concrete-term! lang pat) ...))]))
 
