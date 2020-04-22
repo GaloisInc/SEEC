@@ -38,6 +38,7 @@
     [(list? ls) (apply max (length ls) (map max-width ls))]
     [else 0]))
 
+; OSTODO: properly populate the language for polymorphic types
 (define (make-language rules)
   (define-values (nonterminals metavars productions prod-max-width)
     (unsafe:for/fold ([nonterminals (unsafe:set)]
@@ -67,14 +68,13 @@
   (to-indexed/int xs 0))
 
 ; is the given tree a bonsai-linked-list of the shape
-; list-a ::= nil (cons x:a l:list-a)
+; list-a ::= nil (x:a l:list-a)
 (define (bonsai-linked-list? syntax-match? a tree)
   (andmap (λ (e) (let ([i (car e)]
                        [d (cdr e)])
-                   (cond
-                     [(= i 0) (equal? d 'list)]
-                     [(= i 1) (syntax-match? a d)]
-                     [(= i 2) (bonsai-linked-list? syntax-match? a d)]
+                   (cond                     
+                     [(= i 0) (syntax-match? a d)]
+                     [(= i 1) (bonsai-linked-list? syntax-match? a d)]
                      [else (bonsai-null? d)])))))
 
 (define (syntax-match? lang pattern tree)
@@ -127,9 +127,26 @@
     (string->syntax stx (first (string-split (syntax->string stx) ":"))))
   (define (after-colon stx)
     (string->syntax stx (second (string-split (syntax->string stx) ":"))))
+  (define (syntax-is-polymorphic-type? ty stx)
+    (let ([str (syntax->string stx)])
+      (and
+       (string-prefix? str ty)
+       (string-contains? str "<")
+       (string-suffix? str ">")
+    )))
+  ; if stx is of the form t<a>,
+  ; returns (t . a)
+  (define (parse-polymorphic-type stx)
+    (let* ([str (syntax->string stx)]
+           [strsplit (string-split str "<")]
+           [t (first strsplit)]
+           [a (string-trim (string-join (second strsplit) "<") ">" #:left? #f)])
+      `( ,(string->syntax stx t)  . ,(string->syntax stx a))
+      ))
 
+  
   ; returns true if pats has the following form:
-  ; pats ::= nt | list pats
+  ; pats ::= nt | list<pats>
   (define (is-nested-list-of-terminals? terminals pat)
     (let ([pats (syntax->datum pat)])
       (cond
@@ -137,9 +154,9 @@
               (= (length pats) 1))
          (set-member? terminals pats)]
         [(and (list? pats)
-              (= (length pats) 2))
-         (and (equal? (first pats) 'list)
-              (is-nested-list-of-terminals? terminals (second pats)))]
+              (= (length pats) 1)
+              (syntax-is-polymorphic-type? "list" pats)
+         (is-nested-list-of-terminals? terminals (second (parse-polymorphic-type pats))))]
         [else #f])))
 
   (define-syntax-class (term lang-name terminals)
@@ -196,7 +213,7 @@
              #:attr match-pattern #'(bonsai-list p-first.match-pattern p-last.match-pattern)
              #:attr stx-pattern   #'(cons p-first.stx-pattern p-rest.stx-pattern)
              #:attr depth         (datum->syntax 
-                                   #'((~literal 'cons) p-first p-last)
+                                   #'((~datum 'cons) p-first p-last)
                                    (add1 (apply max (syntax->datum #'p-first.depth #'p-rest.depth)))))
     (pattern (p ...)
              #:declare p (term lang-name terminals)
@@ -207,7 +224,8 @@
                                    (add1 (apply max (syntax->datum #'(p.depth ...)))))))
 
   (define-syntax-class (concrete-term lang-name terminals special)
-    #:literals (unquote nil cons)
+    #:literals (unquote)
+    #:datum-literals (nil cons)
     #:description (format "concrete ~a pattern ~a" lang-name terminals)
     #:opaque
     (pattern n:id
@@ -291,7 +309,8 @@
 ; compile time and not runtime?
 (define-syntax (make-concrete-term! stx)
   (syntax-parse stx
-    #:literals (unquote nil cons)
+    #:literals (unquote)
+    #:datum-literals (nil cons)
     [(_ lang:id n:integer)
      #`(bonsai-integer n)]
     [(_ lang:id c:char)
