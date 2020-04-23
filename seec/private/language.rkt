@@ -68,14 +68,21 @@
   (to-indexed/int xs 0))
 
 ; is the given tree a bonsai-linked-list of the shape
-; list-a ::= nil (x:a l:list-a)
-(define (bonsai-linked-list? syntax-match? a tree)
-  (andmap (λ (e) (let ([i (car e)]
-                       [d (cdr e)])
-                   (cond                     
-                     [(= i 0) (syntax-match? a d)]
-                     [(= i 1) (bonsai-linked-list? syntax-match? a d)]
-                     [else (bonsai-null? d)])))))
+; (list<ty> ::= nil (x:ty l:list<ty>))
+; that is, it is a bonsai tree that is either null, or has the shape
+; (x xs y1 .. yn)
+; where x satisfies the input function syntax-match?, xs is itself a bonsai
+; linked list, and each yi is null
+;
+; TODO: do we need to start this with (for/all [(tree tree)])?
+(define (bonsai-linked-list? syntax-match? tree)
+  (andmap (λ (e) (let ([i   (first e)]
+                       [dat (second e)])
+                   (cond
+                     [(= i 0) (syntax-match? dat)]
+                     [(= i 1) (bonsai-linked-list? syntax-match? dat)]
+                     [else (bonsai-null? dat)])))
+          (to-indexed (bonsai-list-nodes tree))))
 
 (define (syntax-match? lang pattern tree)
   (for/all [(tree tree)]
@@ -85,8 +92,8 @@
             (= (length pattern) 2)
             (equal? (first pattern) 'list))
        (let ([ty (second pattern)])
-         (and (bonsai-list? tree) (bonsai-linked-list? (syntax-match? lang) ty tree)))]
-      ; test if pattern is a list of patterns
+         (and (bonsai-list? tree) (bonsai-linked-list? (syntax-match? lang ty) tree)))]
+      ; test if pattern is a tuple of patterns
       [(list? pattern)
        (let ([pattern-length (length pattern)])
          (and (bonsai-list? tree)
@@ -127,36 +134,47 @@
     (string->syntax stx (first (string-split (syntax->string stx) ":"))))
   (define (after-colon stx)
     (string->syntax stx (second (string-split (syntax->string stx) ":"))))
-  (define (syntax-is-polymorphic-type? ty stx)
+
+  ; Here, t is a string
+  ; Return true if stx has the form t<a> for some syntax a
+  (define (syntax-is-polymorphic-type? t stx)
     (let ([str (syntax->string stx)])
       (and
-       (string-prefix? str ty)
-       (string-contains? str "<")
+       (string-prefix? (string-append str "<") t)
        (string-suffix? str ">")
     )))
+
   ; if stx is of the form t<a>,
   ; returns (t . a)
-  (define (parse-polymorphic-type stx)
+  #;(define (parse-polymorphic-type stx)
     (let* ([str (syntax->string stx)]
            [strsplit (string-split str "<")]
            [t (first strsplit)]
            [a (string-trim (string-join (second strsplit) "<") ">" #:left? #f)])
       `( ,(string->syntax stx t)  . ,(string->syntax stx a))
       ))
-
   
-  ; returns true if pats has the following form:
-  ; pats ::= nt | list<pats>
-  (define (is-nested-list-of-terminals? terminals pat)
+  ; QUESTION: Wouldn't it be easier to just project the internal type rather
+  ; than both components?
+
+  ; if stx is of the form t<a>, returns a
+  (define (extract-polymorphic-type t stx)
+    (let* ([str (syntax->string stx)])
+      (string-trim str (string-append t "<") ">")))
+
+  ; SEEC types have the following form:
+  ; typ ::= terminal | list<typ>
+  ; returns true if pat has that form.
+  (define (is-type? terminals pat)
     (let ([pats (syntax->datum pat)])
       (cond
         [(and (list? pats)
-              (= (length pats) 1))
-         (set-member? terminals pats)]
-        [(and (list? pats)
               (= (length pats) 1)
               (syntax-is-polymorphic-type? "list" pats)
-         (is-nested-list-of-terminals? terminals (second (parse-polymorphic-type pats))))]
+         (is-type? terminals (extract-polymorphic-type "list" pats)))]
+        [(and (list? pats)
+              (= (length pats) 1))
+         (set-member? terminals pats)]
         [else #f])))
 
   (define-syntax-class (term lang-name terminals)
@@ -166,13 +184,13 @@
     #:opaque
     (pattern n:id
              #:when (and (not (syntax-has-colon? #'n))
-                         (is-nested-list-of-terminals? terminals #'n))
+                         (is-type? terminals #'n))
              #:attr match-pattern #'_
              #:attr stx-pattern   #'n
              #:attr depth         #'1)
     (pattern n:id
              #:when (and (syntax-has-colon? #'n)
-                         (is-nested-list-of-terminals? terminals (after-colon #'n)))
+                         (is-type? terminals (after-colon #'n)))
              #:attr match-pattern (before-colon #'n)
              #:attr stx-pattern   (after-colon #'n)
              #:attr depth         #'1)
@@ -223,6 +241,7 @@
                                    #'(p ...)
                                    (add1 (apply max (syntax->datum #'(p.depth ...)))))))
 
+  ; QUESTION: what is the argument special supposed to represent?
   (define-syntax-class (concrete-term lang-name terminals special)
     #:literals (unquote)
     #:datum-literals (nil cons)
@@ -230,7 +249,7 @@
     #:opaque
     (pattern n:id
              #:when (and (not (syntax-has-colon? #'n))
-                         (is-nested-list-of-terminals? terminals #'n)))
+                         (is-type? terminals #'n)))
     (pattern n:integer
              #:when (and (set-member? special 'natural) (>= (syntax->datum #'n) 0)))
     (pattern n:integer
@@ -242,8 +261,11 @@
     (pattern b:boolean
              #:when (set-member? special 'boolean))
     (pattern (unquote expr))
-    (pattern nil)
+    (pattern nil
+             ; #:when (set-member? special 'list) ; ???
+             )
     (pattern (cons p-first p-rest)
+             ; #:when (set-member? special 'list) ; ???
              #:declare p-first (concrete-term lang-name terminals special)
              #:declare p-rest (concrete-term lang-name terminals special))
     (pattern (p ...)
@@ -255,6 +277,7 @@
     (pattern nt:id
              #:when (not (member (syntax->datum #'nt) '(integer natural boolean char string list)))))
 
+  ; QUESTION: is list considered a terminal or a nonterminal or a builtin or...?
   (define-syntax-class builtin
     #:description "built-in nonterminal"
     #:opaque
@@ -268,7 +291,21 @@
     (pattern nt:nonterminal)
     (pattern nt:builtin)
     (pattern (list p:production))
-    (pattern (p:production ...))))
+    (pattern (p:production ...)))
+
+
+  ; QUESTION:
+  ; Tried to define this both inside and outside of define-language
+  ; definition, both result in undefined errors (cannot reference an
+  ; identifier before its definition)
+  ; Putting the definition in the begin-for-syntax block resolves the syntax
+  ; error.
+  (define (prods->terminals prods)
+    (list->set (flatten prods)))
+
+  )
+
+
 
 (define-syntax (define-language stx)
   (syntax-parse stx
@@ -286,7 +323,7 @@
                (syntax-parse stx
                  [(_ pat)
                   #:declare pat (term #,(syntax->string #'name)
-                                      (list->set (flatten '#,prods)))
+                                      (prods->terminals '#,prods))
                   #'(? (λ (t) (syntax-match? name 'pat.stx-pattern t)) pat.match-pattern)]))
              (lambda (stx)
                (syntax-parse stx
@@ -294,19 +331,19 @@
                  [(_ pat)
                   #:declare pat (concrete-term
                                  #,(syntax->string #'name)
-                                 (set-subtract (list->set (flatten '#,prods))
+                                 (set-subtract (prods->terminals '#,prods)
                                                (list->set '#,nts))
-                                 (set-intersect (list->set (flatten '#,prods))
-                                                (set 'integer 'boolean 'natural 'char 'string)))
+                                 (set-intersect (prods->terminals '#,prods)
+                                                (set 'integer 'boolean 'natural 'char 'string 'list)))
                   #'(make-concrete-term! name pat)]
                  [(_ pat depth)
                   #:declare pat (term #,(syntax->string #'name)
-                                      (list->set (flatten '#,prods)))
+                                      (prods->terminals '#,prods))
                   #'(make-term! name pat depth)])))))]))
 
-; what is the difference between make-concrete-term! and the match-pattern
-; attribute in the term syntax class? Just code duplication since one is at
-; compile time and not runtime?
+; QUESTION: what is the difference between make-concrete-term! and the
+; match-pattern attribute in the term syntax class? Just code duplication since
+; one is at compile time and not runtime?
 (define-syntax (make-concrete-term! stx)
   (syntax-parse stx
     #:literals (unquote)
