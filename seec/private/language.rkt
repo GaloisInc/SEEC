@@ -144,23 +144,11 @@
        (string-suffix? str ">")
     )))
 
-  ; if stx is of the form t<a>,
-  ; returns (t . a)
-  #;(define (parse-polymorphic-type stx)
-    (let* ([str (syntax->string stx)]
-           [strsplit (string-split str "<")]
-           [t (first strsplit)]
-           [a (string-trim (string-join (second strsplit) "<") ">" #:left? #f)])
-      `( ,(string->syntax stx t)  . ,(string->syntax stx a))
-      ))
-  
-  ; QUESTION: Wouldn't it be easier to just project the internal type rather
-  ; than both components?
-
   ; if stx is of the form t<a>, returns a
   (define (extract-polymorphic-type t stx)
     (let* ([str (syntax->string stx)])
-      (string-trim str (string-append t "<") ">")))
+      #;(string-trim str (regexp (string-append t "<|>")))
+      (string-trim (string-trim str (string-append t "<") #:right? #f) ">" #:left? #f)))
 
   ; SEEC types have the following form:
   ; typ ::= terminal | list<typ>
