@@ -230,6 +230,14 @@
                                    (add1 (apply max (syntax->datum #'(p.depth ...)))))))
 
   ; QUESTION: what is the argument special supposed to represent?
+  ; ANSWER: when you're making a concrete term, everything that appears in the
+  ; syntax you write should either be a terminal symbol in the language or
+  ; a literal that defines a member of one of our built-in non-terminals (e.g.,
+  ; the literal '4' for the non-terminal 'integer if 'integer is used in your
+  ; language definition. `special` is a list of which of these "special"
+  ; non-terminals should be allowed for the language. I think you are right
+  ; that 'list should be in the special list and it should enable nil and cons.
+  ; N.B. in retrospect maybe I should have called it "builtin" here as well.
   (define-syntax-class (concrete-term lang-name terminals special)
     #:literals (unquote)
     #:datum-literals (nil cons)
@@ -266,6 +274,7 @@
              #:when (not (member (syntax->datum #'nt) '(integer natural boolean char string list)))))
 
   ; QUESTION: is list considered a terminal or a nonterminal or a builtin or...?
+  ; ANSWER: I think it's a built-in, but maybe it needs slightly more careful handling.
   (define-syntax-class builtin
     #:description "built-in nonterminal"
     #:opaque
@@ -288,9 +297,17 @@
   ; identifier before its definition)
   ; Putting the definition in the begin-for-syntax block resolves the syntax
   ; error.
+  ; ANSWER: I think the answer to this one is a bit tricky. Definitely the
+  ; fact that prod->terminals is being used in a macro means it needs to
+  ; be defined at macro-expansion time rather than at run-time, so you're
+  ; right it either needs to be in a `begin-for-syntax` block or within the
+  ; `define-syntax` itself. I think the reason that it doesn't work in the
+  ; `define-syntax` is because the `define-language` syntax expands to
+  ; yet another macro expander that contains `prods->terminals` and at that
+  ; point you don't have the enclosing definitions from `define-language`
+  ; in scope.
   (define (prods->terminals prods)
     (list->set (flatten prods)))
-
   )
 
 
@@ -332,6 +349,13 @@
 ; QUESTION: what is the difference between make-concrete-term! and the
 ; match-pattern attribute in the term syntax class? Just code duplication since
 ; one is at compile time and not runtime?
+; ANSWER: match-pattern specifies how to match a data structure for a terminal
+; whereas this creates the datastructure. Consider the language:
+; (define-language ex (expr ::= tt ff))
+; The match-pattern for `tt` is `_` since using it in a pattern won't
+; bind any variables, but (make-concrete-term! ex tt) expands to:
+; (bonsai-terminal (symbol->enum 'tt))
+; which is the bonsai representation of the terminal tt.
 (define-syntax (make-concrete-term! stx)
   (syntax-parse stx
     #:literals (unquote)
