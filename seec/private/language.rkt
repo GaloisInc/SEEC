@@ -38,11 +38,16 @@
     [(list? ls) (apply max (length ls) (map max-width ls))]
     [else 0]))
 
+(begin-for-syntax
+  (define builtin-nonterminals '(integer natural boolean char string list))
+)
+(define builtin-nonterminals '(integer natural boolean char string list)
+
 ; OSTODO: properly populate the language for polymorphic types
 (define (make-language rules)
   (define-values (nonterminals metavars productions prod-max-width)
     (unsafe:for/fold ([nonterminals (unsafe:set)]
-                      [metavars     (unsafe:set 'integer 'boolean 'natural 'char 'string 'list)]
+                      [metavars     (unsafe:list->set builtin-nonterminals)]
                       [productions  (unsafe:hash)]
                       [prod-width   0])
                      ([production (unsafe:in-list rules)])
@@ -67,7 +72,7 @@
         (cons (cons i (car xs)) (to-indexed/int (cdr xs) (+ i 1)))))
   (to-indexed/int xs 0))
 
-; is the given tree a bonsai-linked-list of the shape
+; The given tree a bonsai-linked-list of the shape
 ; (list<ty> ::= nil (x:ty l:list<ty>))
 ; that is, it is a bonsai tree that is either null, or has the shape
 ; (x xs y1 .. yn)
@@ -165,6 +170,8 @@
          (set-member? terminals pats)]
         [else #f])))
 
+  ; Terms in the language `lang-name` with terminals drawn from the set
+  ; `terminals`.
   (define-syntax-class (term lang-name terminals)
     #:attributes (match-pattern stx-pattern depth)
     #:datum-literals (nil cons)
@@ -229,16 +236,8 @@
                                    #'(p ...)
                                    (add1 (apply max (syntax->datum #'(p.depth ...)))))))
 
-  ; QUESTION: what is the argument special supposed to represent?
-  ; ANSWER: when you're making a concrete term, everything that appears in the
-  ; syntax you write should either be a terminal symbol in the language or
-  ; a literal that defines a member of one of our built-in non-terminals (e.g.,
-  ; the literal '4' for the non-terminal 'integer if 'integer is used in your
-  ; language definition. `special` is a list of which of these "special"
-  ; non-terminals should be allowed for the language. I think you are right
-  ; that 'list should be in the special list and it should enable nil and cons.
-  ; N.B. in retrospect maybe I should have called it "builtin" here as well.
-  (define-syntax-class (concrete-term lang-name terminals special)
+
+  (define-syntax-class (concrete-term lang-name terminals builtins)
     #:literals (unquote)
     #:datum-literals (nil cons)
     #:description (format "concrete ~a pattern ~a" lang-name terminals)
@@ -247,65 +246,53 @@
              #:when (and (not (syntax-has-colon? #'n))
                          (is-type? terminals #'n)))
     (pattern n:integer
-             #:when (and (set-member? special 'natural) (>= (syntax->datum #'n) 0)))
+             #:when (and (set-member? builtins 'natural) (>= (syntax->datum #'n) 0)))
     (pattern n:integer
-             #:when (set-member? special 'integer))
+             #:when (set-member? builtins 'integer))
     (pattern c:char
-             #:when (set-member? special 'char))
+             #:when (set-member? builtins 'char))
     (pattern s:string
-             #:when (set-member? special 'string))
+             #:when (set-member? builtins 'string))
     (pattern b:boolean
-             #:when (set-member? special 'boolean))
+             #:when (set-member? builtins 'boolean))
     (pattern (unquote expr))
     (pattern nil
-             ; #:when (set-member? special 'list) ; ???
+             #:when (set-member? builtins 'list)
              )
     (pattern (cons p-first p-rest)
-             ; #:when (set-member? special 'list) ; ???
-             #:declare p-first (concrete-term lang-name terminals special)
-             #:declare p-rest (concrete-term lang-name terminals special))
+             #:when (set-member? builtins 'list)
+             #:declare p-first (concrete-term lang-name terminals builtins)
+             #:declare p-rest (concrete-term lang-name terminals builtins))
     (pattern (p ...)
-             #:declare p (concrete-term lang-name terminals special)))
+             #:declare p (concrete-term lang-name terminals builtins)))
 
+
+  ; QUESTION: does this syntax class need more structure than just to say it is
+  ; not in this set of builtin-nonterminals? What about other terminal vaalues?
   (define-syntax-class nonterminal
     #:description "nonterminal"
     #:opaque
     (pattern nt:id
-             #:when (not (member (syntax->datum #'nt) '(integer natural boolean char string list)))))
+             #:when (not (member (syntax->datum #'nt) builtin-nonterminals))))
 
-  ; QUESTION: is list considered a terminal or a nonterminal or a builtin or...?
-  ; ANSWER: I think it's a built-in, but maybe it needs slightly more careful handling.
   (define-syntax-class builtin
     #:description "built-in nonterminal"
     #:opaque
     (pattern nt:id
-             #:when (member (syntax->datum #'nt) '(integer natural boolean char string list))))
+             #:when (member (syntax->datum #'nt) builtin-nonterminals)))
 
   (define-syntax-class production
     #:description "production"
     #:opaque
-    #:datum-literals (integer natural boolean char string list)
+    #:datum-literals ,builtin-nonterminals
     (pattern nt:nonterminal)
     (pattern nt:builtin)
     (pattern (list p:production))
     (pattern (p:production ...)))
 
 
-  ; QUESTION:
-  ; Tried to define this both inside and outside of define-language
-  ; definition, both result in undefined errors (cannot reference an
-  ; identifier before its definition)
-  ; Putting the definition in the begin-for-syntax block resolves the syntax
-  ; error.
-  ; ANSWER: I think the answer to this one is a bit tricky. Definitely the
-  ; fact that prod->terminals is being used in a macro means it needs to
-  ; be defined at macro-expansion time rather than at run-time, so you're
-  ; right it either needs to be in a `begin-for-syntax` block or within the
-  ; `define-syntax` itself. I think the reason that it doesn't work in the
-  ; `define-syntax` is because the `define-language` syntax expands to
-  ; yet another macro expander that contains `prods->terminals` and at that
-  ; point you don't have the enclosing definitions from `define-language`
-  ; in scope.
+  ; INPUT: a list 'prods of productions
+  ; OUTPUT: a set of the terminals that occur in the productions
   (define (prods->terminals prods)
     (list->set (flatten prods)))
   )
@@ -339,23 +326,13 @@
                                  (set-subtract (prods->terminals '#,prods)
                                                (list->set '#,nts))
                                  (set-intersect (prods->terminals '#,prods)
-                                                (set 'integer 'boolean 'natural 'char 'string 'list)))
+                                                (list->set builtin-nonterminals)))
                   #'(make-concrete-term! name pat)]
                  [(_ pat depth)
                   #:declare pat (term #,(syntax->string #'name)
                                       (prods->terminals '#,prods))
                   #'(make-term! name pat depth)])))))]))
 
-; QUESTION: what is the difference between make-concrete-term! and the
-; match-pattern attribute in the term syntax class? Just code duplication since
-; one is at compile time and not runtime?
-; ANSWER: match-pattern specifies how to match a data structure for a terminal
-; whereas this creates the datastructure. Consider the language:
-; (define-language ex (expr ::= tt ff))
-; The match-pattern for `tt` is `_` since using it in a pattern won't
-; bind any variables, but (make-concrete-term! ex tt) expands to:
-; (bonsai-terminal (symbol->enum 'tt))
-; which is the bonsai representation of the terminal tt.
 (define-syntax (make-concrete-term! stx)
   (syntax-parse stx
     #:literals (unquote)
