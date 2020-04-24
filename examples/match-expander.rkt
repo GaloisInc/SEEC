@@ -27,3 +27,6 @@
 
 (match (foo 7)
   [(foom x) x])
+
+(match (bonsai-integer 7)
+  [(bonsai-integer x) x])
