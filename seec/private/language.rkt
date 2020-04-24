@@ -39,15 +39,19 @@
     [else 0]))
 
 (begin-for-syntax
-  (define builtin-nonterminals '(integer natural boolean char string list))
+  (define builtin-nonterminals '(integer natural boolean char string))
+  (define builtin-nonterminal-functions '(list))
+  (define builtins (append builtin-nonterminals builtin-nonterminal-functions))
 )
-(define builtin-nonterminals '(integer natural boolean char string list)
+(define builtin-nonterminals '(integer natural boolean char string))
+(define builtin-nonterminal-functions '(list))
+(define builtins (append builtin-nonterminals builtin-nonterminal-functions))
 
 ; OSTODO: properly populate the language for polymorphic types
 (define (make-language rules)
   (define-values (nonterminals metavars productions prod-max-width)
     (unsafe:for/fold ([nonterminals (unsafe:set)]
-                      [metavars     (unsafe:list->set builtin-nonterminals)]
+                      [metavars     (unsafe:list->set builtins)]
                       [productions  (unsafe:hash)]
                       [prod-width   0])
                      ([production (unsafe:in-list rules)])
@@ -260,12 +264,26 @@
              #:when (set-member? builtins 'list)
              )
     (pattern (cons p-first p-rest)
-             #:when (set-member? builtins 'list)
              #:declare p-first (concrete-term lang-name terminals builtins)
-             #:declare p-rest (concrete-term lang-name terminals builtins))
+             #:declare p-rest (concrete-term lang-name terminals builtins)
+             #:when (set-member? builtins 'list)
+             )
     (pattern (p ...)
              #:declare p (concrete-term lang-name terminals builtins)))
 
+  (define (sytnax-set stx)
+    (set (syntax->datum stx)))
+
+  #;(define (syntax-set stx)
+    (datum->syntax #f (apply set (syntax->list stx)))
+    #;(cond
+      [(equal? stx #f) (set)]
+      ;[else (apply set (syntax->list stx))]
+      [else (set)]
+      )
+    )
+  #;(define (syntax-set-union stx)
+    (datum->syntax #f (apply set-union (syntax->datum stx) ...)))
 
   ; QUESTION: does this syntax class need more structure than just to say it is
   ; not in this set of builtin-nonterminals? What about other terminal vaalues?
@@ -273,7 +291,7 @@
     #:description "nonterminal"
     #:opaque
     (pattern nt:id
-             #:when (not (member (syntax->datum #'nt) builtin-nonterminals))))
+             #:when (not (member (syntax->datum #'nt) builtins))))
 
   (define-syntax-class builtin
     #:description "built-in nonterminal"
@@ -281,20 +299,49 @@
     (pattern nt:id
              #:when (member (syntax->datum #'nt) builtin-nonterminals)))
 
+  (define-syntax-class type
+    #:attributes (type-terminals)
+    #:datum-literals ,builtins
+    (pattern x:id
+             #:when (and (syntax-is-polymorphic-type? "list" #'x)
+                         (syntax-parse (string->syntax #'x (extract-polymorphic-type "list" #'x))
+                           [t:type #t]
+                           [_ #f]))
+             #:attr type-terminals (set-union
+                                    (set 'list)
+                                    (syntax-parse (string->syntax #'x (extract-polymorphic-type "list" #'x))
+                                      [t:type (attribute t.type-terminals)]))
+             )
+    (pattern nt:nonterminal
+             #:attr type-terminals (set (syntax->datum #'nt)))
+    (pattern nt:builtin
+             #:attr type-terminals (set (syntax->datum #'nt)))
+    )
+                         
+
   (define-syntax-class production
     #:description "production"
+    #:attributes (terminals)
     #:opaque
-    #:datum-literals ,builtin-nonterminals
-    (pattern nt:nonterminal)
-    (pattern nt:builtin)
-    (pattern (list p:production))
-    (pattern (p:production ...)))
+    #:datum-literals ,builtins
+    (pattern ty:type
+             #:attr terminals (attribute ty.type-terminals)
+             )
+    (pattern (p:production ...)
+             #:attr terminals (apply set-union (attribute p.terminals)))
+    )
+
+  
 
 
-  ; INPUT: a list 'prods of productions
+
+  ; INPUT: syntax of productions
   ; OUTPUT: a set of the terminals that occur in the productions
   (define (prods->terminals prods)
-    (list->set (flatten prods)))
+    (syntax-parse prods
+      [p:production (attribute p.terminals)]
+      )
+    )
   )
 
 
@@ -315,7 +362,7 @@
                (syntax-parse stx
                  [(_ pat)
                   #:declare pat (term #,(syntax->string #'name)
-                                      (prods->terminals '#,prods))
+                                      #,(prods->terminals prods))
                   #'(? (λ (t) (syntax-match? name 'pat.stx-pattern t)) pat.match-pattern)]))
              (lambda (stx)
                (syntax-parse stx
@@ -323,14 +370,14 @@
                  [(_ pat)
                   #:declare pat (concrete-term
                                  #,(syntax->string #'name)
-                                 (set-subtract (prods->terminals '#,prods)
+                                 (set-subtract #,(prods->terminals prods)
                                                (list->set '#,nts))
-                                 (set-intersect (prods->terminals '#,prods)
-                                                (list->set builtin-nonterminals)))
+                                 (set-intersect #,(prods->terminals prods)
+                                                (list->set builtins)))
                   #'(make-concrete-term! name pat)]
                  [(_ pat depth)
                   #:declare pat (term #,(syntax->string #'name)
-                                      (prods->terminals '#,prods))
+                                      #,(prods->terminals prods))
                   #'(make-term! name pat depth)])))))]))
 
 (define-syntax (make-concrete-term! stx)
