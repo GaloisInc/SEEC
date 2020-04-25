@@ -6,6 +6,8 @@
          "private/string.rkt")
 
 (provide (all-from-out rosette/safe)
+         
+         (all-from-out "private/string.rkt")
 
          (struct-out bonsai-null)
          (struct-out bonsai-terminal)
