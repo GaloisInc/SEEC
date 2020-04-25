@@ -3,7 +3,6 @@
 (require (only-in racket/base
                   raise-argument-error
                   raise-arguments-error))
-(require (file "../string.rkt"))
 
 
 (provide printf-lang
@@ -153,7 +152,7 @@
 (define (interp-fmt-safe f args conf)
   (match f
     [(printf-lang f-empty)
-     (list (mk-string "") conf)
+     (list (string "") conf)
      ]
 
     [(printf-lang (%d offset:natural))
@@ -168,7 +167,7 @@
 
     [(printf-lang (%n offset:natural))
      (match (lookup-offset (bonsai->number offset) args)
-       [(printf-lang (LOC l:ident)) (list (mk-string "") (print-n-loc conf l))]
+       [(printf-lang (LOC l:ident)) (list (string "") (print-n-loc conf l))]
        [_ ; if the offset does not map to a location, throw an error
         (raise-arguments-error 'interp-fmt-safe
                                "Offset does not map to a location in the vlist"
@@ -190,8 +189,8 @@
     [_ (raise-argument-error 'interp-fmt-safe "(printf-lang fmt)" f)]
     ))
 
-(displayln "Running test case demonstrating match-let failure...")
-(interp-fmt-safe (printf-lang (++ f-empty f-empty))
+#;(displayln "Running test case demonstrating match-let failure...")
+#;(interp-fmt-safe (printf-lang (++ f-empty f-empty))
                  (printf-lang anil)
                  (printf-lang (CONF 0 mnil)))
 
@@ -210,21 +209,21 @@
 (define (interp-fmt-unsafe f args conf)
   (match f
     [(printf-lang f-empty)
-     (list (mk-string "") conf)
+     (list (string "") conf)
      ]
 
     [(printf-lang (%d offset:natural))
      (match (lookup-offset (bonsai->number offset) args)
        [(printf-lang (CONST n:integer)) (print-d-integer conf (bonsai->number n))]
        [_ ; if the offset does not map to a number, do nothing
-        (list (mk-string "") conf)]
+        (list (string "") conf)]
        )]
 
     [(printf-lang (%n offset:natural))
      (match (lookup-offset (bonsai->number offset) args)
-       [(printf-lang (LOC l:ident)) (list (mk-string "") (print-n-loc conf l))]
+       [(printf-lang (LOC l:ident)) (list (string "") (print-n-loc conf l))]
        [_ ; if the offset does not map to a location, do nothing
-        (list (mk-string "") conf)]
+        (list (string "") conf)]
        )]
 
     [(printf-lang (++ f1:fmt f2:fmt))
