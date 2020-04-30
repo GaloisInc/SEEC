@@ -111,12 +111,21 @@
 (define (syntax-match? lang pattern tree)
   (for/all [(tree tree)]
     (cond
-      ; test if pattern == (list pattern')
+      [(equal? 'nil pattern)
+       (bonsai-null? tree)]
       [(and (list? pattern)
-            (= (length pattern) 2)
-            (equal? (first pattern) 'list))
-       (let ([ty (second pattern)])
-         (and (bonsai-list? tree) (bonsai-linked-list? (syntax-match? lang ty) tree)))]
+            (= (length pattern) 3)
+            (equal? (first pattern) 'cons))
+       (and (bonsai-list? tree)
+            (andmap-indexed
+             (λ (i tree-i)
+               (cond
+                 [(= i 0) (syntax-match? lang (second pattern) tree-i)]
+                 [(= i 1) (syntax-match? lang (third pattern) tree-i)]
+                 [else (bonsai-null? tree-i)]))
+             (bonsai-list-nodes tree)
+             ))]
+
       ; test if pattern is a tuple of patterns
       [(list? pattern)
        (let ([pattern-length (length pattern)])
@@ -417,6 +426,11 @@
   (syntax-parse stx
     #:literals (unquote)
     #:datum-literals (nil cons)
+    [(_ lang:id nil)
+     #'bonsai-null]
+    [(_ lang:id (cons p-first p-rest))
+     #`(bonsai-list (list (make-concrete-term! lang p-first) (make-concrete-term! lang p-rest)))]
+
     [(_ lang:id n:integer)
      #`(bonsai-integer n)]
     [(_ lang:id c:char)
@@ -429,10 +443,6 @@
      #`(bonsai-terminal (symbol->enum 's))]
     [(_ lang:id (unquote e:expr))
      #'e]
-    [(_ lang:id nil)
-     #'bonsai-null]
-    [(_ lang:id (cons p-first p-rest))
-     #`(bonsai-list (list (make-concrete-term! lang p-first) (make-concrete-term! lang p-rest)))]
     [(_ lang:id (pat ...))
      #`(bonsai-list (list (make-concrete-term! lang pat) ...))]))
 

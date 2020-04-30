@@ -12,6 +12,8 @@
   (match l
     [(lang nil) #t]
     [(lang (cons b:boolean boollist)) (and b #;(alltrue m))]
+    [(lang other:boollist) other]
+    [(lang other:boolean) other]
     ))
 (alltrue list-ex)
 
