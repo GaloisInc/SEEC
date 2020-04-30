@@ -75,6 +75,12 @@
         '()
         (cons (cons i (car xs)) (to-indexed/int (cdr xs) (+ i 1)))))
   (to-indexed/int xs 0))
+(define (andmap-indexed f ls)
+  (andmap (lambda (e) (let ([i (car e)]
+                            [n (cdr e)])
+                        (f i n)))
+          (to-indexed ls)))
+                       
 
 ; The given tree a bonsai-linked-list of the shape
 ; (list<ty> ::= nil (x:ty l:list<ty>))
@@ -85,14 +91,23 @@
 ;
 ; TODO: do we need to start this with (for/all [(tree tree)])?
 (define (bonsai-linked-list? syntax-match? tree)
-  (andmap (λ (e) (let ([i   (first e)]
+  (andmap-indexed
+   (λ (i dat) (cond
+                [(= i 0) (syntax-match? dat)]
+                [(= i 1) (bonsai-linked-list? syntax-match? dat)]
+                [else (bonsai-null? dat)]))
+   (bonsai-list-nodes tree)))
+
+  #;(andmap (λ (e) (let ([i   (first e)]
                        [dat (second e)])
                    (cond
                      [(= i 0) (syntax-match? dat)]
                      [(= i 1) (bonsai-linked-list? syntax-match? dat)]
                      [else (bonsai-null? dat)])))
-          (to-indexed (bonsai-list-nodes tree))))
+          (to-indexed (bonsai-list-nodes tree)))
 
+; return #t if if `pattern` is a type compatible with the language `lang` and
+; `tree` is a data structure of that type.
 (define (syntax-match? lang pattern tree)
   (for/all [(tree tree)]
     (cond
@@ -106,7 +121,13 @@
       [(list? pattern)
        (let ([pattern-length (length pattern)])
          (and (bonsai-list? tree)
-              (andmap (λ (e) (let ([i (car e)]
+              (andmap-indexed 
+               (λ (i n)
+                 (cond
+                   [(< i pattern-length) (syntax-match? lang (list-ref pattern i) n)]
+                   [else (bonsai-null? n)]))
+               (bonsai-list-nodes tree))
+              #;(andmap (λ (e) (let ([i (car e)]
                                    [n (cdr e)])
                                (cond
                                  [(< i pattern-length) (syntax-match? lang (list-ref pattern i) n)]
@@ -149,30 +170,33 @@
   (define (syntax-is-polymorphic-type? t stx)
     (let ([str (syntax->string stx)])
       (and
-       (string-prefix? (string-append str "<") t)
+       (string-prefix? str (string-append t "<"))
        (string-suffix? str ">")
     )))
 
-  ; if stx is of the form t<a>, returns a
+  ; if stx is of the form t<a>, returns a syntax element a
+  ; expects (syntax-is-polymorphic-type? t stx)
   (define (extract-polymorphic-type t stx)
-    (let* ([str (syntax->string stx)])
-      #;(string-trim str (regexp (string-append t "<|>")))
-      (string-trim (string-trim str (string-append t "<") #:right? #f) ">" #:left? #f)))
+    (let* ([str (syntax->string stx)]
+           
+           #;(string-trim str (regexp (string-append t "<|>")))
+           [a-type (string-trim (string-trim str (string-append t "<")
+                                             #:right? #f #:repeat? #f)
+                                ">" #:left? #f #:repeat? #f)])
+      (string->syntax stx a-type)))
 
   ; SEEC types have the following form:
   ; typ ::= terminal | list<typ>
   ; returns true if pat has that form.
+
+  ; Here, `pat` is a syntax object
   (define (is-type? terminals pat)
-    (let ([pats (syntax->datum pat)])
       (cond
-        [(and (list? pats)
-              (= (length pats) 1)
-              (syntax-is-polymorphic-type? "list" pats)
-         (is-type? terminals (extract-polymorphic-type "list" pats)))]
-        [(and (list? pats)
-              (= (length pats) 1))
-         (set-member? terminals pats)]
-        [else #f])))
+        [(syntax-is-polymorphic-type? "list" pat)
+         (is-type? terminals (extract-polymorphic-type "list" pat))]
+        [(syntax? pat) (set-member? terminals (syntax->datum pat))]
+        [else #f]
+        ))
 
   ; Terms in the language `lang-name` with terminals drawn from the set
   ; `terminals`.
@@ -182,14 +206,20 @@
     #:description (format "~a pattern ~a" lang-name terminals)
     #:opaque
     (pattern n:id
-             #:when (and (not (syntax-has-colon? #'n))
-                         (is-type? terminals #'n))
+             #:when (and (syntax? #'n)
+                         (not (syntax-has-colon? #'n))
+                         (is-type? terminals #'n)
+                         #;(set-member? terminals (syntax->datum #'n))
+                         )
              #:attr match-pattern #'_
              #:attr stx-pattern   #'n
              #:attr depth         #'1)
     (pattern n:id
-             #:when (and (syntax-has-colon? #'n)
-                         (is-type? terminals (after-colon #'n)))
+             #:when (and (syntax? #'n)
+                         (syntax-has-colon? #'n)
+                         (is-type? terminals (after-colon #'n))
+                         #;(set-member? terminals (syntax->datum (after-colon #'n)))
+                         )
              #:attr match-pattern (before-colon #'n)
              #:attr stx-pattern   (after-colon #'n)
              #:attr depth         #'1)
@@ -220,18 +250,19 @@
              #:attr depth         #'1)
 
     (pattern nil
-             #:when (set-member? terminals 'list)
-             #:attr match-pattern #'(bonsai-null)
+;             #:when (set-member? terminals 'list)
+             #:attr match-pattern #'bonsai-null
              #:attr stx-pattern   #'nil
              #:attr depth         #'0)
     (pattern (cons p-first p-rest)
              #:declare p-first    (term lang-name terminals)
              #:declare p-rest     (term lang-name terminals)
              #:attr match-pattern #'(bonsai-list p-first.match-pattern p-last.match-pattern)
-             #:attr stx-pattern   #'(cons p-first.stx-pattern p-rest.stx-pattern)
+             #:attr stx-pattern   #'(cons #,p-first.stx-pattern #,p-rest.stx-pattern)
              #:attr depth         (datum->syntax 
                                    #'((~datum 'cons) p-first p-last)
-                                   (add1 (apply max (syntax->datum #'p-first.depth #'p-rest.depth)))))
+                                   (add1 (max (syntax->datum #'p-first.depth) 
+                                              (syntax->datum #'p-rest.depth)))))
     (pattern (p ...)
              #:declare p (term lang-name terminals)
              #:attr match-pattern #'(bonsai-list p.match-pattern ...)
@@ -248,7 +279,9 @@
     #:opaque
     (pattern n:id
              #:when (and (not (syntax-has-colon? #'n))
-                         (is-type? terminals #'n)))
+                         #;(is-type? terminals #'n)
+                         (set-member? terminals (syntax->datum #'n))
+                         ))
     (pattern n:integer
              #:when (and (set-member? builtins 'natural) (>= (syntax->datum #'n) 0)))
     (pattern n:integer
@@ -304,12 +337,12 @@
     #:datum-literals ,builtins
     (pattern x:id
              #:when (and (syntax-is-polymorphic-type? "list" #'x)
-                         (syntax-parse (string->syntax #'x (extract-polymorphic-type "list" #'x))
+                         (syntax-parse (extract-polymorphic-type "list" #'x)
                            [t:type #t]
                            [_ #f]))
              #:attr type-terminals (set-union
                                     (set 'list)
-                                    (syntax-parse (string->syntax #'x (extract-polymorphic-type "list" #'x))
+                                    (syntax-parse (extract-polymorphic-type "list" #'x)
                                       [t:type (attribute t.type-terminals)]))
              )
     (pattern nt:nonterminal
@@ -397,7 +430,7 @@
     [(_ lang:id (unquote e:expr))
      #'e]
     [(_ lang:id nil)
-     #'(bonsai-null)]
+     #'bonsai-null]
     [(_ lang:id (cons p-first p-rest))
      #`(bonsai-list (list (make-concrete-term! lang p-first) (make-concrete-term! lang p-rest)))]
     [(_ lang:id (pat ...))
