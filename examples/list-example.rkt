@@ -9,9 +9,9 @@
 (define list-ex-2 (lang (cons #t (cons #f nil))))
 (define list-ex-1 (lang (cons #t nil)))
 (define list-ex-0 (lang nil))
-(lang (cons #t (cons #f nil)))
 
-#;(match list-ex-1
+#;
+(match list-ex-1
   [(lang nil) #t]
   [(lang (cons boolean boollist)) #t]
   )

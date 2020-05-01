@@ -109,57 +109,61 @@
 ; return #t if if `pattern` is a type compatible with the language `lang` and
 ; `tree` is a data structure of that type.
 (define (syntax-match? lang pattern tree)
-  (for/all [(tree tree)]
-    (cond
-      [(equal? 'nil pattern)
-       (bonsai-null? tree)]
-      [(and (list? pattern)
-            (= (length pattern) 3)
-            (equal? (first pattern) 'cons))
-       (and (bonsai-list? tree)
-            (andmap-indexed
-             (λ (i tree-i)
-               (cond
-                 [(= i 1) (syntax-match? lang (second pattern) tree-i)]
-                 [(= i 2) (syntax-match? lang (third pattern) tree-i)]
-                 [else (bonsai-null? tree-i)]))
-             (bonsai-list-nodes tree)
-             ))]
-
-      ; test if pattern is a tuple of patterns
-      [(list? pattern)
-       (let ([pattern-length (length pattern)])
+  (define result
+    
+    (for/all [(tree tree)]
+      (cond
+        [(equal? 'nil pattern)
+         (bonsai-null? tree)]
+        [(and (list? pattern)
+              (= (length pattern) 3)
+              (equal? (first pattern) 'cons))
          (and (bonsai-list? tree)
-              (andmap-indexed 
-               (λ (i n)
+              (andmap-indexed
+               (λ (i tree-i)
                  (cond
-                   [(< i pattern-length) (syntax-match? lang (list-ref pattern i) n)]
-                   [else (bonsai-null? n)]))
-               (bonsai-list-nodes tree))
-              #;(andmap (λ (e) (let ([i (car e)]
-                                   [n (cdr e)])
-                               (cond
-                                 [(< i pattern-length) (syntax-match? lang (list-ref pattern i) n)]
-                                 [else (bonsai-null? n)])))
-                      (to-indexed (bonsai-list-nodes tree)))))]
-      [(equal? 'integer pattern)
-       (bonsai-integer? tree)]
-      [(equal? 'natural pattern)
-       (and (bonsai-integer? tree)
-            (>= (bonsai-integer-value tree) 0))]
-      [(equal? 'char pattern)
-       (bonsai-char? tree)]
-      [(equal? 'string pattern)
-       (bonsai-string? tree)]
-      [(equal? 'boolean pattern)
-       (bonsai-boolean? tree)]
-      [(member pattern (language-nonterminals lang))
-       (let ([productions (cdr (assoc pattern (language-productions lang)))])
-         (ormap (λ (pat) (syntax-match? lang pat tree)) productions))]
-      [(member pattern (language-terminals lang))
-       (and (bonsai-terminal? tree)
-            (equal? (symbol->enum pattern) (bonsai-terminal-value tree)))]
-      [else #f])))
+                   [(= i 0) (syntax-match? lang (second pattern) tree-i)]
+                   [(= i 1) (syntax-match? lang (third pattern) tree-i)]
+                   [else (bonsai-null? tree-i)]))
+               (bonsai-list-nodes tree)))]
+
+        ; test if pattern is a tuple of patterns
+        [(list? pattern)
+         (let ([pattern-length (length pattern)])
+           (and (bonsai-list? tree)
+                (andmap-indexed 
+                 (λ (i n)
+                   (cond
+                     [(< i pattern-length) (syntax-match? lang (list-ref pattern i) n)]
+                     [else (bonsai-null? n)]))
+                 (bonsai-list-nodes tree))
+                #;(andmap (λ (e) (let ([i (car e)]
+                                       [n (cdr e)])
+                                   (cond
+                                     [(< i pattern-length) (syntax-match? lang (list-ref pattern i) n)]
+                                     [else (bonsai-null? n)])))
+                          (to-indexed (bonsai-list-nodes tree)))))]
+        [(equal? 'integer pattern)
+         (bonsai-integer? tree)]
+        [(equal? 'natural pattern)
+         (and (bonsai-integer? tree)
+              (>= (bonsai-integer-value tree) 0))]
+        [(equal? 'char pattern)
+         (bonsai-char? tree)]
+        [(equal? 'string pattern)
+         (bonsai-string? tree)]
+        [(equal? 'boolean pattern)
+         (bonsai-boolean? tree)]
+        [(member pattern (language-nonterminals lang))
+         (let ([productions (cdr (assoc pattern (language-productions lang)))])
+           (printf "productions: ~a~n" productions)
+           (ormap (λ (pat) (syntax-match? lang pat tree)) productions))]
+        [(member pattern (language-terminals lang))
+         (and (bonsai-terminal? tree)
+              (equal? (symbol->enum pattern) (bonsai-terminal-value tree)))]
+        [else #f])))
+  (printf "(syntax-match? ~a ~a) -> ~a~n" pattern tree result)
+  result)
 
 (begin-for-syntax
   (define (syntax->string stx)
