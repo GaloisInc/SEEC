@@ -267,7 +267,7 @@
              #:declare p-first    (term lang-name terminals)
              #:declare p-rest     (term lang-name terminals)
              #:attr match-pattern #'(bonsai-list p-first.match-pattern p-last.match-pattern)
-             #:attr stx-pattern   #'(cons #,p-first.stx-pattern #,p-rest.stx-pattern)
+             #:attr stx-pattern   #'(cons p-first.stx-pattern p-rest.stx-pattern)
              #:attr depth         (datum->syntax 
                                    #'((~datum 'cons) p-first p-last)
                                    (add1 (max (syntax->datum #'p-first.depth) 
@@ -427,7 +427,7 @@
     #:literals (unquote)
     #:datum-literals (nil cons)
     [(_ lang:id nil)
-     #'bonsai-null]
+     #'(bonsai-null)]
     [(_ lang:id (cons p-first p-rest))
      #`(bonsai-list (list (make-concrete-term! lang p-first) (make-concrete-term! lang p-rest)))]
 
