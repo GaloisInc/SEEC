@@ -7,7 +7,7 @@
   )
 
 (define list-ex-2 (lang (cons #t (cons #f nil))))
-(define list-ex-1 (lang (cons #f nil)))
+(define list-ex-1 (lang (cons #t nil)))
 (define list-ex-0 (lang nil))
 
 (match list-ex-2
@@ -16,11 +16,10 @@
   )
 
 
-
 (define (alltrue l)
   (match l
     [(lang nil) #t]
-    [(lang (cons b:boolean m:list<boolean>)) b #;(and b (alltrue m))]
+    [(lang (cons b:boolean m:list<boolean>)) (and (bonsai-boolean-value b) (alltrue m))]
     ))
 (alltrue list-ex-1)
 
@@ -28,7 +27,7 @@
 (define (bool-list-length l)
   (match l
     [(lang nil) 0]
-    [(lang (cons b:boolean l+:list<boolean>)) (+ 1 (bool-list-length l+))]
+    [(lang (cons boolean l+:list<boolean>)) (+ 1 (bool-list-length l+))]
     ))
 
-(bool-list-length list-ex-0)
+(bool-list-length list-ex-2)
