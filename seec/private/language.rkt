@@ -26,7 +26,17 @@
                               hash
                               hash-set
                               hash->list
-                              values))))
+                              values
+                              string-append
+                              symbol->string
+                              string->symbol
+                              )
+                     (only-in racket/string
+                              string-prefix?
+                              string-suffix?
+                              string-trim
+                              )
+                     )))
 
 (struct language (nonterminals
                   terminals
@@ -86,46 +96,62 @@
 ; (list<ty> ::= nil (x:ty l:list<ty>))
 ; that is, it is a bonsai tree that is either null, or has the shape
 ; (x xs y1 .. yn)
-; where x satisfies the input function syntax-match?, xs is itself a bonsai
-; linked list, and each yi is null
-;
-; TODO: do we need to start this with (for/all [(tree tree)])?
-(define (bonsai-linked-list? syntax-match? tree)
-  (andmap-indexed
-   (λ (i dat) (cond
-                [(= i 0) (syntax-match? dat)]
-                [(= i 1) (bonsai-linked-list? syntax-match? dat)]
-                [else (bonsai-null? dat)]))
-   (bonsai-list-nodes tree)))
+; where:
+;   - x matches the pattern a 
+;   - xs matches the pattern as
+;   - each yi is null
+(define (bonsai-cons? syntax-match-a? syntax-match-as? tree)
+  (and (bonsai-list? tree)
+       (andmap-indexed
+        (λ (i tree-i) (cond
+                        [(= i 0) (syntax-match-a? tree-i)]
+                        [(= i 1) (syntax-match-as? tree-i)]
+                        [else (bonsai-null? tree-i)]))
+        (bonsai-list-nodes tree))))
+(define (bonsai-linked-list? syntax-match-lang? a tree)
+  (or (bonsai-null? tree)
+      (bonsai-cons? (curry syntax-match-lang? a)
+                    (curry bonsai-linked-list? syntax-match-lang? a)
+                    tree)))
 
-  #;(andmap (λ (e) (let ([i   (first e)]
-                       [dat (second e)])
-                   (cond
-                     [(= i 0) (syntax-match? dat)]
-                     [(= i 1) (bonsai-linked-list? syntax-match? dat)]
-                     [else (bonsai-null? dat)])))
-          (to-indexed (bonsai-list-nodes tree)))
+(define (symbol-is-polymorphic-type? t symb)
+  (let ([str (unsafe:symbol->string symb)])
+    (and
+     (unsafe:string-prefix? str (unsafe:string-append t "<"))
+     (unsafe:string-suffix? str ">")
+     )))
+
+  ; if stx is of the form t<a>, returns a syntax element a
+  ; expects (syntax-is-polymorphic-type? t stx)
+(define (extract-polymorphic-type-symbol t symb)
+  (let* ([str (unsafe:symbol->string symb)]
+         [a (unsafe:string-trim 
+             (unsafe:string-trim str (unsafe:string-append t "<")
+                                 #:right? #f #:repeat? #f)
+             ">" #:left? #f #:repeat? #f)]
+         )
+    (unsafe:string->symbol a)))
+
 
 ; return #t if if `pattern` is a type compatible with the language `lang` and
 ; `tree` is a data structure of that type.
 (define (syntax-match? lang pattern tree)
-  (define result
-    
+  #;(printf "(syntax-match? ~a ~a ~a)~n" lang pattern tree)
     (for/all [(tree tree)]
       (cond
+        ; tree patterns
         [(equal? 'nil pattern)
          (bonsai-null? tree)]
         [(and (list? pattern)
               (= (length pattern) 3)
               (equal? (first pattern) 'cons))
-         (and (bonsai-list? tree)
-              (andmap-indexed
-               (λ (i tree-i)
-                 (cond
-                   [(= i 0) (syntax-match? lang (second pattern) tree-i)]
-                   [(= i 1) (syntax-match? lang (third pattern) tree-i)]
-                   [else (bonsai-null? tree-i)]))
-               (bonsai-list-nodes tree)))]
+         (bonsai-cons? (curry syntax-match? lang (second pattern)) 
+                       (curry syntax-match? lang (third pattern))
+                       tree)]
+
+        [(symbol-is-polymorphic-type? "list" pattern)
+         (let* ([a (extract-polymorphic-type-symbol "list" pattern)])
+           (bonsai-linked-list? (curry syntax-match? lang) a tree))]
 
         ; test if pattern is a tuple of patterns
         [(list? pattern)
@@ -156,14 +182,12 @@
          (bonsai-boolean? tree)]
         [(member pattern (language-nonterminals lang))
          (let ([productions (cdr (assoc pattern (language-productions lang)))])
-           (printf "productions: ~a~n" productions)
+           #;(printf "productions: ~a~n" productions)
            (ormap (λ (pat) (syntax-match? lang pat tree)) productions))]
         [(member pattern (language-terminals lang))
          (and (bonsai-terminal? tree)
               (equal? (symbol->enum pattern) (bonsai-terminal-value tree)))]
         [else #f])))
-  (printf "(syntax-match? ~a ~a) -> ~a~n" pattern tree result)
-  result)
 
 (begin-for-syntax
   (define (syntax->string stx)
@@ -180,23 +204,27 @@
 
   ; Here, t is a string
   ; Return true if stx has the form t<a> for some syntax a
-  (define (syntax-is-polymorphic-type? t stx)
-    (let ([str (syntax->string stx)])
+  (define (polymorphic-type? t str)
       (and
        (string-prefix? str (string-append t "<"))
        (string-suffix? str ">")
-    )))
+       ))
+
+  (define (syntax-is-polymorphic-type? t stx)
+    (let ([str (syntax->string stx)])
+      (polymorphic-type? t str)))
 
   ; if stx is of the form t<a>, returns a syntax element a
   ; expects (syntax-is-polymorphic-type? t stx)
-  (define (extract-polymorphic-type t stx)
-    (let* ([str (syntax->string stx)]
-           
-           #;(string-trim str (regexp (string-append t "<|>")))
-           [a-type (string-trim (string-trim str (string-append t "<")
-                                             #:right? #f #:repeat? #f)
-                                ">" #:left? #f #:repeat? #f)])
-      (string->syntax stx a-type)))
+  (define (extract-polymorphic-type t str)
+    (string-trim (string-trim str (string-append t "<")
+                              #:right? #f #:repeat? #f)
+                 ">" #:left? #f #:repeat? #f))
+      
+
+  (define (syntax-extract-polymorphic-type t stx)
+    (let* ([str (syntax->string stx)])
+      (string->syntax stx (extract-polymorphic-type t str))))
 
   ; SEEC types have the following form:
   ; typ ::= terminal | list<typ>
@@ -206,7 +234,7 @@
   (define (is-type? terminals pat)
       (cond
         [(syntax-is-polymorphic-type? "list" pat)
-         (is-type? terminals (extract-polymorphic-type "list" pat))]
+         (is-type? terminals (syntax-extract-polymorphic-type "list" pat))]
         [(syntax? pat) (set-member? terminals (syntax->datum pat))]
         [else #f]
         ))
@@ -350,12 +378,12 @@
     #:datum-literals ,builtins
     (pattern x:id
              #:when (and (syntax-is-polymorphic-type? "list" #'x)
-                         (syntax-parse (extract-polymorphic-type "list" #'x)
+                         (syntax-parse (syntax-extract-polymorphic-type "list" #'x)
                            [t:type #t]
                            [_ #f]))
              #:attr type-terminals (set-union
                                     (set 'list)
-                                    (syntax-parse (extract-polymorphic-type "list" #'x)
+                                    (syntax-parse (syntax-extract-polymorphic-type "list" #'x)
                                       [t:type (attribute t.type-terminals)]))
              )
     (pattern nt:nonterminal
