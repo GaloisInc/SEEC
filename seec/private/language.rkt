@@ -266,10 +266,10 @@
     (pattern (cons p-first p-rest)
              #:declare p-first    (term lang-name terminals)
              #:declare p-rest     (term lang-name terminals)
-             #:attr match-pattern #'(bonsai-list p-first.match-pattern p-last.match-pattern)
+             #:attr match-pattern #'(bonsai-list p-first.match-pattern p-rest.match-pattern)
              #:attr stx-pattern   #'(cons p-first.stx-pattern p-rest.stx-pattern)
              #:attr depth         (datum->syntax 
-                                   #'((~datum 'cons) p-first p-last)
+                                   #'((~datum 'cons) p-first p-rest)
                                    (add1 (max (syntax->datum #'p-first.depth) 
                                               (syntax->datum #'p-rest.depth)))))
     (pattern (p ...)

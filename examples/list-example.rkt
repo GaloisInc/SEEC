@@ -1,4 +1,5 @@
 #lang seec
+(require seec/private/language)
 
 (define-language lang
   (boollist ::= list<boolean>)
@@ -8,6 +9,14 @@
 (define list-ex-2 (lang (cons #t (cons #f nil))))
 (define list-ex-1 (lang (cons #t nil)))
 (define list-ex-0 (lang nil))
+(lang (cons #t (cons #f nil)))
+
+#;(match list-ex-1
+  [(lang nil) #t]
+  [(lang (cons boolean boollist)) #t]
+  )
+
+
 
 #;(define (alltrue l)
   (match l
@@ -20,10 +29,6 @@
 #;(alltrue list-ex-1)
 #;(alltrue list-ex-2)
 
-(match list-ex-1
-  [(lang nil) #t]
-  [(lang (cons boolean boollist)) #t]
-  )
 
 #;(define (bool-list-length l)
   (match l
