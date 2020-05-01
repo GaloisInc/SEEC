@@ -120,8 +120,8 @@
             (andmap-indexed
              (λ (i tree-i)
                (cond
-                 [(= i 0) (syntax-match? lang (second pattern) tree-i)]
-                 [(= i 1) (syntax-match? lang (third pattern) tree-i)]
+                 [(= i 1) (syntax-match? lang (second pattern) tree-i)]
+                 [(= i 2) (syntax-match? lang (third pattern) tree-i)]
                  [else (bonsai-null? tree-i)]))
              (bonsai-list-nodes tree)
              ))]

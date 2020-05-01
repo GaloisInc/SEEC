@@ -5,18 +5,25 @@
   #;(list-of-list ::= list<list<boolean>>)
   )
 
-#;(define list-ex (lang (cons #t (cons #f nil))))
-(define list-ex (lang nil))
+(define list-ex-2 (lang (cons #t (cons #f nil))))
+(define list-ex-1 (lang (cons #t nil)))
+(define list-ex-0 (lang nil))
 
-(define (alltrue l)
+#;(define (alltrue l)
   (match l
     [(lang nil) #t]
-    [(lang boollist) #t]
+    #;[(lang boollist) #t]
     [(lang (cons b:boolean boollist)) (and b #;(alltrue m))]
     [(lang other:boollist) other]
     [(lang other:boolean) other]
     ))
-(alltrue list-ex)
+#;(alltrue list-ex-1)
+#;(alltrue list-ex-2)
+
+(match list-ex-1
+  [(lang nil) #t]
+  [(lang (cons boolean boollist)) #t]
+  )
 
 #;(define (bool-list-length l)
   (match l
