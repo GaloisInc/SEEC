@@ -28,6 +28,7 @@
                               hash->list
                               values
                               string-append
+                              symbol?
                               symbol->string
                               string->symbol
                               )
@@ -115,11 +116,12 @@
                     tree)))
 
 (define (symbol-is-polymorphic-type? t symb)
-  (let ([str (unsafe:symbol->string symb)])
-    (and
-     (unsafe:string-prefix? str (unsafe:string-append t "<"))
-     (unsafe:string-suffix? str ">")
-     )))
+  (and (unsafe:symbol? symb)
+       (let ([str (unsafe:symbol->string symb)])
+         (and
+          (unsafe:string-prefix? str (unsafe:string-append t "<"))
+          (unsafe:string-suffix? str ">")
+          ))))
 
   ; if stx is of the form t<a>, returns a syntax element a
   ; expects (syntax-is-polymorphic-type? t stx)
@@ -158,17 +160,12 @@
          (let ([pattern-length (length pattern)])
            (and (bonsai-list? tree)
                 (andmap-indexed 
-                 (λ (i n)
+                 (λ (i tree-i)
                    (cond
-                     [(< i pattern-length) (syntax-match? lang (list-ref pattern i) n)]
-                     [else (bonsai-null? n)]))
-                 (bonsai-list-nodes tree))
-                #;(andmap (λ (e) (let ([i (car e)]
-                                       [n (cdr e)])
-                                   (cond
-                                     [(< i pattern-length) (syntax-match? lang (list-ref pattern i) n)]
-                                     [else (bonsai-null? n)])))
-                          (to-indexed (bonsai-list-nodes tree)))))]
+                     [(< i pattern-length) (syntax-match? lang (list-ref pattern i) tree-i)]
+                     [else (bonsai-null? tree-i)]))
+                 (bonsai-list-nodes tree))))]
+                
         [(equal? 'integer pattern)
          (bonsai-integer? tree)]
         [(equal? 'natural pattern)

@@ -21,7 +21,7 @@
     [(lang nil) #t]
     [(lang (cons b:boolean m:list<boolean>)) (and (bonsai-boolean-value b) (alltrue m))]
     ))
-(alltrue list-ex-1)
+(alltrue list-ex-2)
 
 
 (define (bool-list-length l)
