@@ -421,8 +421,13 @@
   (syntax-parse stx
     #:datum-literals (::=)
     [(_ name:id (nt:nonterminal ::= prod:production ...) ...)
-     (let ([prods         (syntax->datum #'((nt prod ...) ...))]
-           [nts           (syntax->datum #'(nt ...))])
+     (let* ([prods         (syntax->datum #'((nt prod ...) ...))]
+            [nts           (list->set (syntax->datum #'(nt ...)))]
+            [terminals     (prods->terminals prods)]
+            )
+       (begin
+         (printf "terminals: ~a~n" terminals)
+         (printf "(set? terminals): ~a~n" (set? terminals))
        #`(begin
            (define lang-struct
              (make-language
@@ -433,23 +438,22 @@
                (syntax-parse stx
                  [(_ pat)
                   #:declare pat (term #,(syntax->string #'name)
-                                      #,(prods->terminals prods))
+                                      #,terminals)
                   #'(? (λ (t) (syntax-match? name 'pat.stx-pattern t)) pat.match-pattern)]))
              (lambda (stx)
                (syntax-parse stx
                  [n:id #'lang-struct]
+                 [(_ pat depth)
+                  #:declare pat (term #,(syntax->string #'name)
+                                      #,terminals)
+                  #'(make-term! name pat depth)]
                  [(_ pat)
                   #:declare pat (concrete-term
                                  #,(syntax->string #'name)
-                                 (set-subtract #,(prods->terminals prods)
-                                               (list->set '#,nts))
-                                 (set-intersect #,(prods->terminals prods)
-                                                (list->set builtins)))
+                                 (set-subtract #,terminals #,nts)
+                                 (set-intersect #,terminals (list->set builtins)))
                   #'(make-concrete-term! name pat)]
-                 [(_ pat depth)
-                  #:declare pat (term #,(syntax->string #'name)
-                                      #,(prods->terminals prods))
-                  #'(make-term! name pat depth)])))))]))
+                 ))))))]))
 
 (define-syntax (make-concrete-term! stx)
   (syntax-parse stx
@@ -476,6 +480,7 @@
      #`(bonsai-list (list (make-concrete-term! lang pat) ...))]))
 
 (define-syntax (make-term! stx)
+  (printf "make-term! ~a ~n" stx)
   (syntax-parse stx
     [(_ lang:id pat depth:expr)
      #`(let ([tree (make-tree! depth (language-max-width lang))])
