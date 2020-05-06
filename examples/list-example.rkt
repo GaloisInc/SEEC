@@ -4,6 +4,7 @@
 (define-language lang
   (boollist ::= list<boolean>)
   #;(list-of-list ::= list<list<boolean>>)
+  (boollist2 ::= bnil (bcons boolean boollist2))
   )
 
 (define list-ex-2 (lang (cons #t (cons #f nil))))
@@ -31,3 +32,8 @@
     ))
 
 (bool-list-length list-ex-2)
+(define list-symbolic (lang boollist 5))
+(define list-ex-2-2 (lang (bcons #t (bcons #f nil))))
+list-ex-2-2
+(define list2-symbolic (lang boollist2 5))
+list2-symbolic

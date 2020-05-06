@@ -30,3 +30,5 @@
   #;[(constants (STR s:string)) s]
   #;[(constants (CHAR c:char)) c]
   )
+(define c-symbolic (constants const 5))
+c
