@@ -425,35 +425,34 @@
             [nts           (list->set (syntax->datum #'(nt ...)))]
             [terminals     (prods->terminals prods)]
             )
-       (begin
-         (printf "terminals: ~a~n" terminals)
-         (printf "(set? terminals): ~a~n" (set? terminals))
-       #`(begin
-           (define lang-struct
-             (make-language
-              '#,prods))
-           
-           (define-match-expander name
-             (lambda (stx)
-               (syntax-parse stx
-                 [(_ pat)
-                  #:declare pat (term #,(syntax->string #'name)
-                                      #,terminals)
-                  #'(? (λ (t) (syntax-match? name 'pat.stx-pattern t)) pat.match-pattern)]))
-             (lambda (stx)
-               (syntax-parse stx
-                 [n:id #'lang-struct]
-                 [(_ pat depth)
-                  #:declare pat (term #,(syntax->string #'name)
-                                      #,terminals)
-                  #'(make-term! name pat depth)]
-                 [(_ pat)
-                  #:declare pat (concrete-term
-                                 #,(syntax->string #'name)
-                                 (set-subtract #,terminals #,nts)
-                                 (set-intersect #,terminals (list->set builtins)))
-                  #'(make-concrete-term! name pat)]
-                 ))))))]))
+       (with-syntax ([terminalstx #`(apply set '(#,@(set->list terminals)))]
+                     [ntstx       #`(apply set '(#,@(set->list nts)))])
+         #`(begin
+             (define lang-struct
+               (make-language
+                '#,prods))
+
+             (define-match-expander name
+               (lambda (stx)
+                 (syntax-parse stx
+                   [(_ pat)
+                    #:declare pat (term #,(syntax->string #'name)
+                                        terminalstx)
+                    #'(? (λ (t) (syntax-match? name 'pat.stx-pattern t)) pat.match-pattern)]))
+               (lambda (stx)
+                 (syntax-parse stx
+                   [n:id #'lang-struct]
+                   [(_ pat depth)
+                    #:declare pat (term #,(syntax->string #'name)
+                                        terminalstx)
+                    #'(make-term! name pat depth)]
+                   [(_ pat)
+                    #:declare pat (concrete-term
+                                   #,(syntax->string #'name)
+                                   (set-subtract terminalstx ntstx)
+                                   (set-intersect terminalstx (list->set builtins)))
+                    #'(make-concrete-term! name pat)]
+                   ))))))]))
 
 (define-syntax (make-concrete-term! stx)
   (syntax-parse stx
