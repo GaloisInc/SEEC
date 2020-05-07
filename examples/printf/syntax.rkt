@@ -32,7 +32,8 @@
 
 (define-language printf-lang
   (fmt ::= f-empty (%d natural) (%n natural) (++ fmt fmt))
-  (vlist ::= anil (acons val vlist))
+  (vlist ::= list<val>)
+  #;(vlist ::= anil (acons val vlist))
   (mem ::= mnil (mcons ident val mem))
   (val ::= (LOC ident) (CONST integer) ERR #;(DEREF val)) 
   (ident ::= integer)
@@ -80,8 +81,8 @@
 ; OUTPUT: the value mapped to the offset
 (define (lookup-offset offset args)
   (match args
-    [(printf-lang anil) (printf-lang ERR)]
-    [(printf-lang (acons v:val args+:vlist))
+    [(printf-lang nil) (printf-lang ERR)]
+    [(printf-lang (cons v:val args+:vlist))
      (if (<= offset 0)
          v
          (lookup-offset (- offset 1) args+))]
@@ -90,8 +91,8 @@
 
 (define (vlist-length args)
   (match args
-    [(printf-lang anil) 0]
-    [(printf-lang (acons val args+:vlist))
+    [(printf-lang nil) 0]
+    [(printf-lang (cons val args+:vlist))
      (+ 1 (vlist-length args+))]
     [_ (raise-argument-error 'vlist-length "vlist?" args)]
     ))
@@ -191,7 +192,7 @@
 
 #;(displayln "Running test case demonstrating match-let failure...")
 #;(interp-fmt-safe (printf-lang (++ f-empty f-empty))
-                 (printf-lang anil)
+                 (printf-lang nil)
                  (printf-lang (CONF 0 mnil)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -253,6 +254,7 @@
     [(printf-lang (++ f1:fmt f2:fmt)) (and (fmt? f1) (fmt? f2))]
     [_ #f]
     ))
+;(fmt? example-fmt)
 
 (define (ident? x)
   (bonsai-integer? x)
@@ -285,8 +287,8 @@
 
 (define (vlist? args)
   (match args
-    [(printf-lang anil) #t]
-    [(printf-lang (acons v:val args+:vlist)) (and (val? v) (vlist? args+))]
+    [(printf-lang nil) #t]
+    [(printf-lang (cons v:val args+:vlist)) (and (val? v) (vlist? args+))]
     [_ #f]
     ))
 

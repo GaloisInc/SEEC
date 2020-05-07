@@ -9,7 +9,7 @@
 
 (define-language set-api
   (value       ::= integer boolean)
-  (list        ::= empty (value list))
+  (vallist        ::= empty (value vallist))
   (method      ::= (insert integer) (remove integer) (member? integer) select)
   (interaction ::= empty (method interaction))
   (context     ::= empty ((insert integer) context) ((remove integer) context)))
@@ -29,14 +29,14 @@
   (match s
     [(set-api empty)
      (assert #f)]
-    [(set-api (v:value list))
+    [(set-api (v:value vallist))
      v]))
 
 (define (tail s)
   (match s
     [(set-api empty)
      (assert #f)]
-    [(set-api (value rest:list))
+    [(set-api (value rest:vallist))
      rest]))
 
 (define (abstract-insert s v)
@@ -45,7 +45,7 @@
 (define (abstract-remove s v)
   (match s
     [(set-api empty) (set-api empty)]
-    [(set-api (x:value r:list))
+    [(set-api (x:value r:vallist))
      (let ([new-tail (abstract-remove r v)])
        (if (equal? x v)
            new-tail
@@ -54,7 +54,7 @@
 (define (abstract-member? s v)
   (match s
     [(set-api empty) (set-api #f)]
-    [(set-api (x:value r:list))
+    [(set-api (x:value r:vallist))
      (if (equal? x v)
          (set-api #t)
          (abstract-member? r v))]))
@@ -62,13 +62,13 @@
 (define (abstract-select s)
   (match s
     [(set-api empty) (set-api #f)]
-    [(set-api list)  (abstract-select-nondet s)]))
+    [(set-api vallist)  (abstract-select-nondet s)]))
 
 ; The (nondet!) construct introduces a non-deterministic choice
 (define (abstract-select-nondet s)
   (match s
     [(set-api (x:value empty)) x]
-    [(set-api (x:value r:list))
+    [(set-api (x:value r:vallist))
      (if (nondet!) x (abstract-select-nondet r))]))
 
 (define (abstract-interpret interaction state)
@@ -106,7 +106,7 @@
 (define (concrete-remove s v)
   (match s
     [(set-api empty) (set-api empty)]
-    [(set-api (x:value r:list))
+    [(set-api (x:value r:vallist))
      (let ([new-tail (concrete-remove r v)])
        (if (equal? x v)
            new-tail
@@ -115,7 +115,7 @@
 (define (buggy-concrete-remove s v)
   (match s
     [(set-api empty) (set-api empty)]
-    [(set-api (x:value r:list))
+    [(set-api (x:value r:vallist))
      (if (equal? x v)
          r
          (set-api (,x ,(buggy-concrete-remove r v))))]))
@@ -123,7 +123,7 @@
 (define (concrete-member? s v)
   (match s
     [(set-api empty) (set-api #f)]
-    [(set-api (x:value r:list))
+    [(set-api (x:value r:vallist))
      (if (equal? x v)
          (set-api #t)
          (concrete-member? r v))]))
@@ -131,7 +131,7 @@
 (define (concrete-select s)
   (match s
     [(set-api empty) (set-api #f)]
-    [(set-api (x:value list)) x]))
+    [(set-api (x:value vallist)) x]))
 
 (define (concrete-interpret interaction state)
   (match interaction
@@ -164,7 +164,7 @@
 (define (valid-set? xs)
   (match xs
     [(set-api empty) #t]
-    [(set-api (x:integer r:list))
+    [(set-api (x:integer r:vallist))
      (match (concrete-member? r x)
        [(set-api #f) (valid-set? r)]
        [(set-api #t) #f])]
@@ -183,12 +183,12 @@
   (define trace (time (set-api interaction 6)))
   (displayln "Building symbolic initial set of size 2 for concrete execution...")
   (define concrete-set
-    (time (let ([s (set-api list 2)])
+    (time (let ([s (set-api vallist 2)])
             (assert (valid-set? s))
             s)))
   (displayln "Building symbolic initial set of size 2 for concrete execution...")
   (define abstract-set
-    (time (let ([s (set-api list 2)])
+    (time (let ([s (set-api vallist 2)])
             (assert (valid-set? s))
             s)))
   (newline)
