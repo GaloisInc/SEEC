@@ -1,5 +1,5 @@
 #lang seec
-(require seec/private/language)
+#;(require seec/private/language)
 
 (define-language lang
   (boollist ::= list<boolean>)
@@ -51,3 +51,9 @@ list2-symbolic
     [(lang (cons any l+:list<any>)) (+ 1 (length l+))]
     ))
 (length list-ex-2)
+
+#;(bonsai-ll-length list-ex-2)
+list-ex-1
+list-ex-2
+(define list-ex-3 (bonsai-ll-append list-ex-1 list-ex-2))
+(length list-ex-3)
