@@ -25,10 +25,16 @@
   )
 
 (match b
-  #;[(constants x:num) x]
-  [(constants (BOOL b:boolean)) b]
+  #;[(constants const) #t]
+  [(constants (BOOL boolean)) #t]
   #;[(constants (STR s:string)) s]
   #;[(constants (CHAR c:char)) c]
   )
 (define c-symbolic (constants const 5))
-c
+#;c
+
+(define (any-lang x)
+  (match x
+    [(constants any) #t]
+    ))
+(any-lang b)

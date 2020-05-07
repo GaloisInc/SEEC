@@ -50,11 +50,11 @@
     [else 0]))
 
 (begin-for-syntax
-  (define builtin-nonterminals '(integer natural boolean char string))
+  (define builtin-nonterminals '(integer natural boolean char string any))
   (define builtin-nonterminal-functions '(list))
   (define builtins (append builtin-nonterminals builtin-nonterminal-functions))
 )
-(define builtin-nonterminals '(integer natural boolean char string))
+(define builtin-nonterminals '(integer natural boolean char string any))
 (define builtin-nonterminal-functions '(list))
 (define builtins (append builtin-nonterminals builtin-nonterminal-functions))
 
@@ -166,6 +166,8 @@
                      [else (bonsai-null? tree-i)]))
                  (bonsai-list-nodes tree))))]
                 
+        [(equal? 'any pattern)
+         (bonsai? tree)]
         [(equal? 'integer pattern)
          (bonsai-integer? tree)]
         [(equal? 'natural pattern)
@@ -223,15 +225,20 @@
     (let* ([str (syntax->string stx)])
       (string->syntax stx (extract-polymorphic-type t str))))
 
+  (define (syntax-is-any? stx)
+    #;(printf "is this any? ~a~n" stx)
+    (and (syntax? stx) (equal? (syntax->datum stx) 'any)))
+
   ; SEEC types have the following form:
   ; typ ::= terminal | list<typ>
   ; returns true if pat has that form.
-
+  ;
   ; Here, `pat` is a syntax object
   (define (is-type? terminals pat)
       (cond
         [(syntax-is-polymorphic-type? "list" pat)
          (is-type? terminals (syntax-extract-polymorphic-type "list" pat))]
+        [(syntax-is-any? pat) #t]
         [(syntax? pat) (set-member? terminals (syntax->datum pat))]
         [else #f]
         ))
@@ -425,6 +432,7 @@
             [nts           (list->set (syntax->datum #'(nt ...)))]
             [terminals     (prods->terminals prods)]
             )
+       #;(printf "terminals: ~a~n" terminals)
        (with-syntax ([terminalstx #`(apply set '(#,@(set->list terminals)))]
                      [ntstx       #`(apply set '(#,@(set->list nts)))])
          #`(begin
@@ -479,7 +487,7 @@
      #`(bonsai-list (list (make-concrete-term! lang pat) ...))]))
 
 (define-syntax (make-term! stx)
-  (printf "make-term! ~a ~n" stx)
+  #;(printf "make-term! ~a ~n" stx)
   (syntax-parse stx
     [(_ lang:id pat depth:expr)
      #`(let ([tree (make-tree! depth (language-max-width lang))])

@@ -37,3 +37,17 @@
 list-ex-2-2
 (define list2-symbolic (lang boollist2 5))
 list2-symbolic
+
+(define (head l)
+  (match l
+    [(lang nil) #f]
+    [(lang (cons x:any list<boolean>)) x]))
+(head list-ex-1)
+
+
+(define (length l)
+  (match l
+    [(lang nil) 0]
+    [(lang (cons any l+:list<any>)) (+ 1 (length l+))]
+    ))
+(length list-ex-2)
