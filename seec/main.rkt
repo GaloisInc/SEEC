@@ -24,6 +24,13 @@
          bonsai-depth
          bonsai-leaves
 
+         bonsai-cons?
+         bonsai-linked-list?
+         bonsai-ll-head
+         bonsai-ll-tail
+         bonsai-ll-length
+         bonsai-ll-append
+
          make-tree!
 
          nondet!
@@ -34,6 +41,6 @@
 
          match
          match-let*
-         
+
          define-language
          enumerate)
