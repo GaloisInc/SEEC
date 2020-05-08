@@ -21,7 +21,19 @@
          nondet!
          capture-nondeterminism
          concretize
-         instantiate)
+         instantiate
+         ; utilities
+         andmap-indexed
+         ; linked lists
+         bonsai-cons-match?
+         bonsai-cons?
+         bonsai-linked-list-match?
+         bonsai-linked-list?
+         bonsai-ll-head
+         bonsai-ll-tail
+         bonsai-ll-length
+         bonsai-ll-append
+         )
 
 (require (for-syntax syntax/parse)
          (only-in racket/base
@@ -258,3 +270,76 @@
     (if (unsat? sol)
         sol
         (concretize v sol))))
+
+
+;;;;;;;;;;;;;;;;;;
+;; Linked lists ;;
+;;;;;;;;;;;;;;;;;;
+
+(define (to-indexed xs)
+  (define (to-indexed/int xs i)
+    (if (empty? xs)
+        '()
+        (cons (cons i (car xs)) (to-indexed/int (cdr xs) (+ i 1)))))
+  (to-indexed/int xs 0))
+(define (andmap-indexed f ls)
+  (andmap (lambda (e) (let ([i (car e)]
+                            [n (cdr e)])
+                        (f i n)))
+          (to-indexed ls)))
+
+
+; The given tree a bonsai-linked-list of the shape
+; (list<ty> ::= nil (x:ty l:list<ty>))
+; that is, it is a bonsai tree that is either null, or has the shape
+; (x xs y1 .. yn)
+; where:
+;   - x matches the pattern a 
+;   - xs matches the pattern as
+;   - each yi is null
+(define (bonsai-cons-match? syntax-match-a? syntax-match-as? tree)
+  (and (bonsai-list? tree)
+       (andmap-indexed
+        (λ (i tree-i) (cond
+                        [(= i 0) (syntax-match-a? tree-i)]
+                        [(= i 1) (syntax-match-as? tree-i)]
+                        [else (bonsai-null? tree-i)]))
+        (bonsai-list-nodes tree))))
+(define (bonsai-linked-list-match? syntax-match-lang? a tree)
+  (or (bonsai-null? tree)
+      (bonsai-cons-match? (curry syntax-match-lang? a)
+                          (curry bonsai-linked-list-match? syntax-match-lang? a)
+                          tree)))
+
+
+(define (bonsai-cons? tree)
+  (bonsai-cons-match? (λ (x) #t) (λ (x) #t) tree))
+(define (bonsai-ll-head tree)
+  (first (bonsai-list-nodes tree)))
+(define (bonsai-ll-tail tree)
+  (second (bonsai-list-nodes tree)))
+(define (bonsai-linked-list? tree)
+  (or (bonsai-null? tree)
+      (and (bonsai-cons? tree)
+           (bonsai-linked-list? (bonsai-ll-tail tree)))))
+
+
+
+(define (bonsai-ll-length tree)
+  (cond
+    [(bonsai-null? tree) 0]
+    [(bonsai-cons? tree)
+     (+ 1 (bonsai-ll-length (bonsai-ll-tail tree)))]
+    ))
+(define (bonsai-ll-append tree1 tree2)
+  (cond
+    [(bonsai-null? tree1) tree2]
+    [(bonsai-cons? tree1)
+     (bonsai-list (map (λ (x) (let ([i (car x)]
+                                    [tree-i (cdr x)])
+                                (cond
+                                  [(= i 0) tree-i]
+                                  [(= i 1) (bonsai-ll-append tree-i tree2)]
+                                  [else (bonsai-null)])))
+                       (to-indexed (bonsai-list-nodes tree1))))]))
+     

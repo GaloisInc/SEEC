@@ -4,6 +4,10 @@
                   raise-argument-error
                   raise-arguments-error))
 
+(require (only-in racket/base
+                  [make-string unsafe:make-string]
+                  ))
+
 
 (provide printf-lang
          bonsai->number
@@ -31,14 +35,20 @@
 ; Formalizing (for now, only safe) calls to printf
 
 (define-language printf-lang
-  (fmt ::= f-empty (%d natural) (%n natural) (++ fmt fmt))
+  (fmt ::= list<fmt-elt>)
+  (fmt-elt ::= string
+               ; (% fmt-type) (% width fmt-type) ; always require fmt-type for now
+               (% parameter $ fmt-type) (% parameter $ width fmt-type))
+  (width ::= * natural)
+  (parameter ::= natural)
+  (fmt-type ::= #;s d n)
+
   (vlist ::= list<val>)
-  #;(vlist ::= anil (acons val vlist))
   (mem ::= mnil (mcons ident val mem))
   (val ::= (LOC ident) (CONST integer) ERR #;(DEREF val)) 
   (ident ::= integer)
   ; a configuration consists of an accumulator and a memory value
-  (config ::= (CONF integer mem))
+  (config ::= (integer mem))
   )
 
 #||||||||||||||||||||||||||||#
@@ -63,12 +73,12 @@
     ))
 (define (conf->mem c)
   (match c
-    [(printf-lang (CONF integer m:mem)) m]
+    [(printf-lang (integer m:mem)) m]
     [_ (raise-argument-error 'conf->mem "conf" c)]
     ))
 (define (conf->acc c)
   (match c
-    [(printf-lang (CONF acc:integer mem)) (bonsai->number acc)]
+    [(printf-lang (acc:integer mem)) (bonsai->number acc)]
     [_ (raise-argument-error 'conf->acc "conf" c)]
     ))
 
@@ -115,7 +125,7 @@
   (let* ([acc   (conf->acc conf)]
          [m     (conf->mem conf)]
          [acc+n (bonsai-integer (+ n acc))])
-    (printf-lang (CONF ,acc+n ,m))
+    (printf-lang (,acc+n ,m))
     ))
 
 ; INPUT: a mem, a location, and a value
@@ -137,7 +147,7 @@
          [acc-val (printf-lang (CONST ,acc))]
          [new-mem (mem-update (conf->mem conf) l acc-val)]
          )
-    (printf-lang (CONF ,acc ,new-mem))
+    (printf-lang (,acc ,new-mem))
     ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -148,44 +158,72 @@
 ; error.                                                                      ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; INPUT: a format string, an argument list, and a configuration
-; OUTPUT: an outputted string and a configuration
-(define (interp-fmt-safe f args conf)
-  (match f
-    [(printf-lang f-empty)
-     (list (string "") conf)
-     ]
-
-    [(printf-lang (%d offset:natural))
-     (match (lookup-offset (bonsai->number offset) args)
+(define (interp-d-safe offset args conf)
+  (match (lookup-offset (bonsai->number offset) args)
        [(printf-lang (CONST n:integer)) (print-d-integer conf (bonsai->number n))]
        [_ ; if the offset does not map to a number, throw an error
-        (raise-arguments-error 'interp-fmt-safe
+        (raise-arguments-error 'interp-d-safe
                                "Offset does not map to a number in the vlist"
                                "offset" (bonsai->number offset)
                                "vlist" args)]
-       )]
-
-    [(printf-lang (%n offset:natural))
-     (match (lookup-offset (bonsai->number offset) args)
+       ))
+(define (interp-n-safe offset args conf)
+  (match (lookup-offset (bonsai->number offset) args)
        [(printf-lang (LOC l:ident)) (list (string "") (print-n-loc conf l))]
        [_ ; if the offset does not map to a location, throw an error
-        (raise-arguments-error 'interp-fmt-safe
+        (raise-arguments-error 'interp-n-safe
                                "Offset does not map to a location in the vlist"
                                "offset" (bonsai->number offset)
                                "vlist" args)]
-       )]
+       ))
 
-    [(printf-lang (++ f1:fmt f2:fmt))
-     #;(match-let* ([(list s-1 conf-1) (interp-fmt-safe f1 args conf)]
-                  [(list s-2 conf-2) (interp-fmt-safe f2 args conf-1)])
-       (cons (string-append s-1 s-2) conf-2))
-     (match (interp-fmt-safe f1 args conf)
-       [(list s-1 conf-1) 
-        (match (interp-fmt-safe f2 args conf-1)
+; ensure str-conf-pair has width at least w, and if not, pad the beginning of
+; the string by the appropriate number of spaces on the left.
+(define (pad-by-width w str-conf-pair)
+  (match str-conf-pair
+    [(list s conf)
+     (cond
+       ([<= w (string-length s)] str-conf-pair)
+       (else (let* ([remainder (- w (string-length s))]
+                    [s+ (string (unsafe:make-string remainder #\space))]
+                    [conf+ (config-add conf remainder)])
+               (list (string-append s+ s) conf+))))]))
+        
+    
+
+; INPUT: a format string, an argument list, and a configuration
+; OUTPUT: an outputted string and a configuration
+(define (interp-fmt-elt-safe f args conf)
+  (match f
+
+    [(printf-lang (% offset:natural $ d))
+     (interp-d-safe offset args conf)]
+    [(printf-lang (% offset:natural $ w:width d))
+     (pad-by-width (bonsai->number w) (interp-d-safe offset args conf))]
+
+    [(printf-lang (% offset:natural % n))
+     (interp-n-safe offset args conf)
+     ]
+    [(printf-lang (% offset:natural % w:width n))
+     (pad-by-width (bonsai->number w) (interp-n-safe offset args conf))]
+
+
+    [_ (raise-argument-error 'interp-fmt-elt-safe "(printf-lang fmt-elt)" f)]
+    ))
+(define (interp-fmt-safe f args conf)
+  (match f
+    [(printf-lang nil)
+     (list (string "") conf)]
+    #;[(printf-lang (cons f:fmt-elt f+:fmt))
+     (match-let* ([(list s-1 conf-1) (interp-fmt-elt-safe fmt-elt args conf)]
+                  [(list s-2 conf-2) (interp-fmt-safe f+ args conf-1)])
+       (cons (string-append s-1 s-2) conf-2))]
+    [(printf-lang (cons f1:fmt-elt f+:fmt))
+     (match (interp-fmt-elt-safe f1 args conf)
+       [(list s-1 conf-1)
+        (match (interp-fmt-safe f+ args conf-1)
           [(list s-2 conf-2)
-           (list (string-append s-1 s-2) conf-2)
-           ])])]
+           (list (string-append s-1 s-2) conf-2)])])]
 
     [_ (raise-argument-error 'interp-fmt-safe "(printf-lang fmt)" f)]
     ))
@@ -193,7 +231,7 @@
 #;(displayln "Running test case demonstrating match-let failure...")
 #;(interp-fmt-safe (printf-lang (++ f-empty f-empty))
                  (printf-lang nil)
-                 (printf-lang (CONF 0 mnil)))
+                 (printf-lang (0 mnil)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Define an concrete "unsafe" implementation of printf                          ;
@@ -204,41 +242,51 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-; INPUT: a format string, a stack (we assume that the arguments have been pushed
-; onto the stack, and a configuration
-; OUTPUT: an outputted string and a configuration
-(define (interp-fmt-unsafe f args conf)
-  (match f
-    [(printf-lang f-empty)
-     (list (string "") conf)
-     ]
-
-    [(printf-lang (%d offset:natural))
-     (match (lookup-offset (bonsai->number offset) args)
+(define (interp-d-unsafe offset args conf)
+  (match (lookup-offset (bonsai->number offset) args)
        [(printf-lang (CONST n:integer)) (print-d-integer conf (bonsai->number n))]
        [_ ; if the offset does not map to a number, do nothing
         (list (string "") conf)]
-       )]
-
-    [(printf-lang (%n offset:natural))
-     (match (lookup-offset (bonsai->number offset) args)
+       ))
+(define (interp-n-unsafe offset args conf)
+  (match (lookup-offset (bonsai->number offset) args)
        [(printf-lang (LOC l:ident)) (list (string "") (print-n-loc conf l))]
        [_ ; if the offset does not map to a location, do nothing
         (list (string "") conf)]
-       )]
+       ))
 
-    [(printf-lang (++ f1:fmt f2:fmt))
-     #;(match-let* ([(list s-1 conf-1) (interp-fmt-unsafe f1 args conf)]
-                  [(list s-2 conf-2) (interp-fmt-unsafe f2 args conf-1)])
-       (cons (string-append s-1 s-2) conf-2))
-     (match (interp-fmt-unsafe f1 args conf)
-       [(list s-1 conf-1) 
-        (match (interp-fmt-unsafe f2 args conf-1)
+
+
+; INPUT: a format string, a stack (we assume that the arguments have been pushed
+; onto the stack, and a configuration
+; OUTPUT: an outputted string and a configuration
+(define (interp-fmt-elt-unsafe f args conf)
+  (match f
+
+    [(printf-lang (% offset:natural $ d))
+     (interp-d-unsafe offset args conf)]
+    [(printf-lang (% offset:natural $ w:width d))
+     (pad-by-width (bonsai->number w) (interp-d-unsafe offset args conf))]
+
+    [(printf-lang (% offset:natural % n))
+     (interp-n-unsafe offset args conf)
+     ]
+    [(printf-lang (% offset:natural % w:width n))
+     (pad-by-width (bonsai->number w) (interp-n-unsafe offset args conf))]
+
+    [_ (raise-argument-error 'interp-fmt-elt-unsafe "(printf-lang fmt)" f)]
+    ))
+(define (interp-fmt-unsafe f args conf)
+  (match f
+    [(printf-lang nil)
+     (list (string "") conf)]
+
+    [(printf-lang (cons f1:fmt-elt f+:fmt))
+     (match (interp-fmt-elt-unsafe f1 args conf)
+       [(list s-1 conf-1)
+        (match (interp-fmt-unsafe f+ args conf-1)
           [(list s-2 conf-2)
-           (list (string-append s-1 s-2) conf-2)
-           ])])]
-
-    [_ (raise-argument-error 'interp-fmt-safe "(printf-lang fmt)" f)]
+           (list (string-append s-1 s-2) conf-2)])])]
     ))
 
 
@@ -248,12 +296,9 @@
 
 (define (fmt? f)
   (match f
-    [(printf-lang f-empty) #t]
-    [(printf-lang (%d natural)) #t]
-    [(printf-lang (%n natural)) #t]
-    [(printf-lang (++ f1:fmt f2:fmt)) (and (fmt? f1) (fmt? f2))]
-    [_ #f]
-    ))
+    [(printf-lang fmt) #t]
+    [_ #f]))
+
 ;(fmt? example-fmt)
 
 (define (ident? x)
@@ -268,9 +313,10 @@
     ))
 (define (val? v)
   (match v
-    [(printf-lang (LOC ident)) #t]
-    [(printf-lang (CONST integer)) #t]
-    [(printf-lang ERR) #t]
+    [(printf-lang val) #t]
+    #;[(printf-lang (LOC ident)) #t]
+    #;[(printf-lang (CONST integer)) #t]
+    #;[(printf-lang ERR) #t]
     [_ #f]
     ))
 (define (const? v)
@@ -287,15 +333,40 @@
 
 (define (vlist? args)
   (match args
-    [(printf-lang nil) #t]
-    [(printf-lang (cons v:val args+:vlist)) (and (val? v) (vlist? args+))]
+    [(printf-lang vlist) #t]
+    #;[(printf-lang nil) #t]
+    #;[(printf-lang (cons v:val args+:vlist)) (and (val? v) (vlist? args+))]
     [_ #f]
     ))
 
 
 (define (fmt-consistent-with-vlist? f args)
+  (define (fmt-elt-consistent-with-vlist? f0)
+    (match f0
+      [(printf-lang (% offset:parameter $ d))
+       (and (< (bonsai->number offset) (bonsai-ll-length args))
+            (const? (lookup-offset (bonsai->number offset) args)))]
+      [(printf-lang (% offset:parameter $ width d))
+       (and (< (bonsai->number offset) (bonsai-ll-length args))
+            (const? (lookup-offset (bonsai->number offset) args)))]
+
+      [(printf-lang (% offset:parameter $ n))
+       (and (< (bonsai->number offset) (bonsai-ll-length args))
+            (loc? (lookup-offset (bonsai->number offset) args)))]
+      [(printf-lang (% offset:parameter $ width n))
+       (and (< (bonsai->number offset) (bonsai-ll-length args))
+            (loc? (lookup-offset (bonsai->number offset) args)))]
+      [(printf-lang string) #t]
+
+      ))
   (match f
-    [(printf-lang f-empty) #t]
+    [(printf-lang nil) #t]
+    [(printf-lang (cons f0:fmt-elt f+:fmt))
+     (and (fmt-elt-consistent-with-vlist? f0)
+          (fmt-consistent-with-vlist? f+ args))]
+    ))
+
+#|
     [(printf-lang (%d offset:natural))
      (const? (lookup-offset (bonsai->number offset) args))]
     [(printf-lang (%n offset:natural))
@@ -304,6 +375,7 @@
      (and (fmt-consistent-with-vlist? f1 args)
           (fmt-consistent-with-vlist? f2 args))]
     ))
+|#
 
 (define (mem? m)
   (match m
@@ -315,6 +387,6 @@
 
 (define (conf? conf)
   (match conf
-    [(printf-lang (CONF i:integer m:mem)) (and (bonsai-integer? i) (mem? m))] 
+    [(printf-lang (i:integer m:mem)) (and (bonsai-integer? i) (mem? m))] 
     [_ #f]
     ))

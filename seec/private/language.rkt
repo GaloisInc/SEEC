@@ -2,7 +2,8 @@
 
 (provide define-language
          syntax-match?
-         enumerate)
+         enumerate
+         )
 
 (require "bonsai2.rkt"
          "match.rkt")
@@ -50,11 +51,11 @@
     [else 0]))
 
 (begin-for-syntax
-  (define builtin-nonterminals '(integer natural boolean char string))
+  (define builtin-nonterminals '(integer natural boolean char string any))
   (define builtin-nonterminal-functions '(list))
   (define builtins (append builtin-nonterminals builtin-nonterminal-functions))
 )
-(define builtin-nonterminals '(integer natural boolean char string))
+(define builtin-nonterminals '(integer natural boolean char string any))
 (define builtin-nonterminal-functions '(list))
 (define builtins (append builtin-nonterminals builtin-nonterminal-functions))
 
@@ -80,40 +81,7 @@
               (unsafe:hash->list productions)
               prod-max-width)))
 
-(define (to-indexed xs)
-  (define (to-indexed/int xs i)
-    (if (empty? xs)
-        '()
-        (cons (cons i (car xs)) (to-indexed/int (cdr xs) (+ i 1)))))
-  (to-indexed/int xs 0))
-(define (andmap-indexed f ls)
-  (andmap (lambda (e) (let ([i (car e)]
-                            [n (cdr e)])
-                        (f i n)))
-          (to-indexed ls)))
                        
-
-; The given tree a bonsai-linked-list of the shape
-; (list<ty> ::= nil (x:ty l:list<ty>))
-; that is, it is a bonsai tree that is either null, or has the shape
-; (x xs y1 .. yn)
-; where:
-;   - x matches the pattern a 
-;   - xs matches the pattern as
-;   - each yi is null
-(define (bonsai-cons? syntax-match-a? syntax-match-as? tree)
-  (and (bonsai-list? tree)
-       (andmap-indexed
-        (λ (i tree-i) (cond
-                        [(= i 0) (syntax-match-a? tree-i)]
-                        [(= i 1) (syntax-match-as? tree-i)]
-                        [else (bonsai-null? tree-i)]))
-        (bonsai-list-nodes tree))))
-(define (bonsai-linked-list? syntax-match-lang? a tree)
-  (or (bonsai-null? tree)
-      (bonsai-cons? (curry syntax-match-lang? a)
-                    (curry bonsai-linked-list? syntax-match-lang? a)
-                    tree)))
 
 (define (symbol-is-polymorphic-type? t symb)
   (and (unsafe:symbol? symb)
@@ -147,13 +115,14 @@
         [(and (list? pattern)
               (= (length pattern) 3)
               (equal? (first pattern) 'cons))
-         (bonsai-cons? (curry syntax-match? lang (second pattern)) 
-                       (curry syntax-match? lang (third pattern))
-                       tree)]
+         (bonsai-cons-match?
+          (curry syntax-match? lang (second pattern)) 
+          (curry syntax-match? lang (third pattern))
+          tree)]
 
         [(symbol-is-polymorphic-type? "list" pattern)
          (let* ([a (extract-polymorphic-type-symbol "list" pattern)])
-           (bonsai-linked-list? (curry syntax-match? lang) a tree))]
+           (bonsai-linked-list-match? (curry syntax-match? lang) a tree))]
 
         ; test if pattern is a tuple of patterns
         [(list? pattern)
@@ -166,6 +135,8 @@
                      [else (bonsai-null? tree-i)]))
                  (bonsai-list-nodes tree))))]
                 
+        [(equal? 'any pattern)
+         (bonsai? tree)]
         [(equal? 'integer pattern)
          (bonsai-integer? tree)]
         [(equal? 'natural pattern)
@@ -223,15 +194,20 @@
     (let* ([str (syntax->string stx)])
       (string->syntax stx (extract-polymorphic-type t str))))
 
+  (define (syntax-is-any? stx)
+    #;(printf "is this any? ~a~n" stx)
+    (and (syntax? stx) (equal? (syntax->datum stx) 'any)))
+
   ; SEEC types have the following form:
   ; typ ::= terminal | list<typ>
   ; returns true if pat has that form.
-
+  ;
   ; Here, `pat` is a syntax object
   (define (is-type? terminals pat)
       (cond
         [(syntax-is-polymorphic-type? "list" pat)
          (is-type? terminals (syntax-extract-polymorphic-type "list" pat))]
+        [(syntax-is-any? pat) #t]
         [(syntax? pat) (set-member? terminals (syntax->datum pat))]
         [else #f]
         ))
@@ -425,6 +401,7 @@
             [nts           (list->set (syntax->datum #'(nt ...)))]
             [terminals     (prods->terminals prods)]
             )
+       #;(printf "terminals: ~a~n" terminals)
        (with-syntax ([terminalstx #`(apply set '(#,@(set->list terminals)))]
                      [ntstx       #`(apply set '(#,@(set->list nts)))])
          #`(begin
@@ -479,7 +456,7 @@
      #`(bonsai-list (list (make-concrete-term! lang pat) ...))]))
 
 (define-syntax (make-term! stx)
-  (printf "make-term! ~a ~n" stx)
+  #;(printf "make-term! ~a ~n" stx)
   (syntax-parse stx
     [(_ lang:id pat depth:expr)
      #`(let ([tree (make-tree! depth (language-max-width lang))])
