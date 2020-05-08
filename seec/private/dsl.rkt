@@ -74,7 +74,7 @@ TODO: fix find-exploit and unsafe
 
 
 
-; find-exploit: {r:rel-lang} r.source-lang.expression SAT
+; find-exploit: {r:rel-lang} r.source-lang.expression -> (rel-target-context * SAT) + ()
 ; Solve the following synthesis problem:
 ; (\lambda v).
 ; Exists c2:r.t.context,
@@ -96,7 +96,7 @@ TODO: fix find-exploit and unsafe
 
 
 
-; unsafe: rel-lang -> SAT
+; unsafe: rel-lang -> (rel-source-expression * rel-target-context * SAT) + ()
 ; (\lambda r).
 ;   Exists v:r.s.expression
 ;     find-exploit r v
