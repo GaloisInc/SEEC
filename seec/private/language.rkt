@@ -81,7 +81,7 @@
               (unsafe:hash->list productions)
               prod-max-width)))
 
-                       
+
 
 (define (symbol-is-polymorphic-type? t symb)
   (and (unsafe:symbol? symb)
@@ -95,7 +95,7 @@
   ; expects (syntax-is-polymorphic-type? t stx)
 (define (extract-polymorphic-type-symbol t symb)
   (let* ([str (unsafe:symbol->string symb)]
-         [a (unsafe:string-trim 
+         [a (unsafe:string-trim
              (unsafe:string-trim str (unsafe:string-append t "<")
                                  #:right? #f #:repeat? #f)
              ">" #:left? #f #:repeat? #f)]
@@ -116,7 +116,7 @@
               (= (length pattern) 3)
               (equal? (first pattern) 'cons))
          (bonsai-cons-match?
-          (curry syntax-match? lang (second pattern)) 
+          (curry syntax-match? lang (second pattern))
           (curry syntax-match? lang (third pattern))
           tree)]
 
@@ -128,13 +128,13 @@
         [(list? pattern)
          (let ([pattern-length (length pattern)])
            (and (bonsai-list? tree)
-                (andmap-indexed 
+                (andmap-indexed
                  (λ (i tree-i)
                    (cond
                      [(< i pattern-length) (syntax-match? lang (list-ref pattern i) tree-i)]
                      [else (bonsai-null? tree-i)]))
                  (bonsai-list-nodes tree))))]
-                
+
         [(equal? 'any pattern)
          (bonsai? tree)]
         [(equal? 'integer pattern)
@@ -188,7 +188,7 @@
     (string-trim (string-trim str (string-append t "<")
                               #:right? #f #:repeat? #f)
                  ">" #:left? #f #:repeat? #f))
-      
+
 
   (define (syntax-extract-polymorphic-type t stx)
     (let* ([str (syntax->string stx)])
@@ -273,9 +273,9 @@
              #:declare p-rest     (term lang-name terminals)
              #:attr match-pattern #'(bonsai-list p-first.match-pattern p-rest.match-pattern)
              #:attr stx-pattern   #'(cons p-first.stx-pattern p-rest.stx-pattern)
-             #:attr depth         (datum->syntax 
+             #:attr depth         (datum->syntax
                                    #'((~datum 'cons) p-first p-rest)
-                                   (add1 (max (syntax->datum #'p-first.depth) 
+                                   (add1 (max (syntax->datum #'p-first.depth)
                                               (syntax->datum #'p-rest.depth)))))
     (pattern (p ...)
              #:declare p (term lang-name terminals)
@@ -364,7 +364,7 @@
     (pattern nt:builtin
              #:attr type-terminals (set (syntax->datum #'nt)))
     )
-                         
+
 
   (define-syntax-class production
     #:description "production"
@@ -378,7 +378,7 @@
              #:attr terminals (apply set-union (attribute p.terminals)))
     )
 
-  
+
 
 
 
@@ -426,7 +426,7 @@
                    [(_ pat)
                     #:declare pat (concrete-term
                                    #,(syntax->string #'name)
-                                   (set-subtract terminalstx ntstx)
+                                   (set-subtract terminalstx ntstx (list->set builtins))
                                    (set-intersect terminalstx (list->set builtins)))
                     #'(make-concrete-term! name pat)]
                    ))))))]))
@@ -480,3 +480,91 @@
                      (loop (cons (concretize tmp tmpsol) found) (- count 1))))
                found))
          (loop '() max))]))
+
+(module* test rosette/safe
+  (require rackunit)
+  (require (only-in racket/base
+                    raise
+                    exn:fail?
+                    make-exn:fail
+                    current-continuation-marks))
+  (require (submod ".."))
+  (require seec/private/match
+           seec/private/bonsai2)
+  (require (for-syntax syntax/parse))
+
+  (define-language test-language
+    (base     ::= integer natural boolean)
+    (op       ::= + - and or)
+    (exp      ::= base (op exp exp))
+    (prog     ::= list<exp>))
+
+  (test-case
+      "Concrete term constructors"
+    (check-equal? (bonsai-terminal (symbol->enum '+))
+                  (test-language +))
+    (check-equal? (bonsai-terminal (symbol->enum 'and))
+                  (test-language and))
+    (check-equal? (bonsai-list
+                   (list (bonsai-terminal (symbol->enum '+))
+                         (bonsai-integer 42)
+                         (bonsai-boolean #f)))
+                  (test-language (+ 42 #f))))
+
+  (define-syntax (match-check stx)
+    (syntax-parse stx
+      [(_ val pat body)
+       #'(check-not-exn
+          (thunk (unless (match val [pat body])
+                   (raise (make-exn:fail "Failed match-check"
+                                         (current-continuation-marks))))))]))
+
+  (test-case
+      "Match expanders"
+    (match-check
+     (test-language 5)
+     (test-language i:integer)
+     (eq? 5 (bonsai-integer-value i)))
+    (match-check
+     (test-language -5)
+     (test-language i:integer)
+     (eq? -5 (bonsai-integer-value i)))
+    (match-check
+     (test-language 5)
+     (test-language n:natural)
+     (eq? 5 (bonsai-integer-value n)))
+    (match-check
+     (test-language #t)
+     (test-language b:boolean)
+     (bonsai-boolean-value b))
+    (match-check
+     (test-language #f)
+     (test-language b:boolean)
+     (not (bonsai-boolean-value b)))
+    (match-check
+     (test-language (+ 5 #f))
+     (test-language exp)
+     #t)
+    (match-check
+     (test-language (+ 5 #f))
+     (test-language (op exp exp))
+     #t)
+    (match-check
+     (test-language (+ 5 #f))
+     (test-language (+ natural boolean))
+     #t)
+    (match-check
+     (test-language (cons 5 (cons 5 (cons 5 nil))))
+     (test-language (cons natural list<natural>))
+     #t))
+
+  (test-case
+      "Symbolic term constructors"
+    (match-check
+     (test-language integer 1)
+     (test-language i:integer)
+     (bonsai-integer? i))
+    (match-check
+     (test-language integer 1)
+     (test-language n:natural)
+     (>= (bonsai-integer-value n) 0))))

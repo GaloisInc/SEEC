@@ -2,19 +2,12 @@
 
 (provide match
          match-let*
-         define-match-expander
-         bonsai-string
-         bonsai-char
-         )
+         define-match-expander)
 
 (require (for-syntax racket/syntax
                      syntax/parse
                      syntax/id-table
-                     (only-in racket/match/stxtime make-struct-type-property/accessor))
-
-         (for-syntax "bonsai2.rkt")
-         "bonsai2.rkt"
-         "string.rkt")
+                     (only-in racket/match/stxtime make-struct-type-property/accessor)))
 
 (begin-for-syntax
   (define-values (prop:match-expander match-expander? match-expander-proc) 
@@ -56,8 +49,8 @@
   
   (define (compile-rule tmp stx)
     (syntax-parse stx
-      #:literals (list cons bonsai-list bonsai-integer bonsai-boolean bonsai-terminal bonsai-null)
-      #:datum-literals (? _)
+      #:literals (list cons)
+      #:datum-literals (? ! _)
       [_ (match-rule (set) (set) #'#t (λ (b) b))]
       [var:id
        (with-syntax ([vartmp (quasisyntax/loc #'var #,(gensym (syntax->datum #'var)))])
@@ -73,6 +66,14 @@
                      (match-rule-tmps compiled)
                      #`(and (pred #,tmp) #,(match-rule-condition compiled))
                      (match-rule-body-transformer compiled)))]
+      [(! transformer pat)
+       (with-syntax ([transformed #'transformed])
+         (let ([compiled (compile-rule #'transformed #'pat)])
+           (match-rule (match-rule-vars compiled)
+                       (match-rule-tmps compiled)
+                       #`(let ([transformed (transformer #,tmp)])
+                           #,(match-rule-condition compiled))
+                       (match-rule-body-transformer compiled))))]
       [(cons pata patb)
        (with-syntax ([elementa #'elementa]
                      [elementb #'elementb])
@@ -92,9 +93,9 @@
            (match-rule vars
                        tmps
                        #`(and (pair? #,tmp)
-                              (let ([elementa (car tmp)])
+                              (let ([elementa (car #,tmp)])
                                 #,conditiona)
-                              (let ([elementb (cdr tmp)])
+                              (let ([elementb (cdr #,tmp)])
                                 #,conditionb))
                        (compose (match-rule-body-transformer compileda) (match-rule-body-transformer compiledb)))))]
       [(list pat ...)
@@ -117,63 +118,7 @@
                                             #,condition))
                                       (range (length compiled))
                                       (map match-rule-condition compiled)))
-                       (foldl compose (λ (b) b) (map match-rule-body-transformer compiled)))))]
-      [(bonsai-list pat ...)
-       (with-syntax ([element #'element])
-         (let* ([compiled (map (λ (p) (compile-rule #'element p)) (syntax->list #'(pat ...)))]
-                [vars     (foldl (λ (s1 s2)
-                                   (let ([i (set-intersect s1 s2)])
-                                     (unless (set-empty? i)
-                                       (wrong-syntax (set-first i) "duplicate pattern variable"))
-                                     (set-union s1 s2)))
-                                 (set)
-                                 (map match-rule-vars compiled))]
-                [tmps     (foldl set-union (set) (map match-rule-tmps compiled))])
-           (match-rule vars
-                       tmps
-                       #`(and (bonsai-list? #,tmp)
-                              #,@(map (λ (i condition)
-                                        #`(let ([element (list-ref (bonsai-list-nodes #,tmp)
-                                                                   #,(datum->syntax tmp i))])
-                                            #,condition))
-                                      (range (length compiled))
-                                      (map match-rule-condition compiled))
-                              (andmap bonsai-null?
-                                      (drop (bonsai-list-nodes #,tmp)
-                                            #,(datum->syntax tmp (length compiled)))))
-                       (foldl compose (λ (b) b) (map match-rule-body-transformer compiled)))))]
-      [(bonsai-integer pat)
-       (with-syntax ([element #'element])
-         (let ([compiled (compile-rule #'element #'pat)])
-           (match-rule (match-rule-vars compiled)
-                       (match-rule-tmps compiled)
-                       #`(and (bonsai-integer? #,tmp)
-                              (let ([element (bonsai-integer-value #,tmp)])
-                                #,(match-rule-condition compiled)))
-                       (match-rule-body-transformer compiled))))]
-      [(bonsai-boolean pat)
-       (with-syntax ([element #'element])
-         (let ([compiled (compile-rule #'element #'pat)])
-           (match-rule (match-rule-vars compiled)
-                       (match-rule-tmps compiled)
-                       #`(and (bonsai-boolean? #,tmp)
-                              (let ([element (bonsai-boolean-value #,tmp)])
-                                #,(match-rule-condition compiled)))
-                       (match-rule-body-transformer compiled))))]
-      [(bonsai-terminal pat)
-       (with-syntax ([element #'element])
-         (let ([compiled (compile-rule #'element #'pat)])
-           (match-rule (match-rule-vars compiled)
-                       (match-rule-tmps compiled)
-                       #`(and (bonsai-terminal? #,tmp)
-                              (let ([element (bonsai-terminal-value #,tmp)])
-                                #,(match-rule-condition compiled)))
-                       (match-rule-body-transformer compiled))))]
-      [bonsai-null
-       (match-rule (set)
-                   (set)
-                   #'(bonsai-null #,tmp)
-                   (λ (b) b))])))
+                       (foldl compose (λ (b) b) (map match-rule-body-transformer compiled)))))])))
 
 (define-syntax (define-match-expander stx)
   (syntax-parse stx
@@ -231,29 +176,3 @@
                    [check body]
                    ...
                    [else (assert #f "inexhaustive match")]))))))]))
-
-;;;;;;;;;;;;;;;;;;;;;
-;; match extenders ;;
-;;;;;;;;;;;;;;;;;;;;;
-
-
-(define-match-expander bonsai-char
-  (lambda (stx)
-    (syntax-parse stx
-      [(_ x) #'(? bonsai-char? x)]
-      ))
-  (lambda (stx)
-    (syntax-parse stx
-      [(_ c) #'(bonsai-char+ (char c))]
-      ))
-  )
-(define-match-expander bonsai-string
-  (lambda (stx)
-    (syntax-parse stx
-      [(_ x) #'(? bonsai-string? x)]
-      ))
-  (lambda (stx)
-    (syntax-parse stx
-      [(_ s) #'(bonsai-string+ (string s))]
-      ))
-  )

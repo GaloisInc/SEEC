@@ -1,17 +1,20 @@
 #lang rosette/safe
 
 (provide (struct-out bonsai)
-         (struct-out bonsai-null)
-         (struct-out bonsai-terminal)
-         (struct-out bonsai-boolean)
-         (struct-out bonsai-integer)
-         (struct-out bonsai-string+)
-         bonsai-string?
-         bonsai-string-value
-         (struct-out bonsai-char+)
-         bonsai-char?
-         bonsai-char-value
-         (struct-out bonsai-list)
+         (except-out (struct-out bonsai-null) bonsai-null)
+         (except-out (struct-out bonsai-terminal) bonsai-terminal)
+         (except-out (struct-out bonsai-boolean) bonsai-boolean)
+         (except-out (struct-out bonsai-integer) bonsai-integer)
+         (except-out (struct-out bonsai-char) bonsai-char)
+         (except-out (struct-out bonsai-string) bonsai-string)
+         (except-out (struct-out bonsai-list) bonsai-list)
+         (rename-out [match-bonsai-null bonsai-null]
+                     [match-bonsai-terminal bonsai-terminal]
+                     [match-bonsai-boolean bonsai-boolean]
+                     [match-bonsai-integer bonsai-integer]
+                     [match-bonsai-char bonsai-char]
+                     [match-bonsai-string bonsai-string]
+                     [match-bonsai-list bonsai-list])
          bonsai-depth
          bonsai-leaves
          enum->symbol
@@ -40,7 +43,8 @@
                   make-parameter
                   parameterize
                   values))
-(require "string.rkt")
+(require "string.rkt"
+         "match.rkt")
 
 (define bonsai-width 32)
 
@@ -86,20 +90,14 @@
   #:transparent
   #:methods gen:custom-write
   [(define write-proc bonsai-write)])
-(struct bonsai-char+ bonsai (value)
+(struct bonsai-char bonsai (value)
   #:transparent
   #:methods gen:custom-write
-  [(define write-proc bonsai-write)]
-  )
-(define bonsai-char? bonsai-char+?)
-(define bonsai-char-value bonsai-char+-value)
-(struct bonsai-string+ bonsai (value)
+  [(define write-proc bonsai-write)])
+(struct bonsai-string bonsai (value)
   #:transparent
   #:methods gen:custom-write
-  [(define write-proc bonsai-write)]
-  )
-(define bonsai-string? bonsai-string+?)
-(define bonsai-string-value bonsai-string+-value)
+  [(define write-proc bonsai-write)])
 (struct bonsai-boolean bonsai (value)
   #:transparent
   #:methods gen:custom-write
@@ -271,7 +269,6 @@
         sol
         (concretize v sol))))
 
-
 ;;;;;;;;;;;;;;;;;;
 ;; Linked lists ;;
 ;;;;;;;;;;;;;;;;;;
@@ -342,4 +339,103 @@
                                   [(= i 1) (bonsai-ll-append tree-i tree2)]
                                   [else (bonsai-null)])))
                        (to-indexed (bonsai-list-nodes tree1))))]))
-     
+
+(define-match-expander match-bonsai-null
+  (lambda (stx)
+    (syntax-parse stx
+      [(_)
+       #'(? bonsai-null? _)]))
+  (make-rename-transformer #'bonsai-null))
+
+(define-match-expander match-bonsai-terminal
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ pat)
+       #'(? bonsai-terminal? (! bonsai-terminal-value pat))]))
+  (make-rename-transformer #'bonsai-terminal))
+
+(define-match-expander match-bonsai-boolean
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ pat)
+       #'(? bonsai-boolean? (! bonsai-boolean-value pat))]))
+  (make-rename-transformer #'bonsai-boolean))
+
+(define-match-expander match-bonsai-integer
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ pat)
+       #'(? bonsai-integer? (! bonsai-integer-value pat))]))
+  (make-rename-transformer #'bonsai-integer))
+
+(define-match-expander match-bonsai-char
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ pat)
+       #'(? bonsai-char? (! bonsai-char-value pat))]))
+  (make-rename-transformer #'bonsai-char))
+
+(define-match-expander match-bonsai-string
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ pat)
+       #'(? bonsai-string? (! bonsai-string-value pat))]))
+  (make-rename-transformer #'bonsai-string))
+
+(define-match-expander match-bonsai-list
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ pat ...)
+       (with-syntax ([len (datum->syntax stx (length (syntax->list #'(pat ...))))])
+         #'(? bonsai-list?
+              (! (lambda (blist) (take (bonsai-list-nodes blist) len))
+                 (list pat ...))))]))
+  (make-rename-transformer #'bonsai-list))
+
+(module* test rosette/safe
+  (require rackunit)
+  (require (submod ".."))
+  (require seec/private/match)
+
+  (define null (bonsai-null))
+  (define term (bonsai-terminal (bv 2 32)))
+  (define bool (bonsai-boolean #t))
+  (define int  (bonsai-integer 5))
+  (define char (bonsai-char 36))
+  (define str  (bonsai-string (list 36 36 36)))
+  (define blst (bonsai-list (list term null)))
+
+  (test-case
+      "Predicate matches"
+    (check-equal? null (match null [(? bonsai-null? x) x]))
+    (check-equal? term (match term [(? bonsai-terminal? x) x]))
+    (check-equal? bool (match bool [(? bonsai-boolean? x) x]))
+    (check-equal? int  (match int  [(? bonsai-integer? x) x]))
+    (check-equal? char (match char [(? bonsai-char? x) x]))
+    (check-equal? str  (match str  [(? bonsai-string? x) x]))
+    (check-equal? blst (match blst [(? bonsai-list? x) x])))
+
+(test-case
+    "Match expanders"
+  (check-equal? #t
+                (match null
+                  [(bonsai-null) #t]
+                  [_ #f]))
+  (check-equal? (bonsai-terminal-value term)
+                (match term
+                  [(bonsai-terminal v) v]))
+  (check-equal? (bonsai-boolean-value bool)
+                (match bool
+                  [(bonsai-boolean v) v]))
+  (check-equal? (bonsai-integer-value int)
+                (match int
+                  [(bonsai-integer v) v]))
+  (check-equal? (bonsai-char-value char)
+                (match char
+                  [(bonsai-char v) v]))
+  (check-equal? (bonsai-string-value str)
+                (match str
+                  [(bonsai-string v) v]))
+  (check-equal? (bonsai-list-nodes blst)
+                (match blst
+                  [(bonsai-list x y) (list x y)]))))
