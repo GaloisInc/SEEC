@@ -391,3 +391,51 @@
               (! (lambda (blist) (take (bonsai-list-nodes blist) len))
                  (list pat ...))))]))
   (make-rename-transformer #'bonsai-list))
+
+(module* test rosette/safe
+  (require rackunit)
+  (require (submod ".."))
+  (require seec/private/match)
+
+  (define null (bonsai-null))
+  (define term (bonsai-terminal (bv 2 32)))
+  (define bool (bonsai-boolean #t))
+  (define int  (bonsai-integer 5))
+  (define char (bonsai-char 36))
+  (define str  (bonsai-string (list 36 36 36)))
+  (define blst (bonsai-list (list term null)))
+
+  (test-case
+      "Predicate matches"
+    (check-equal? null (match null [(? bonsai-null? x) x]))
+    (check-equal? term (match term [(? bonsai-terminal? x) x]))
+    (check-equal? bool (match bool [(? bonsai-boolean? x) x]))
+    (check-equal? int  (match int  [(? bonsai-integer? x) x]))
+    (check-equal? char (match char [(? bonsai-char? x) x]))
+    (check-equal? str  (match str  [(? bonsai-string? x) x]))
+    (check-equal? blst (match blst [(? bonsai-list? x) x])))
+
+(test-case
+    "Match expanders"
+  (check-equal? #t
+                (match null
+                  [(bonsai-null) #t]
+                  [_ #f]))
+  (check-equal? (bonsai-terminal-value term)
+                (match term
+                  [(bonsai-terminal v) v]))
+  (check-equal? (bonsai-boolean-value bool)
+                (match bool
+                  [(bonsai-boolean v) v]))
+  (check-equal? (bonsai-integer-value int)
+                (match int
+                  [(bonsai-integer v) v]))
+  (check-equal? (bonsai-char-value char)
+                (match char
+                  [(bonsai-char v) v]))
+  (check-equal? (bonsai-string-value str)
+                (match str
+                  [(bonsai-string v) v]))
+  (check-equal? (bonsai-list-nodes blst)
+                (match blst
+                  [(bonsai-list x y) (list x y)]))))

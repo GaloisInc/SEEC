@@ -480,3 +480,91 @@
                      (loop (cons (concretize tmp tmpsol) found) (- count 1))))
                found))
          (loop '() max))]))
+
+(module* test rosette/safe
+  (require rackunit)
+  (require (only-in racket/base
+                    raise
+                    exn:fail?
+                    make-exn:fail
+                    current-continuation-marks))
+  (require (submod ".."))
+  (require seec/private/match
+           seec/private/bonsai2)
+  (require (for-syntax syntax/parse))
+
+  (define-language test-language
+    (base     ::= integer natural boolean)
+    (op       ::= + - and or)
+    (exp      ::= base (op exp exp))
+    (prog     ::= list<exp>))
+
+  (test-case
+      "Concrete term constructors"
+    (check-equal? (bonsai-terminal (symbol->enum '+))
+                  (test-language +))
+    (check-equal? (bonsai-terminal (symbol->enum 'and))
+                  (test-language and))
+    (check-equal? (bonsai-list
+                   (list (bonsai-terminal (symbol->enum '+))
+                         (bonsai-integer 42)
+                         (bonsai-boolean #f)))
+                  (test-language (+ 42 #f))))
+
+  (define-syntax (match-check stx)
+    (syntax-parse stx
+      [(_ val pat body)
+       #'(check-not-exn
+          (thunk (unless (match val [pat body])
+                   (raise (make-exn:fail "Failed match-check"
+                                         (current-continuation-marks))))))]))
+
+  (test-case
+      "Match expanders"
+    (match-check
+     (test-language 5)
+     (test-language i:integer)
+     (eq? 5 (bonsai-integer-value i)))
+    (match-check
+     (test-language -5)
+     (test-language i:integer)
+     (eq? -5 (bonsai-integer-value i)))
+    (match-check
+     (test-language 5)
+     (test-language n:natural)
+     (eq? 5 (bonsai-integer-value n)))
+    (match-check
+     (test-language #t)
+     (test-language b:boolean)
+     (bonsai-boolean-value b))
+    (match-check
+     (test-language #f)
+     (test-language b:boolean)
+     (not (bonsai-boolean-value b)))
+    (match-check
+     (test-language (+ 5 #f))
+     (test-language exp)
+     #t)
+    (match-check
+     (test-language (+ 5 #f))
+     (test-language (op exp exp))
+     #t)
+    (match-check
+     (test-language (+ 5 #f))
+     (test-language (+ natural boolean))
+     #t)
+    (match-check
+     (test-language (cons 5 (cons 5 (cons 5 nil))))
+     (test-language (cons natural list<natural>))
+     #t))
+
+  (test-case
+      "Symbolic term constructors"
+    (match-check
+     (test-language integer 1)
+     (test-language i:integer)
+     (bonsai-integer? i))
+    (match-check
+     (test-language integer 1)
+     (test-language n:natural)
+     (>= (bonsai-integer-value n) 0))))
