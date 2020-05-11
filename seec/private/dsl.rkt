@@ -33,9 +33,9 @@ TODO: deal with nondet
 
 (define-syntax define-Predsyn
   (syntax-rules ()
-    [(_ grammar pat pred bound)
-     (predsyn (lambda (x)
-                       (grammar pat bound)) pred)         
+    [(_ grammar pat pred)
+        #`(predsyn (lambda (x)
+                       (#,grammar #,pat bound)) pred)
      ]))
 
 (define (make-symbolic-var ps)
