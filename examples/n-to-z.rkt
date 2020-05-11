@@ -181,10 +181,16 @@
     [(lang (Valz z:integer))
      (bonsai->number z)]))
 
+(define (eval-expz-pair ce)
+  (match ce
+    [(cons env e)
+     (eval-expz env e)]))
+
 
 (define (apply-ctxz c e)
   (eval-expz (lang (Envz ,e empty)) c))
 
+(define-Lang EXPZ lang expz 4 envn 4 cons eval-expz-pair)
 
 #||||||||||||||||||||||||||||#
 #| Compilation              |#
@@ -212,6 +218,12 @@
            (let* ([e1z (n-to-z e1)]
                   [env1z (n-to-z-env env1)])
              (lang (,e1z ,env1z)))]))
+
+(define (crel cn cz)
+  (let ([cnz (n-to-z-env cn)])
+    (equal? cnz cz)))
+
+(define-Comp N-TO-Z EXPN EXPZ equal? crel n-to-z)
 
 
 #||||||||||||||||||||||||||||#
@@ -241,6 +253,10 @@
   (lang (+ (Sz (Valz 2)) (Valz 3))))
 
 
+(displayln "Trying find-exploit on N-TO-Z and expn1")
+
+(define res (find-exploit N-TO-Z test-expn1))
+(displayln res)
 ;(displayln (apply-ctxz (n-to-z test-expn2) (n-to-z test-expn3)))
 ;(displayln (apply-ctxz test-expz2 test-expz3))
 ;(displayln (apply-ctxz (n-to-z test-expn2) (n-to-z test-expn3)))

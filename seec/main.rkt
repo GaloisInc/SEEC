@@ -66,4 +66,8 @@
          define-Lang
          (struct-out Comp)
          define-Comp
+         (struct-out Predsyn)
+         define-Predsyn
+         find-exploit
+         find-exploitable-component
          )

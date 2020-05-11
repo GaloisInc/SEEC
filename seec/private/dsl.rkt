@@ -1,8 +1,12 @@
 #lang rosette/safe
 (provide define-Lang
          define-Comp
+         define-Predsyn
          (struct-out Lang)
-         (struct-out Comp))
+         (struct-out Comp)
+         (struct-out Predsyn)
+         find-exploit
+         find-exploitable-component)
 (require (for-syntax syntax/parse))
 
 #|
@@ -19,7 +23,13 @@
 
 
 TODO: fix find-exploit and unsafe
+TODO: re-encapsulate predsyn
 TODO: deal with nondet
+TODO: create more macros:
+   e.g. set e.g. 1 where verify is used instead of synthesize
+   e.g. n-to-z style where C2 is computed from C1
+   
+
 |#
 
 
@@ -35,8 +45,8 @@ TODO: deal with nondet
   (syntax-parse stx
     [(_ grammar pat pred bound)
         #`(Predsyn (lambda ()
-                       (grammar pat bound)) pred)
-     ]))
+                       (grammar pat bound)) pred)]
+    ))
 
 (define (make-symbolic-var ps)
   (let ([s (Predsyn-gen ps)])
@@ -103,8 +113,8 @@ TODO: deal with nondet
 ; compile: function from source-expression to target-expression
 (struct Comp (source target brel crel compile))
 
-(define-syntax define-Comp
-  (syntax-rules ()
+(define-syntax (define-Comp stx)
+  (syntax-parse stx
     [(_ name source target brel crel compile)
      #`(define name (Comp source target brel crel compile))]
     ))
@@ -131,18 +141,22 @@ Question: this doesn't consider nondet. Could add nondetas part of context, or h
 ;   Forall c1:r.s.context,
 ;     r.context-relation(c1, c2) ->
 ;       not (r.behavior-relation(r.s.apply(c1, v), r.t.apply(c2, r.compile(v))))
-(define-syntax-rule (find-exploit comp v)
-                #`(let* ([c1 (make-symbolic-var #,(Lang-ctx (Comp-source comp)))]
-                         [c2 (make-symbolic-var #,(Lang-ctx (Comp-target comp)))]
-                         [b1 (#,(Lang-eval (Comp-source comp)) c1 v)]
-                         [b2 (#,(Lang-eval (Comp-target comp)) c2 (#,(Comp-compile comp) v))]
-                         [ccomp (#,(Comp-crel comp) c1 c2)]
-                         [equality (assert (#,(Comp-brel comp) b1 b2))]
-                         [sol (synthesize #:forall c1 #:assume ccomp #:guarantee (assert (!(apply && equality))))])
-                    (if (unsat? sol)
-                        (empty)
-                        (define instance (concretize c2 sol)
-                          (list instance sol)))))
+(define-syntax (find-exploit stx)
+  (syntax-parse stx
+    [(_ comp v)
+     #`(let* ([c1 (make-symbolic-var (Lang-ctx (Comp-source comp)))]
+              [c2 (make-symbolic-var (Lang-ctx (Comp-target comp)))]
+              [b1 ((Lang-evaluate (Comp-source comp)) c1 v)]
+              [b2 ((Lang-evaluate (Comp-target comp)) c2 ((Comp-compile comp) v))]
+              [ccomp ((Comp-crel comp) c1 c2)]
+              [equality (assert ((Comp-brel comp) b1 b2))]
+              [sol (synthesize #:forall c1 #:assume ccomp #:guarantee (assert (!(apply && equality))))])
+         (if (unsat? sol)
+             ('())
+             (list c2 sol)))]
+             ;(let ([instance (concretize c2 sol)])
+              ; (list instance sol))))]
+     ))
 
 
 
@@ -150,14 +164,16 @@ Question: this doesn't consider nondet. Could add nondetas part of context, or h
 ; (\lambda r).
 ;   Exists v:r.s.expression
 ;     find-exploit r v
-(define-syntax-rule (find-exploitable-component comp)
-  #`(let* ([v (make-symbolic-var #,(Lang-exp (Comp-source comp)))]
-           [exploit (find-exploit #,comp v)])           
-      (match exploit
-        [(list c2 sol)
-         (define instance (concretize v sol)
-           (list v c2 sol))]
-        [_ empty])))
+(define-syntax (find-exploitable-component stx)
+  (syntax-parse stx
+    [(_ comp)
+     #`(let* ([v (make-symbolic-var (Lang-exp (Comp-source comp)))]
+              [exploit (find-exploit comp v)])           
+         (match exploit
+           [(list c2 sol)
+            (define instance (concretize v sol)
+              (list v c2 sol))]
+           [_ '()]))]))
                    
 
 
