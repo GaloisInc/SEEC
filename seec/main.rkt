@@ -9,17 +9,33 @@
          
          (all-from-out "private/string.rkt")
 
-         (struct-out bonsai-null)
-         (struct-out bonsai-terminal)
-         (struct-out bonsai-boolean)
-         (struct-out bonsai-integer)
+         bonsai-null
+         bonsai-null?
+
+         bonsai-terminal
+         bonsai-terminal?
+         bonsai-terminal-value
+
+         bonsai-boolean
+         bonsai-boolean?
+         bonsai-boolean-value
+
+         bonsai-integer
+         bonsai-integer?
+         bonsai-integer-value
+
          bonsai-string
          bonsai-string?
          bonsai-string-value
+
          bonsai-char
          bonsai-char?
          bonsai-char-value
-         (struct-out bonsai-list)
+
+         bonsai-list
+         bonsai-list?
+         bonsai-list-nodes
+
          bonsai?
          bonsai-depth
          bonsai-leaves
