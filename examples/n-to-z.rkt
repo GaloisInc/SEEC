@@ -93,9 +93,16 @@
     [(lang (Valn n:natural))
      (bonsai->number n)]))
 
+(define (eval-expn-pair ce)
+  (match ce
+    [(cons env e)
+     (eval-expn env e)]))
+
 (define (apply-ctxn c e)
   (eval-expn (lang (Envn ,e empty)) c))
 
+
+(define-Lang EXPN 'lang 'expn 4 'envn 4 cons eval-expn-pair)
 
 #||||||||||||||||||||||||||||#
 #| Language expZ            |#
@@ -299,7 +306,7 @@
 (displayln (eval-expz (lang empty) z))
 |#
 
-
+#|
 ; find an expression En and context Cz s.t. Cz[n-to-z En] != Cn[En] for Cn of bounded size
 (displayln "Creating a symbolic expression, restricting it to closed expression and compiling it")
 (define n* (time (lang expn 4)))
@@ -340,4 +347,4 @@
 
 
 
-
+|#

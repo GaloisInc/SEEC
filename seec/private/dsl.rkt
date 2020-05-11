@@ -34,7 +34,7 @@ TODO: deal with nondet
 (define-syntax define-Predsyn
   (syntax-rules ()
     [(_ grammar pat pred bound)
-     (define-predsyn (lambda x
+     (predsyn (lambda (x)
                        (grammar pat bound)) pred)         
      ]))
 
@@ -63,11 +63,11 @@ TODO: deal with nondet
 (define-syntax define-Lang
   (syntax-rules ()
     [(_ name grammar exp vexp bexp ctx vctx bctx link eval)
-     (let* ([predexp (define-Predsyn grammar exp vexp bexp)]
-            [predctx (define-Predsyn grammar ctx vctx bctx)]
-           #`(define name (lang #,predexp #,predctxapply eval))))]
-    [(_ name grammar exp bexp ctx bctx  apply eval)
-     (define-Lang name grammar (lambda (e) #t) bexp ctx (lambda (c) #t) bctx apply eval)]      
+     (let* ([predexp empty] ;(define-Predsyn grammar exp vexp bexp)]
+            [predctx empty] ; (define-Predsyn grammar ctx vctx bctx)]
+           #`(define name (lang #,predexp #,predctx link eval))))]
+    [(_ name grammar exp bexp ctx bctx  link eval)
+     (define-Lang name grammar (lambda (e) #t) bexp ctx (lambda (c) #t) bctx link eval)]      
        ))
     
 
