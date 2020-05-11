@@ -83,7 +83,7 @@ TODO: create more macros:
                 [predctx (define-Predsyn grammar ctx vctx bctx)])
            (Lang predexp predctx link eval)))]
     [(_ name grammar exp bexp ctx bctx link eval)
-     #`(define-Lang name grammar exp bexp (lambda (e) #t) ctx bctx (lambda (c) #t) link eval)]      
+     #`(define-Lang name grammar exp (lambda (e) #t) bexp ctx (lambda (c) #t) bctx link eval)]      
        ))
     
 
@@ -144,10 +144,12 @@ Question: this doesn't consider nondet. Could add nondetas part of context, or h
 (define-syntax (find-exploit stx)
   (syntax-parse stx
     [(_ comp v)
-     #`(let* ([c1 (make-symbolic-var (Lang-ctx (Comp-source comp)))]
-              [c2 (make-symbolic-var (Lang-ctx (Comp-target comp)))]
-              [b1 ((Lang-evaluate (Comp-source comp)) c1 v)]
-              [b2 ((Lang-evaluate (Comp-target comp)) c2 ((Comp-compile comp) v))]
+     #`(let* ([source (Comp-source comp)]
+              [target (Comp-target comp)]
+              [c1 (make-symbolic-var (Lang-ctx source))]
+              [c2 (make-symbolic-var (Lang-ctx target))]
+              [b1 ((Lang-evaluate source) ((Lang-link source) c1 v))]
+              [b2 ((Lang-evaluate target) ((Lang-link target) c2 ((Comp-compile comp) v)))]
               [ccomp ((Comp-crel comp) c1 c2)]
               [equality (assert ((Comp-brel comp) b1 b2))]
               [sol (synthesize #:forall c1 #:assume ccomp #:guarantee (assert (!(apply && equality))))])
