@@ -3,7 +3,7 @@
          define-Comp
          (struct-out Lang)
          (struct-out Comp))
-
+(require (for-syntax syntax/parse))
 
 #|
 
@@ -31,11 +31,11 @@ TODO: deal with nondet
                  ))
 
 
-(define-syntax define-Predsyn
-  (syntax-rules ()
-    [(_ grammar pat pred)
-        #`(predsyn (lambda (x)
-                       (#,grammar #,pat bound)) pred)
+(define-syntax (define-Predsyn stx)
+  (syntax-parse stx
+    [(_ grammar pat pred bound)
+        #`(Predsyn (lambda ()
+                       (grammar pat bound)) pred)
      ]))
 
 (define (make-symbolic-var ps)
@@ -59,15 +59,21 @@ TODO: deal with nondet
               ;program    ; nothing
               link       ; context -> expression -> program
               evaluate)) ; program -> behavior
+#;(define-for-syntax (make-Lang name grammar exp vexp bexp ctx vctx bctx link eval)
+  #`(define #,name
+    (let* ([predexp (define-Predsyn #,grammar '#,exp '#,vexp #,bexp)]
+           [predctx (define-Predsyn #,grammar '#,ctx '#,vctx #,bctx)])
+      (lang predexp predctx #,link #,eval))))  
 
-(define-syntax define-Lang
-  (syntax-rules ()
+(define-syntax (define-Lang stx)
+  (syntax-parse stx
     [(_ name grammar exp vexp bexp ctx vctx bctx link eval)
-     (let* ([predexp empty] ;(define-Predsyn grammar exp vexp bexp)]
-            [predctx empty] ; (define-Predsyn grammar ctx vctx bctx)]
-           #`(define name (lang #,predexp #,predctx link eval))))]
-    [(_ name grammar exp bexp ctx bctx  link eval)
-     (define-Lang name grammar (lambda (e) #t) bexp ctx (lambda (c) #t) bctx link eval)]      
+     #`(define name
+         (let* ([predexp (define-Predsyn grammar exp vexp bexp)]
+                [predctx (define-Predsyn grammar ctx vctx bctx)])
+           (Lang predexp predctx link eval)))]
+    [(_ name grammar exp bexp ctx bctx link eval)
+     #`(define-Lang name grammar exp bexp (lambda (e) #t) ctx bctx (lambda (c) #t) link eval)]      
        ))
     
 
@@ -100,7 +106,7 @@ TODO: deal with nondet
 (define-syntax define-Comp
   (syntax-rules ()
     [(_ name source target brel crel compile)
-     #`(define name (comp source target brel crel compile))]
+     #`(define name (Comp source target brel crel compile))]
     ))
 
 #| example:

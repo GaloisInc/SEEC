@@ -102,7 +102,8 @@
   (eval-expn (lang (Envn ,e empty)) c))
 
 
-(define-Lang EXPN 'lang 'expn 4 'envn 4 cons eval-expn-pair)
+#;(define-Lang EXPN lang expn 4 (lambda (e) #t) envn 4 (lambda (e) #t) cons eval-expn-pair)
+(define-Lang EXPN lang expn 4 envn 4 cons eval-expn-pair)
 
 #||||||||||||||||||||||||||||#
 #| Language expZ            |#
