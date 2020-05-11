@@ -11,30 +11,52 @@
 
 (define b (constants (BOOL #f)))
 (define five (constants (NAT 5)))
-(define hi (constants (STR "hi")))
-;(print-char (char #\x))
-;(bonsai-char #\x)
-(define c (constants (CHAR #\x)))
-;hi
-;c
 
-#;(match (bonsai-char #\x)
-  [(bonsai-string x) #t]
-  [(bonsai-integer x) #f]
-  [(bonsai-char x) #f]
+
+; Previously, I was able to define
+(define hi-desired (constants "hi"))
+(define c-desired (constants #\x))
+; Now, if I try to use these structures, I get an error
+;(displayln hi-desired)
+;(displayln c-desired)
+#;(match hi-desired
+  [(constants (STR s:string)) (print-string s)]
+  )
+#;(match c-desired
+  [(constants (CHAR c:char)) (print-char c)]
   )
 
-(match b
-  #;[(constants const) #t]
-  [(constants (BOOL boolean)) #t]
-  #;[(constants (STR s:string)) s]
-  #;[(constants (CHAR c:char)) c]
-  )
-(define c-symbolic (constants const 5))
-#;c
+; Instead, I can construct them by wrapping the `string` and `char` functions,
+; which does some magic in `string.rkt`.
+(define hi-current (constants (STR ,(string "hi"))))
+(define c-current (constants (CHAR ,(char #\x))))
+(displayln hi-current)
+(displayln c-current)
 
+; However, pattern matching doesn't work
+#;(match hi-current
+  [(constants (STR s:string)) (print-string s)]
+  )
+#;(match c-current
+  [(constants (CHAR c:char)) (print-char c)]
+  )
+
+
+
+
+
+
+
+
+
+
+
+
+
+#|
 (define (any-lang x)
   (match x
     [(constants any) #t]
     ))
 (any-lang b)
+|#
