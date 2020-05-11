@@ -14,8 +14,8 @@
 
 
 ; Previously, I was able to define
-(define hi-desired (constants "hi"))
-(define c-desired (constants #\x))
+(define hi-desired (constants (STR "hi")))
+(define c-desired (constants (CHAR #\x)))
 ; Now, if I try to use these structures, I get an error
 ;(displayln hi-desired)
 ;(displayln c-desired)
