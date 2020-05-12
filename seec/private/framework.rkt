@@ -3,11 +3,14 @@
          define-compiler
          (struct-out language)
          (struct-out compiler)
-         find-simple-exploit
+         find-potential-exploit
          find-exploit
-         find-exploitable-component)
+         find-exploitable-component
+         print-exploit
+         print-exploitable-component)
 (require (for-syntax syntax/parse))
 (require racket/match)
+(require "bonsai2.rkt")
 
 #|
 
@@ -22,7 +25,6 @@
           
 
 
-TODO: fix find-exploit and unsafe
 TODO: deal with nondet
 TODO: create more macros:
    e.g. set e.g. 1 where verify is used instead of synthesize
@@ -158,13 +160,13 @@ Question: this doesn't consider nondet. Could add nondetas part of context, or h
 
 |#
 
-; find-simple-exploit: {r:scomp} r.source.expression -> (rel-target-context * SAT) + ()
+; find-potential-exploit: {r:scomp} r.source.expression -> (rel-target-context * SAT) + ()
 ; Solve the following synthesis problem:
 ; (\lambda v).
 ; Exists c1:s.t.context c2:r.t.context,
 ;    r.ctx-relation(c1, c2)
 ;       not (r.behavior-relation(r.s.apply(c1, v), r.t.apply(c2, r.compile(v))))
-(define-syntax (find-simple-exploit stx)
+(define-syntax (find-potential-exploit stx)
   (syntax-parse stx
     [(_ comp v)
      #`(let* ([source (compiler-source comp)]
@@ -208,6 +210,23 @@ Question: this doesn't consider nondet. Could add nondetas part of context, or h
      ))
 
 
+(define (print-exploit exploit)
+  (match exploit
+    [(list vars sol)
+     (let* ([vars* (map (lambda (var)
+                          (concretize var sol)) vars)])
+       (begin
+         (displayln "Source context:")
+         (displayln (first vars*))
+         (displayln "Target context:")
+         (displayln (second vars*))
+         (displayln "Source behavior:")
+         (displayln (third vars*))
+         (displayln "Target behavior:")
+         (displayln (fourth vars*))))]
+    [_
+     (displayln "Synthesis failed")]))     
+
 
 ; find-exploitable-component: comp -> (compiler-source-expression * compiler-target-context * SAT) + ()
 ; (\lambda r).
@@ -219,9 +238,20 @@ Question: this doesn't consider nondet. Could add nondetas part of context, or h
      #`(let* ([v (make-symbolic-var (language-exp (compiler-source comp)))]
               [exploit (find-exploit comp v)])           
          (match exploit
-           [(list (list c1 c2 b1 b2) sol)
-              (list (list v c1 c2 b1 b2) sol)]
+           [(list vars sol)
+              (list v vars sol)]
            [_ '()]))]))
                    
 
+(define (print-exploitable-component l)
+  (match l
+    [(list v vars sol)
+     (let* ([v* (concretize v sol)])
+     (begin
+       (displayln "Source expression:")
+       (displayln v*)
+       (print-exploit (list vars sol))))]
+     [_
+      (displayln "Synthesis failed")]))     
 
+       
