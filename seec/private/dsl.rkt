@@ -5,6 +5,7 @@
          (struct-out Lang)
          (struct-out Comp)
          (struct-out Predsyn)
+         find-simple-exploit
          find-exploit
          find-exploitable-component)
 (require (for-syntax syntax/parse))
@@ -49,7 +50,7 @@ TODO: create more macros:
     ))
 
 (define (make-symbolic-var ps)
-  (let ([s (Predsyn-gen ps)])
+  (let ([s ((Predsyn-gen ps))])
     (assert ((Predsyn-pred ps) s))
     s))
 
@@ -111,6 +112,7 @@ TODO: create more macros:
 ; brel (behavior-relation): equivalence class for source and target's behaviors
 ; crel (context-relation) : "'s context
 ; compile: function from source-expression to target-expression
+; contextcompile: optionally, a function from source.ctx to source.target
 (struct Comp (source target brel crel compile))
 
 (define-syntax (define-Comp stx)
@@ -131,6 +133,57 @@ Question: this doesn't consider nondet. Could add nondetas part of context, or h
 
 
 
+#|
+; find-simple-exploit: {r:scomp} r.source.expression -> (rel-target-context * SAT) + ()
+; Solve the following synthesis problem:
+; (\lambda v).
+; Exists c2:r.t.context,
+;     r.context-compile(c1) = c2 ->
+;       not (r.behavior-relation(r.s.apply(c1, v), r.t.apply(c2, r.compile(v))))
+(define-syntax (find-simple-exploit stx)
+  (syntax-parse stx
+    [(_ comp compilecontext v)
+     #`(let* ([source (Comp-source comp)]
+              [target (Comp-target comp)]
+              [c1 (make-symbolic-var (Lang-ctx source))]
+              [c2 (compilecontext c1)]
+              [b1 ((Lang-evaluate source) ((Lang-link source) c1 v))]
+              [b2 ((Lang-evaluate target) ((Lang-link target) c2 ((Comp-compile comp) v)))]
+              [equality (assert ((Comp-brel comp) b1 b2))]
+              [sol (verify equality)])
+         (if (unsat? sol)
+             '()
+             (list c2 sol)))]
+             ;(let ([instance (concretize c2 sol)])
+              ; (list instance sol))))]
+     ))
+
+|#
+
+; find-simple-exploit: {r:scomp} r.source.expression -> (rel-target-context * SAT) + ()
+; Solve the following synthesis problem:
+; (\lambda v).
+; Exists c1:s.t.context c2:r.t.context,
+;    r.ctx-relation(c1, c2)
+;       not (r.behavior-relation(r.s.apply(c1, v), r.t.apply(c2, r.compile(v))))
+(define-syntax (find-simple-exploit stx)
+  (syntax-parse stx
+    [(_ comp v)
+     #`(let* ([source (Comp-source comp)]
+              [target (Comp-target comp)]
+              [c1 (make-symbolic-var (Lang-ctx source))]
+              [c2 (make-symbolic-var (Lang-ctx target))]
+              [b1 ((Lang-evaluate source) ((Lang-link source) c1 v))]
+              [b2 ((Lang-evaluate target) ((Lang-link target) c2 ((Comp-compile comp) v)))]
+              [ccomp ((Comp-crel comp) c1 c2)]
+              [equality (with-asserts-only (assert ((Comp-brel comp) b1 b2)))]
+              [sol (verify #:assume ccomp #:guarantee (assert !(apply && equality)))])
+         (if (unsat? sol)
+             '()
+             (list c2 sol)))]
+             ;(let ([instance (concretize c2 sol)])
+              ; (list instance sol))))]
+     ))
 
 
 
@@ -151,10 +204,10 @@ Question: this doesn't consider nondet. Could add nondetas part of context, or h
               [b1 ((Lang-evaluate source) ((Lang-link source) c1 v))]
               [b2 ((Lang-evaluate target) ((Lang-link target) c2 ((Comp-compile comp) v)))]
               [ccomp ((Comp-crel comp) c1 c2)]
-              [equality (assert ((Comp-brel comp) b1 b2))]
+              [equality (with-asserts-only (assert ((Comp-brel comp) b1 b2)))]
               [sol (synthesize #:forall c1 #:assume ccomp #:guarantee (assert (!(apply && equality))))])
          (if (unsat? sol)
-             ('())
+             '()
              (list c2 sol)))]
              ;(let ([instance (concretize c2 sol)])
               ; (list instance sol))))]

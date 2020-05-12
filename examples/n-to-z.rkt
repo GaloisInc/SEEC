@@ -102,7 +102,7 @@
   (eval-expn (lang (Envn ,e empty)) c))
 
 
-#;(define-Lang EXPN lang expn 4 (lambda (e) #t) envn 4 (lambda (e) #t) cons eval-expn-pair)
+;(define-Lang EXPN lang expn 4 (lambda (e) #t) envn 4 (lambda (e) #t) cons eval-expn-pair)
 (define-Lang EXPN lang expn 4 envn 4 cons eval-expn-pair)
 
 #||||||||||||||||||||||||||||#
@@ -253,7 +253,7 @@
   (lang (+ (Sz (Valz 2)) (Valz 3))))
 
 
-(displayln "Trying find-exploit on N-TO-Z and expn1")
+(displayln "Trying find-simple-exploit on N-TO-Z and expn1")
 
 (define res (find-exploit N-TO-Z test-expn1))
 (displayln res)
@@ -296,7 +296,7 @@
 (displayln "Found a source expression (Expn) which fails to evaluate a well-scoped context")
 (displayln c)
 (displayln e)
-|#
+li|#
 
 #|
 ; Find a z* which evaluates to a result which no (bounded) expn evaluates to

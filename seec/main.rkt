@@ -69,5 +69,6 @@
          (struct-out Predsyn)
          define-Predsyn
          find-exploit
+         find-simple-exploit
          find-exploitable-component
          )

@@ -83,6 +83,7 @@
     [(set-api (select r:interaction))
      (set-api (,(abstract-select state) ,(abstract-interpret r state)))]))
 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Define an concrete implementation of the set API
 ;
@@ -170,10 +171,95 @@
        [(set-api #t) #f])]
     [_ #f]))
 
+(define (uncurry f)
+  (lambda (ab)
+    (match ab
+      [(cons a b)
+       (f a b)])))
+
+(define id
+  (lambda (a)
+    a))
+
+
+; cons in reverse order
+(define snoc
+  (lambda (a b) (cons b a)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Demonstration synthesis tasks
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(define-Lang ABSTRACT set-api interaction (lambda (e) #t) 4 vallist valid-set? 2 snoc (uncurry abstract-interpret))
+
+(define-Lang CONCRETE set-api interaction (lambda (e) #t) 4 vallist valid-set? 2 snoc (uncurry concrete-interpret))
+(define-Comp A2C ABSTRACT CONCRETE equal? equal? id)
+
+
+
+(define-Lang BUGGYCONCRETE set-api interaction (lambda (e) #t) 4 vallist valid-set? 2 snoc (uncurry buggy-concrete-interpret))
+(define-Comp A2B ABSTRACT BUGGYCONCRETE equal? equal? id)
+
+
+#| simple experiment: 
+
+   v  = trace
+   c2 = target.ctx
+   c1 = source.ctx
+   
+   b1 = abstract v c1
+   b2 = buggyconcrete (id v) c2
+
+   verify #:assume crel c1 c2
+          #:guarantee brel b1 b2
+
+
+|#
+(define trace (time (set-api interaction 6)))
+(find-simple-exploit A2B trace)
+
+
+;should be the same as this:
+#;(begin 
+  (define concrete-set
+    (time (let ([s (set-api vallist 2)])
+            (assert (valid-set? s))
+            s)))
+  (define abstract-set
+    (time (let ([s (set-api vallist 2)])
+            (assert (valid-set? s))
+            s)))
+  (define abstract (abstract-interpret trace abstract-set))
+  (define concrete (buggy-concrete-interpret trace concrete-set))
+  (define equality-assertions (with-asserts-only (time (assert (equal? abstract concrete)))))
+
+
+  (define sol
+    (time (verify #:assume (assert (equal? concrete-set abstract-set))
+                  #:guarantee (assert (apply && equality-assertions)))))
+  (if (unsat? sol)
+      (displayln "Synthesis failed")
+      (begin
+        (define trace-instance (concretize trace sol))
+        (define concrete-set-instance (concretize concrete-set sol))
+        (displayln trace-instance)
+        (displayln concrete-set-instance)
+        (printf "Abstract interpretation: ~a~n"
+                (instantiate
+                    (abstract-interpret
+                     trace-instance
+                     concrete-set-instance)))
+        (printf "Concrete interpretation: ~a~n"
+                (instantiate
+                    (buggy-concrete-interpret
+                     trace-instance
+                     concrete-set-instance))))))
+
+
+
+
+#|
+(displayln "Should be same as : ")
 (define (set-context-experiment buggy)
   (define test-interpret
     (if buggy
@@ -225,11 +311,11 @@
                      trace-instance
                      concrete-set-instance)))))
   (newline)
-  (displayln "Solving for trace with different behavior under all contexts...")
-  (define universal-sol
+  #;(displayln "Solving for trace with different behavior under all contexts...")
+  #;(define universal-sol
     (time (synthesize #:forall (cons abstract-set nondet)
                       #:guarantee (assert (! (apply && equality-assertions))))))
-  (if (unsat? universal-sol)
+  #;(if (unsat? universal-sol)
       (displayln "Synthesis failed")
       (begin
         (displayln "Found initial set with divergent traces...")
@@ -262,3 +348,4 @@
 
 (displayln "Experiment with correct concrete interpretation...")
 (set-context-experiment #f)
+|#
