@@ -1,6 +1,6 @@
 #lang rosette/safe
 
-(provide define-language
+(provide define-grammar
          syntax-match?
          enumerate
          )
@@ -40,7 +40,7 @@
                               )
                      )))
 
-(struct language (nonterminals
+(struct grammar (nonterminals
                   terminals
                   productions
                   max-width))
@@ -59,8 +59,8 @@
 (define builtin-nonterminal-functions '(list))
 (define builtins (append builtin-nonterminals builtin-nonterminal-functions))
 
-; OSTODO: properly populate the language for polymorphic types
-(define (make-language rules)
+; OSTODO: properly populate the grammar for polymorphic types
+(define (make-grammar rules)
   (define-values (nonterminals metavars productions prod-max-width)
     (unsafe:for/fold ([nonterminals (unsafe:set)]
                       [metavars     (unsafe:list->set builtins)]
@@ -76,7 +76,7 @@
   (let* ([terminals (unsafe:set-subtract metavars nonterminals)])
     (unsafe:for ([mv (unsafe:in-set metavars)])
                 (register-enum mv))
-    (language (unsafe:set->list nonterminals)
+    (grammar (unsafe:set->list nonterminals)
               (unsafe:set->list terminals)
               (unsafe:hash->list productions)
               prod-max-width)))
@@ -103,7 +103,7 @@
     (unsafe:string->symbol a)))
 
 
-; return #t if if `pattern` is a type compatible with the language `lang` and
+; return #t if if `pattern` is a type compatible with the grammar `lang` and
 ; `tree` is a data structure of that type.
 (define (syntax-match? lang pattern tree)
   #;(printf "(syntax-match? ~a ~a ~a)~n" lang pattern tree)
@@ -148,11 +148,11 @@
          (bonsai-string? tree)]
         [(equal? 'boolean pattern)
          (bonsai-boolean? tree)]
-        [(member pattern (language-nonterminals lang))
-         (let ([productions (cdr (assoc pattern (language-productions lang)))])
+        [(member pattern (grammar-nonterminals lang))
+         (let ([productions (cdr (assoc pattern (grammar-productions lang)))])
            #;(printf "productions: ~a~n" productions)
            (ormap (λ (pat) (syntax-match? lang pat tree)) productions))]
-        [(member pattern (language-terminals lang))
+        [(member pattern (grammar-terminals lang))
          (and (bonsai-terminal? tree)
               (equal? (symbol->enum pattern) (bonsai-terminal-value tree)))]
         [else #f])))
@@ -212,7 +212,7 @@
         [else #f]
         ))
 
-  ; Terms in the language `lang-name` with terminals drawn from the set
+  ; Terms in the grammar `lang-name` with terminals drawn from the set
   ; `terminals`.
   (define-syntax-class (term lang-name terminals)
     #:attributes (match-pattern stx-pattern depth)
@@ -393,7 +393,7 @@
 
 
 
-(define-syntax (define-language stx)
+(define-syntax (define-grammar stx)
   (syntax-parse stx
     #:datum-literals (::=)
     [(_ name:id (nt:nonterminal ::= prod:production ...) ...)
@@ -406,7 +406,7 @@
                      [ntstx       #`(apply set '(#,@(set->list nts)))])
          #`(begin
              (define lang-struct
-               (make-language
+               (make-grammar
                 '#,prods))
 
              (define-match-expander name
@@ -459,7 +459,7 @@
   #;(printf "make-term! ~a ~n" stx)
   (syntax-parse stx
     [(_ lang:id pat depth:expr)
-     #`(let ([tree (make-tree! depth (language-max-width lang))])
+     #`(let ([tree (make-tree! depth (grammar-max-width lang))])
          (assert
           (match tree
             [(lang pat) #t]
@@ -493,7 +493,7 @@
            seec/private/bonsai2)
   (require (for-syntax syntax/parse))
 
-  (define-language test-language
+  (define-grammar test-grammar
     (base     ::= integer natural boolean)
     (op       ::= + - and or)
     (exp      ::= base (op exp exp))
@@ -502,14 +502,14 @@
   (test-case
       "Concrete term constructors"
     (check-equal? (bonsai-terminal (symbol->enum '+))
-                  (test-language +))
+                  (test-grammar +))
     (check-equal? (bonsai-terminal (symbol->enum 'and))
-                  (test-language and))
+                  (test-grammar and))
     (check-equal? (bonsai-list
                    (list (bonsai-terminal (symbol->enum '+))
                          (bonsai-integer 42)
                          (bonsai-boolean #f)))
-                  (test-language (+ 42 #f))))
+                  (test-grammar (+ 42 #f))))
 
   (define-syntax (match-check stx)
     (syntax-parse stx
@@ -522,49 +522,49 @@
   (test-case
       "Match expanders"
     (match-check
-     (test-language 5)
-     (test-language i:integer)
+     (test-grammar 5)
+     (test-grammar i:integer)
      (eq? 5 (bonsai-integer-value i)))
     (match-check
-     (test-language -5)
-     (test-language i:integer)
+     (test-grammar -5)
+     (test-grammar i:integer)
      (eq? -5 (bonsai-integer-value i)))
     (match-check
-     (test-language 5)
-     (test-language n:natural)
+     (test-grammar 5)
+     (test-grammar n:natural)
      (eq? 5 (bonsai-integer-value n)))
     (match-check
-     (test-language #t)
-     (test-language b:boolean)
+     (test-grammar #t)
+     (test-grammar b:boolean)
      (bonsai-boolean-value b))
     (match-check
-     (test-language #f)
-     (test-language b:boolean)
+     (test-grammar #f)
+     (test-grammar b:boolean)
      (not (bonsai-boolean-value b)))
     (match-check
-     (test-language (+ 5 #f))
-     (test-language exp)
+     (test-grammar (+ 5 #f))
+     (test-grammar exp)
      #t)
     (match-check
-     (test-language (+ 5 #f))
-     (test-language (op exp exp))
+     (test-grammar (+ 5 #f))
+     (test-grammar (op exp exp))
      #t)
     (match-check
-     (test-language (+ 5 #f))
-     (test-language (+ natural boolean))
+     (test-grammar (+ 5 #f))
+     (test-grammar (+ natural boolean))
      #t)
     (match-check
-     (test-language (cons 5 (cons 5 (cons 5 nil))))
-     (test-language (cons natural list<natural>))
+     (test-grammar (cons 5 (cons 5 (cons 5 nil))))
+     (test-grammar (cons natural list<natural>))
      #t))
 
   (test-case
       "Symbolic term constructors"
     (match-check
-     (test-language integer 1)
-     (test-language i:integer)
+     (test-grammar integer 1)
+     (test-grammar i:integer)
      (bonsai-integer? i))
     (match-check
-     (test-language integer 1)
-     (test-language n:natural)
+     (test-grammar integer 1)
+     (test-grammar n:natural)
      (>= (bonsai-integer-value n) 0))))

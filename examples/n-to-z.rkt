@@ -6,7 +6,7 @@
     ))
 
 
-(define-language lang
+(define-grammar lang
   (expn  ::= (Var name) (Valn natural) (Sn expn) (binop expn expn))
   (expz  ::= (Var name) (Valz integer) (Sz expz) (Pz expz) (binop expz expz))
   (binop ::= + *)
@@ -117,9 +117,11 @@
 (define (apply-ctxn c e)
   (eval-expn (lang (Envn ,e empty)) c))
 
+(define (link-ctxn c e)
+  (cons (lang (Envn ,e empty)) c))
 
-;(define-Lang EXPN lang expn 4 (lambda (e) #t) envn 4 (lambda (e) #t) cons eval-expn-pair)
-(define-Lang EXPN lang expn (lambda (v) (well-scopedn? (lang empty) v)) 4 expn ctx-expn 4 apply-ctxn id)
+
+(define-language EXPN lang expn (lambda (v) (well-scopedn? (lang empty) v)) 4 expn ctx-expn 4 link-ctxn (uncurry eval-expn))
 
 #||||||||||||||||||||||||||||#
 #| Language expZ            |#
@@ -197,16 +199,14 @@
     [(lang (Valz z:integer))
      (bonsai->number z)]))
 
-(define (eval-expz-pair ce)
-  (match ce
-    [(cons env e)
-     (eval-expz env e)]))
-
-
 (define (apply-ctxz c e)
   (eval-expz (lang (Envz ,e empty)) c))
 
-(define-Lang EXPZ lang expz (lambda (v) (well-scopedz? (lang empty) v)) 4 expz ctx-expz 4 apply-ctxz id)
+; decouple eval-expz from apply-ctxz
+(define (link-ctxz c e)
+  (cons (lang (Envz ,e empty)) c))
+
+(define-language EXPZ lang expz (lambda (v) (well-scopedz? (lang empty) v)) 4 expz ctx-expz 4 link-ctxz (uncurry eval-expz))
 
 #||||||||||||||||||||||||||||#
 #| Compilation              |#
@@ -241,7 +241,7 @@
     (equal? cnz cz)))
 
 
-(define-Comp N-TO-Z EXPN EXPZ equal? (lambda (c1 c2) #t) n-to-z)
+(define-compiler N-TO-Z EXPN EXPZ equal? (lambda (c1 c2) #t) n-to-z)
 
 
 #||||||||||||||||||||||||||||#
@@ -274,8 +274,8 @@
 ; find an expression En and context Cz s.t. Cz[n-to-z En] != Cn[En] for Cn of bounded size
 (begin
   (displayln "Trying find-exploitable-component on N-TO-Z")
-  (match (find-exploitable-component N-TO-Z)
-    [(list vars sol)
+  (print-exploitable-component (find-exploitable-component N-TO-Z)))
+    #;[(list vars sol)
      (let* ([vars* (map (lambda (var)
                           (concretize var sol)) vars)])
        (begin
@@ -286,49 +286,11 @@
          (displayln (third vars*))
          (displayln "Target behavior:")
          (displayln (fifth vars*))))]
-    [_
+    #;[_
      (displayln "Synthesis failed")]
-    ))
 
 
-  ; find an expression En and context Cz s.t. Cz[n-to-z En] != Cn[En] for Cn of bounded size
-#;(begin 
-  (displayln "Creating a symbolic expression, restricting it to closed expression and compiling it")
-  (define n* (time (lang expn 4)))
-  (void (time (well-scopedn? (lang empty) n*)))
-  (define z* (n-to-z n*))
 
-
-  (displayln "Creating symbolic contexts (expn/expz with a single hole)")
-  (define cn* (time (lang expn 4)))
-  (void (time (ctx-expn cn*)))
-  (define cz* (time (lang expz 4)))
-  (void (time (ctx-expz cz*)))
-
-  ;(displayln "Restricting target context and expression to compatible ones")
-  ;(void (time (apply-ctxz cz* z*)))
-
-  (displayln "Finding a target context and an expression s.t. no source context exhibit the same behaviors")
-  (define-values (v a) (with-asserts (time (assert (equal? (apply-ctxn cn* n*) (apply-ctxz cz* z*))))))
-  (newline)
-
-  (define sol
-    (synthesize #:forall cn*
-                #:guarantee (assert ( !( apply && a)))))
-  (define cz (concretize cz* sol))
-  (define n (concretize n* sol))
-  (define cn (concretize cn* sol))
-  (define z (time (n-to-z n)))
-
-  (displayln "Source Expression (Expn):")
-  (displayln n)
-  (displayln "Target Expression (Expz):")
-  (displayln z)
-  (displayln "Target Context:")
-  (displayln cz)
-
-  (displayln "Target Evaluation:")
-  (displayln (apply-ctxz cz z)))
 
 #||||||||||||||||||||||||||||#
 #| Synthesis                |#

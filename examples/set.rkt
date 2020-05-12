@@ -7,7 +7,7 @@
 ; Define a language of API calls for a set datastructure
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-language set-api
+(define-grammar set-api
   (value       ::= integer boolean)
   (vallist        ::= empty (value vallist))
   (method      ::= (insert integer) (remove integer) (member? integer) select)
@@ -190,53 +190,25 @@
 ; Demonstration synthesis tasks
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-Lang ABSTRACT set-api interaction (lambda (e) #t) 4 vallist valid-set? 2 snoc (uncurry abstract-interpret))
+(define-language abstract set-api interaction (lambda (e) #t) 4 vallist valid-set? 2 snoc (uncurry abstract-interpret))
 
-(define-Lang CONCRETE set-api interaction (lambda (e) #t) 4 vallist valid-set? 2 snoc (uncurry concrete-interpret))
-(define-Comp A2C ABSTRACT CONCRETE equal? equal? id)
-
-
-
-(define-Lang BUGGYCONCRETE set-api interaction (lambda (e) #t) 4 vallist valid-set? 2 snoc (uncurry buggy-concrete-interpret))
-(define-Comp A2B ABSTRACT BUGGYCONCRETE equal? equal? id)
+(define-language concrete set-api interaction (lambda (e) #t) 4 vallist valid-set? 2 snoc (uncurry concrete-interpret))
+(define-compiler abstract-to-concrete abstract concrete equal? equal? id)
 
 
-(define trace (set-api interaction 6))
-#| simple experiment: 
 
-   v  = trace
-   c2 = target.ctx
-   c1 = source.ctx
-   
-   b1 = abstract v c1
-   b2 = concrete (id v) c2
-
-   verify #:assume crel c1 c2
-          #:guarantee brel b1 b2
+(define-language buggy-concrete set-api interaction (lambda (e) #t) 4 vallist valid-set? 2 snoc (uncurry buggy-concrete-interpret))
+(define-compiler abstract-to-buggyconcrete abstract buggy-concrete equal? equal? id)
 
 
-|#
 
+(begin 
+  (displayln "Trying to find a potential exploit in abstract-to-concrete")
+  (define trace (set-api interaction 6))
+  (define exploit (find-potential-exploit abstract-to-concrete trace))
+  (print-exploitable-component (cons trace exploit)))
 
-(match (find-simple-exploit A2C trace)
-  [(list vars sol)
-   (let* ([vars* (map (lambda (var)
-                       (concretize var sol)) vars)]
-          [trace* (concretize trace sol)])
-     (begin
-       (displayln "Trace:")
-       (displayln trace*)
-       (displayln "Starting set:")
-       (displayln (first vars*))
-       (displayln "Source behavior:")
-       (displayln (third vars*))
-       (displayln "Target behavior:")
-       (displayln (fourth vars*))))]
-  [_
-   (displayln "Synthesis failed")]
-  )
-
-
+; OSTODO: (find-exploitable-component abstract-to-buggyconcrete)
 
 
 

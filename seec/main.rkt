@@ -4,7 +4,7 @@
          "private/match.rkt"
          "private/language.rkt"
          "private/string.rkt"
-         "private/dsl.rkt")
+         "private/framework.rkt")
 
 (provide (all-from-out rosette/safe)
          
@@ -59,16 +59,16 @@
          match
          match-let*
 
-         define-language
+         define-grammar
          enumerate
 
-         (struct-out Lang)
-         define-Lang
-         (struct-out Comp)
-         define-Comp
-         (struct-out Predsyn)
-         define-Predsyn
+         (struct-out language)
+         define-language
+         (struct-out compiler)
+         define-compiler
          find-exploit
-         find-simple-exploit
+         find-potential-exploit
          find-exploitable-component
+         print-exploit
+         print-exploitable-component
          )
