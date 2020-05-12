@@ -13,6 +13,7 @@
          bonsai->number
          val->number
          val->loc
+         conf->acc
          conf->mem
          lookup-offset
          vlist-length
@@ -36,15 +37,16 @@
   (fmt ::= list<fmt-elt>)
   (fmt-elt ::= string
                ; (% fmt-type) (% width fmt-type) ; always require fmt-type for now
-               (% parameter $ fmt-type) (% parameter $ width fmt-type))
-  (width ::= (* offset) natural)
+               #;(% parameter $ fmt-type)
+               (% parameter $ width fmt-type))
+  (width ::= NONE (* offset) natural)
   (parameter ::= offset)
   (offset ::= natural)
   (fmt-type ::= #;s d n)
 
   (vlist ::= list<val>)
   (mem ::= mnil (mcons ident val mem))
-  (val ::= (LOC ident) (CONST integer) ERR #;(DEREF val)) 
+  (val ::= (LOC ident) integer ERR #;(DEREF val)) 
   (ident ::= integer)
   ; a configuration consists of an accumulator and a memory value
   (config ::= (integer mem))
@@ -62,8 +64,8 @@
     ))
 (define (val->number v)
   (match v
-    [(printf-lang (CONST n:integer)) (bonsai->number n)]
-    [_ (raise-argument-error 'val->number "(printf-lang (CONST integer))" v)]
+    [(printf-lang n:integer) (bonsai->number n)]
+    [_ (raise-argument-error 'val->number "(printf-lang integer)" v)]
     ))
 (define (val->loc v)
   (match v
@@ -143,7 +145,7 @@
 ; OUTPUT: an updated configuration that assigns l the value of the accumulator.
 (define (print-n-loc conf l)
   (let* ([acc (bonsai-integer (conf->acc conf))]
-         [acc-val (printf-lang (CONST ,acc))]
+         [acc-val (printf-lang ,acc)]
          [new-mem (mem-update (conf->mem conf) l acc-val)]
          )
     (printf-lang (,acc ,new-mem))
@@ -159,7 +161,7 @@
 
 (define (interp-d-safe offset args conf)
   (match (lookup-offset (bonsai->number offset) args)
-       [(printf-lang (CONST n:integer)) (print-d-integer conf (bonsai->number n))]
+       [(printf-lang n:integer) (print-d-integer conf (bonsai->number n))]
        [_ ; if the offset does not map to a number, throw an error
         (raise-arguments-error 'interp-d-safe
                                "Offset does not map to a number in the vlist"
@@ -175,6 +177,21 @@
                                "offset" (bonsai->number offset)
                                "vlist" args)]
        ))
+
+(define (interp-ftype-safe ftype param args conf)
+  (match (cons ftype (lookup-offset (bonsai->number param) args))
+    [(cons (printf-lang d) (printf-lang n:integer))
+     (print-d-integer conf (bonsai->number n))
+     ]
+    [(cons (printf-lang n) (printf-lang (LOC l:ident)))
+     (list (string "") (print-n-loc conf l))]
+    [(cons x y) (raise-arguments-error 'interp-ftype-safe
+                                       "Offset does not map to a value of the correct type"
+                                       "fmt-type" (display ftype)
+                                       "parameter" (bonsai->number param)
+                                       "vlist" args
+                                       )]
+    ))
 
 ; ensure str-conf-pair has width at least w, and if not, pad the beginning of
 ; the string by the appropriate number of spaces on the left.
@@ -194,35 +211,19 @@
 ; OUTPUT: an outputted string and a configuration
 (define (interp-fmt-elt-safe f args conf)
   (match f
-
     [(printf-lang s:string)
-     (list s (config-add conf (string-length s)))]
+     (list (bonsai-string-value s) (config-add conf (string-length (bonsai-string-value s))))]
 
-    [(printf-lang (% offset:natural $ d))
-     (interp-d-safe offset args conf)]
-    [(printf-lang (% offset:natural $ (* o:offset) d))
+    [(printf-lang (% p:parameter $ NONE ftype:fmt-type))
+     (interp-ftype-safe ftype p args conf)]
+    [(printf-lang (% p:parameter $ w:natural ftype:fmt-type))
+     (pad-by-width (bonsai->number w) (interp-ftype-safe ftype p args conf))]
+    [(printf-lang (% p:parameter $ (* o:offset) ftype:fmt-type))
      (match (lookup-offset (bonsai->number o) args)
-       [(printf-lang (CONST w:integer))
-        (pad-by-width (bonsai->number w) (interp-d-safe offset args conf))]
+       [(printf-lang w:integer)
+        (pad-by-width (bonsai->number w) (interp-ftype-safe ftype p args conf))]
        [_ (raise-arguments-error 'interp-fmt-elt-safe
-                                 "Offset does not map to a number in the vlist"
-                                 "offset" (bonsai->number o)
-                                 "vlist" args)]
-       )]
-    [(printf-lang (% offset:natural $ w:natural d))
-     (pad-by-width (bonsai->number w) (interp-d-safe offset args conf))]
-
-    [(printf-lang (% offset:natural % n))
-     (interp-n-safe offset args conf)
-     ]
-    [(printf-lang (% offset:natural % w:natural n))
-     (pad-by-width (bonsai->number w) (interp-n-safe offset args conf))]
-    [(printf-lang (% offset:natural $ (* o:offset) n))
-     (match (lookup-offset (bonsai->number o) args)
-       [(printf-lang (CONST w:integer))
-        (pad-by-width (bonsai->number w) (interp-n-safe offset args conf))]
-       [_ (raise-arguments-error 'interp-fmt-elt-safe
-                                 "Offset does not map to a number in the vlist"
+                                 "Offset does not map to a number in the arglist"
                                  "offset" (bonsai->number o)
                                  "vlist" args)]
        )]
@@ -263,7 +264,7 @@
 
 (define (interp-d-unsafe offset args conf)
   (match (lookup-offset (bonsai->number offset) args)
-       [(printf-lang (CONST n:integer)) (print-d-integer conf (bonsai->number n))]
+       [(printf-lang n:integer) (print-d-integer conf (bonsai->number n))]
        [_ ; if the offset does not map to a number, do nothing
         (list (string "") conf)]
        ))
@@ -273,6 +274,17 @@
        [_ ; if the offset does not map to a location, do nothing
         (list (string "") conf)]
        ))
+
+
+(define (interp-ftype-unsafe ftype param args conf)
+  (match (cons ftype (lookup-offset (bonsai->number param) args))
+    [(cons (printf-lang d) (printf-lang n:integer))
+     (print-d-integer conf (bonsai->number n))
+     ]
+    [(cons (printf-lang n) (printf-lang (LOC l:ident)))
+     (list (string "") (print-n-loc conf l))]
+    [_ (list (string "") conf)]
+    ))
 
 
 
@@ -285,31 +297,16 @@
     [(printf-lang s:string)
      (list s (config-add conf (string-length s)))]
 
-    [(printf-lang (% offset:natural $ d))
-     (interp-d-unsafe offset args conf)]
-    [(printf-lang (% offset:natural $ w:natural d))
-     (pad-by-width (bonsai->number w) (interp-d-unsafe offset args conf))]
-    [(printf-lang (% offset:natural $ (* o:offset) d))
+    [(printf-lang (% p:parameter $ NONE ftype:fmt-type))
+     (interp-ftype-unsafe ftype p args conf)]
+    [(printf-lang (% p:parameter $ w:natural ftype:fmt-type))
+     (pad-by-width (bonsai->number w) (interp-ftype-unsafe ftype p args conf))]
+    [(printf-lang (% p:parameter $ (* o:offset) ftype:fmt-type))
      (match (lookup-offset (bonsai->number o) args)
-       [(printf-lang (CONST w:integer))
-        (pad-by-width (bonsai->number w) (interp-d-unsafe offset args conf))]
-       [_ (list (string "") conf)]
+       [(printf-lang w:integer)
+        (pad-by-width (bonsai->number w) (interp-ftype-unsafe ftype p args conf))]
+       [_ (list (string "") conf)] ; do nothing
        )]
-
-
-
-    [(printf-lang (% offset:natural $ n))
-     (interp-n-unsafe offset args conf)
-     ]
-    [(printf-lang (% offset:natural $ w:natural n))
-     (pad-by-width (bonsai->number w) (interp-n-unsafe offset args conf))]
-    [(printf-lang (% offset:natural $ (* o:offset) n))
-     (match (lookup-offset (bonsai->number o) args)
-       [(printf-lang (CONST w:integer))
-        (pad-by-width (bonsai->number w) (interp-n-unsafe offset args conf))]
-       [_ (list (string "") conf)]
-       )]
-
 
     [_ (raise-argument-error 'interp-fmt-elt-unsafe "(printf-lang fmt-elt)" f)]
     ))
@@ -333,7 +330,9 @@
 
 (define (fmt? f)
   (match f
-    [(printf-lang fmt) #t]
+    #;[(printf-lang fmt) #t]
+    [(printf-lang nil) #t]
+    [(printf-lang (cons f0:fmt-elt f+:fmt)) #t]
     [_ #f]))
 
 ;(fmt? example-fmt)
@@ -352,13 +351,13 @@
   (match v
     [(printf-lang val) #t]
     #;[(printf-lang (LOC ident)) #t]
-    #;[(printf-lang (CONST integer)) #t]
+    #;[(printf-lang integer) #t]
     #;[(printf-lang ERR) #t]
     [_ #f]
     ))
 (define (const? v)
   (match v
-    [(printf-lang (CONST integer)) #t]
+    [(printf-lang integer) #t]
     [_ #f]
     ))
 (define (loc? v)
@@ -388,6 +387,7 @@
            ))))
 (define (width-consistent-with-vlist w args)
   (match w
+    [(printf-lang NONE) #t]
     [(printf-lang natural) #t]
     [(printf-lang (* o:offset))
      (and (< (bonsai->number o) (bonsai-ll-length args))
@@ -400,8 +400,6 @@
     (match f0
       [(printf-lang string) #t]
 
-      [(printf-lang (% p:parameter $ ftype:fmt-type))
-       (parameter-consistent-with-vlist p ftype args)]
       [(printf-lang (% p:parameter $ w:width ftype:fmt-type))
        (and (parameter-consistent-with-vlist p ftype args)
             (width-consistent-with-vlist w args))]

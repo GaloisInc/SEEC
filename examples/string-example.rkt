@@ -18,7 +18,7 @@
 (displayln hi-desired)
 (displayln c-desired)
 (match hi-desired
-  [(constants (STR s:string)) (displayln s)]
+  [(constants (STR s:string)) (print-string (bonsai-string-value s))]
   )
 (match c-desired
   [(constants (CHAR c:char)) (displayln c)]
