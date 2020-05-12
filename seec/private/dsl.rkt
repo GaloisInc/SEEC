@@ -177,7 +177,7 @@ Question: this doesn't consider nondet. Could add nondetas part of context, or h
               [b2 ((Lang-evaluate target) ((Lang-link target) c2 ((Comp-compile comp) v)))]
               [ccomp ((Comp-crel comp) c1 c2)]
               [equality (with-asserts-only (assert ((Comp-brel comp) b1 b2)))]
-              [sol (verify #:assume ccomp #:guarantee (assert !(apply && equality)))])
+              [sol (verify #:assume (assert ccomp) #:guarantee (assert !(apply && equality)))])
          (if (unsat? sol)
              '()
              (list c2 sol)))]
@@ -205,7 +205,7 @@ Question: this doesn't consider nondet. Could add nondetas part of context, or h
               [b2 ((Lang-evaluate target) ((Lang-link target) c2 ((Comp-compile comp) v)))]
               [ccomp ((Comp-crel comp) c1 c2)]
               [equality (with-asserts-only (assert ((Comp-brel comp) b1 b2)))]
-              [sol (synthesize #:forall c1 #:assume ccomp #:guarantee (assert (!(apply && equality))))])
+              [sol (synthesize #:forall c1 #:assume (assert ccomp) #:guarantee (assert (!(apply && equality))))])
          (if (unsat? sol)
              '()
              (list c2 sol)))]

@@ -201,6 +201,7 @@
 (define-Comp A2B ABSTRACT BUGGYCONCRETE equal? equal? id)
 
 
+(define trace (set-api interaction 6))
 #| simple experiment: 
 
    v  = trace
@@ -215,8 +216,34 @@
 
 
 |#
-(define trace (time (set-api interaction 6)))
-(find-simple-exploit A2B trace)
+
+
+;(find-simple-exploit A2B trace)
+
+
+(let* ([comp A2B]
+       [c1 (let ([s (set-api vallist 2)])
+             (assert (valid-set? s))
+             s)]
+       [c2 (let ([s (set-api vallist 2)])
+             (assert (valid-set? s))
+             s)]         
+       [b1 (abstract-interpret trace c1)]
+       [b2 (buggy-concrete-interpret trace c2)]
+       [equality (with-asserts-only (assert (equal? b1 b2)))]
+       [sol (verify #:assume (assert (equal? c1 c2))
+                    #:guarantee (assert !(apply && equality)))])
+  (if (unsat? sol)
+      (displayln "Synthesis failed")
+      (begin
+        (displayln "Success!!!")
+        (list c2 sol))))
+             ;(let ([instance (concretize c2 sol)])
+              ; (list instance sol))))]
+
+
+
+
 
 
 ;should be the same as this:
