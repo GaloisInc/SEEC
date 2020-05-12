@@ -23,6 +23,22 @@
    (* n1 n2)]))
 
 
+#| |#
+(define (uncurry f)
+  (lambda (ab)
+    (match ab
+      [(cons a b)
+       (f a b)])))
+
+(define id
+  (lambda (a)
+    a))
+
+
+; cons in reverse order
+(define snoc
+  (lambda (a b) (cons b a)))
+
 #||||||||||||||||||||||||||||#
 #| Language expN            |#
 #||||||||||||||||||||||||||||#
@@ -103,7 +119,7 @@
 
 
 ;(define-Lang EXPN lang expn 4 (lambda (e) #t) envn 4 (lambda (e) #t) cons eval-expn-pair)
-(define-Lang EXPN lang expn 4 envn 4 cons eval-expn-pair)
+(define-Lang EXPN lang expn (lambda (v) (well-scopedn? (lang empty) v)) 4 expn ctx-expn 4 apply-ctxn id)
 
 #||||||||||||||||||||||||||||#
 #| Language expZ            |#
@@ -190,7 +206,7 @@
 (define (apply-ctxz c e)
   (eval-expz (lang (Envz ,e empty)) c))
 
-(define-Lang EXPZ lang expz 4 envn 4 cons eval-expz-pair)
+(define-Lang EXPZ lang expz (lambda (v) (well-scopedz? (lang empty) v)) 4 expz ctx-expz 4 apply-ctxz id)
 
 #||||||||||||||||||||||||||||#
 #| Compilation              |#
@@ -219,11 +235,13 @@
                   [env1z (n-to-z-env env1)])
              (lang (,e1z ,env1z)))]))
 
+
 (define (crel cn cz)
   (let ([cnz (n-to-z-env cn)])
     (equal? cnz cz)))
 
-(define-Comp N-TO-Z EXPN EXPZ equal? crel n-to-z)
+
+(define-Comp N-TO-Z EXPN EXPZ equal? (lambda (c1 c2) #t) n-to-z)
 
 
 #||||||||||||||||||||||||||||#
@@ -232,7 +250,7 @@
 
 
 (define test-expn1
-  (lang (Var 0)))
+  (lang (Valn 0)))
 (define test-expn2
   (lang (+ (Sn (Valn 2)) (Var 0))))
 (define test-expn3
@@ -253,14 +271,64 @@
   (lang (+ (Sz (Valz 2)) (Valz 3))))
 
 
-(displayln "Trying find-simple-exploit on N-TO-Z and expn1")
+; find an expression En and context Cz s.t. Cz[n-to-z En] != Cn[En] for Cn of bounded size
+(begin
+  (displayln "Trying find-exploitable-component on N-TO-Z")
+  (match (find-exploitable-component N-TO-Z)
+    [(list vars sol)
+     (let* ([vars* (map (lambda (var)
+                          (concretize var sol)) vars)])
+       (begin
+         (displayln "Source, target exp:")
+         (displayln (first vars*))
+         (displayln (n-to-z (first vars*)))
+         (displayln "Target context:")
+         (displayln (third vars*))
+         (displayln "Target behavior:")
+         (displayln (fifth vars*))))]
+    [_
+     (displayln "Synthesis failed")]
+    ))
 
-(define res (find-exploit N-TO-Z test-expn1))
-(displayln res)
-;(displayln (apply-ctxz (n-to-z test-expn2) (n-to-z test-expn3)))
-;(displayln (apply-ctxz test-expz2 test-expz3))
-;(displayln (apply-ctxz (n-to-z test-expn2) (n-to-z test-expn3)))
 
+  ; find an expression En and context Cz s.t. Cz[n-to-z En] != Cn[En] for Cn of bounded size
+#;(begin 
+  (displayln "Creating a symbolic expression, restricting it to closed expression and compiling it")
+  (define n* (time (lang expn 4)))
+  (void (time (well-scopedn? (lang empty) n*)))
+  (define z* (n-to-z n*))
+
+
+  (displayln "Creating symbolic contexts (expn/expz with a single hole)")
+  (define cn* (time (lang expn 4)))
+  (void (time (ctx-expn cn*)))
+  (define cz* (time (lang expz 4)))
+  (void (time (ctx-expz cz*)))
+
+  ;(displayln "Restricting target context and expression to compatible ones")
+  ;(void (time (apply-ctxz cz* z*)))
+
+  (displayln "Finding a target context and an expression s.t. no source context exhibit the same behaviors")
+  (define-values (v a) (with-asserts (time (assert (equal? (apply-ctxn cn* n*) (apply-ctxz cz* z*))))))
+  (newline)
+
+  (define sol
+    (synthesize #:forall cn*
+                #:guarantee (assert ( !( apply && a)))))
+  (define cz (concretize cz* sol))
+  (define n (concretize n* sol))
+  (define cn (concretize cn* sol))
+  (define z (time (n-to-z n)))
+
+  (displayln "Source Expression (Expn):")
+  (displayln n)
+  (displayln "Target Expression (Expz):")
+  (displayln z)
+  (displayln "Target Context:")
+  (displayln cz)
+
+  (displayln "Target Evaluation:")
+  (displayln (apply-ctxz cz z)))
 
 #||||||||||||||||||||||||||||#
 #| Synthesis                |#

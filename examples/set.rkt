@@ -209,7 +209,7 @@
    c1 = source.ctx
    
    b1 = abstract v c1
-   b2 = buggyconcrete (id v) c2
+   b2 = concrete (id v) c2
 
    verify #:assume crel c1 c2
           #:guarantee brel b1 b2
@@ -218,75 +218,33 @@
 |#
 
 
-;(find-simple-exploit A2B trace)
-
-
-(let* ([comp A2B]
-       [c1 (let ([s (set-api vallist 2)])
-             (assert (valid-set? s))
-             s)]
-       [c2 (let ([s (set-api vallist 2)])
-             (assert (valid-set? s))
-             s)]         
-       [b1 (abstract-interpret trace c1)]
-       [b2 (buggy-concrete-interpret trace c2)]
-       [equality (with-asserts-only (assert (equal? b1 b2)))]
-       [sol (verify #:assume (assert (equal? c1 c2))
-                    #:guarantee (assert !(apply && equality)))])
-  (if (unsat? sol)
-      (displayln "Synthesis failed")
-      (begin
-        (displayln "Success!!!")
-        (list c2 sol))))
-             ;(let ([instance (concretize c2 sol)])
-              ; (list instance sol))))]
+(match (find-simple-exploit A2C trace)
+  [(list vars sol)
+   (let* ([vars* (map (lambda (var)
+                       (concretize var sol)) vars)]
+          [trace* (concretize trace sol)])
+     (begin
+       (displayln "Trace:")
+       (displayln trace*)
+       (displayln "Starting set:")
+       (displayln (first vars*))
+       (displayln "Source behavior:")
+       (displayln (third vars*))
+       (displayln "Target behavior:")
+       (displayln (fourth vars*))))]
+  [_
+   (displayln "Synthesis failed")]
+  )
 
 
 
 
-
-
-;should be the same as this:
-#;(begin 
-  (define concrete-set
-    (time (let ([s (set-api vallist 2)])
-            (assert (valid-set? s))
-            s)))
-  (define abstract-set
-    (time (let ([s (set-api vallist 2)])
-            (assert (valid-set? s))
-            s)))
-  (define abstract (abstract-interpret trace abstract-set))
-  (define concrete (buggy-concrete-interpret trace concrete-set))
-  (define equality-assertions (with-asserts-only (time (assert (equal? abstract concrete)))))
-
-
-  (define sol
-    (time (verify #:assume (assert (equal? concrete-set abstract-set))
-                  #:guarantee (assert (apply && equality-assertions)))))
-  (if (unsat? sol)
-      (displayln "Synthesis failed")
-      (begin
-        (define trace-instance (concretize trace sol))
-        (define concrete-set-instance (concretize concrete-set sol))
-        (displayln trace-instance)
-        (displayln concrete-set-instance)
-        (printf "Abstract interpretation: ~a~n"
-                (instantiate
-                    (abstract-interpret
-                     trace-instance
-                     concrete-set-instance)))
-        (printf "Concrete interpretation: ~a~n"
-                (instantiate
-                    (buggy-concrete-interpret
-                     trace-instance
-                     concrete-set-instance))))))
 
 
 
 
 #|
-(displayln "Should be same as : ")
+
 (define (set-context-experiment buggy)
   (define test-interpret
     (if buggy

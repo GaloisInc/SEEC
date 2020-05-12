@@ -9,6 +9,7 @@
          find-exploit
          find-exploitable-component)
 (require (for-syntax syntax/parse))
+(require racket/match)
 
 #|
 
@@ -177,12 +178,10 @@ Question: this doesn't consider nondet. Could add nondetas part of context, or h
               [b2 ((Lang-evaluate target) ((Lang-link target) c2 ((Comp-compile comp) v)))]
               [ccomp ((Comp-crel comp) c1 c2)]
               [equality (with-asserts-only (assert ((Comp-brel comp) b1 b2)))]
-              [sol (verify #:assume (assert ccomp) #:guarantee (assert !(apply && equality)))])
+              [sol (verify #:assume (assert ccomp) #:guarantee (assert (apply && equality)))])
          (if (unsat? sol)
              '()
-             (list c2 sol)))]
-             ;(let ([instance (concretize c2 sol)])
-              ; (list instance sol))))]
+             (list (list c1 c2 b1 b2) sol)))]
      ))
 
 
@@ -208,9 +207,7 @@ Question: this doesn't consider nondet. Could add nondetas part of context, or h
               [sol (synthesize #:forall c1 #:assume (assert ccomp) #:guarantee (assert (!(apply && equality))))])
          (if (unsat? sol)
              '()
-             (list c2 sol)))]
-             ;(let ([instance (concretize c2 sol)])
-              ; (list instance sol))))]
+             (list (list c1 c2 b1 b2) sol)))]
      ))
 
 
@@ -225,9 +222,8 @@ Question: this doesn't consider nondet. Could add nondetas part of context, or h
      #`(let* ([v (make-symbolic-var (Lang-exp (Comp-source comp)))]
               [exploit (find-exploit comp v)])           
          (match exploit
-           [(list c2 sol)
-            (define instance (concretize v sol)
-              (list v c2 sol))]
+           [(list (list c1 c2 b1 b2) sol)
+              (list (list v c1 c2 b1 b2) sol)]
            [_ '()]))]))
                    
 
