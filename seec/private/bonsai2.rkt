@@ -42,6 +42,7 @@
          (only-in racket/base
                   make-parameter
                   parameterize
+                  write-string
                   values))
 (require "string.rkt"
          "match.rkt")
@@ -51,8 +52,8 @@
 (define (bonsai-write b port mode)
   (case mode
     [(#f) (bonsai-display b (λ (v) (display v port)))]
-    [(#t) (bonsai-print b (λ (v) (display v port)))]
-    [else (bonsai-print b (λ (v) (display v port)))]))
+    [(#t) (bonsai-print b (λ (v) (display v port)) (lambda (v) (write v port)))]
+    [else (bonsai-print b (λ (v) (display v port)) (lambda (v) (print v port)))]))
 
 (define (bonsai-list-equal l r recur)
   (let ([ll (length (bonsai-list-nodes l))]
@@ -123,39 +124,42 @@
      (out "*null*")]
     [(bonsai-list? b)
      (out "(")
-     (let ([nodes (bonsai-list-nodes b)])
+     (let ([nodes (filter (lambda (n) (not (bonsai-null? n))) (bonsai-list-nodes b))])
        (unless (empty? nodes)
          (out (first nodes))
          (map (λ (n) (out " ") (out n)) (rest nodes))))
      (out ")")]))
 
-(define (bonsai-print b out)
+(define (bonsai-print b out recur)
   (cond
     [(bonsai-terminal? b)
-     (out "(bonsai-terminal (")
-     (out (bonsai-terminal-value b))
-     (out "))")]
+     (out "(bonsai-terminal ")
+     (recur (bonsai-terminal-value b))
+     (out ")")]
     [(bonsai-integer? b)
-     (out "(bonsai-integer (")
-     (out (bonsai-integer-value b))
-     (out "))")]
+     (out "(bonsai-integer ")
+     (recur (bonsai-integer-value b))
+     (out ")")]
     [(bonsai-char? b)
-     (out "(bonsai-char (")
-     (out (print-char (bonsai-char-value b)))
-     (out "))")]
+     (out "(bonsai-char ")
+     (recur (bonsai-char-value b))
+     (out ")")]
     [(bonsai-string? b)
-     (out "(bonsai-string (")
-     (out (print-string (bonsai-string-value b)))
-     (out "))")]
+     (out "(bonsai-string ")
+     (recur (bonsai-string-value b))
+     (out ")")]
     [(bonsai-boolean? b)
-     (out "(bonsai-boolean (")
-     (out (bonsai-boolean-value b))
-     (out "))")]
+     (out "(bonsai-boolean ")
+     (recur (bonsai-boolean-value b))
+     (out ")")]
     [(bonsai-null? b)
      (out "(bonsai-null)")]
     [(bonsai-list? b)
-     (out "(bonsai-list (")
-     (map out (add-between (bonsai-list-nodes b) " "))
+     (out "(bonsai-list (list ")
+     (let ([nodes (bonsai-list-nodes b)])
+       (unless (empty? nodes)
+         (recur (first nodes))
+         (map (λ (n) (out " ") (recur n)) (rest nodes))))
      (out "))")]))
 
 (define (bonsai-tree? b)
