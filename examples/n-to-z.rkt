@@ -121,7 +121,12 @@
   (cons (lang (Envn ,e empty)) c))
 
 
-(define-language EXPN lang expn (lambda (v) (well-scopedn? (lang empty) v)) 4 expn ctx-expn 4 link-ctxn (uncurry eval-expn))
+(define-language EXPN
+  #:grammar lang
+  #:expression expn #:size 4 #:where (lambda (v) (well-scopedn? (lang empty) v))
+  #:context    expn #:size 4 #:where ctx-expn
+  #:link link-ctxn
+  #:evaluate (uncurry eval-expn))
 
 #||||||||||||||||||||||||||||#
 #| Language expZ            |#
@@ -206,7 +211,12 @@
 (define (link-ctxz c e)
   (cons (lang (Envz ,e empty)) c))
 
-(define-language EXPZ lang expz (lambda (v) (well-scopedz? (lang empty) v)) 4 expz ctx-expz 4 link-ctxz (uncurry eval-expz))
+(define-language EXPZ
+  #:grammar lang
+  #:expression expz #:size 4 #:where (lambda (v) (well-scopedz? (lang empty) v))
+  #:context    expz #:size 4 #:where ctx-expz
+  #:link link-ctxz
+  #:evaluate (uncurry eval-expz))
 
 #||||||||||||||||||||||||||||#
 #| Compilation              |#
@@ -241,7 +251,12 @@
     (equal? cnz cz)))
 
 
-(define-compiler N-TO-Z EXPN EXPZ equal? (lambda (c1 c2) #t) n-to-z)
+(define-compiler N-TO-Z
+  #:source EXPN
+  #:target EXPZ
+  #:behavior-relation equal?
+  #:context-relation (lambda (c1 c2) #t)
+  #:compile n-to-z)
 
 
 #||||||||||||||||||||||||||||#
