@@ -200,7 +200,7 @@
 (define-language concrete
   #:grammar set-api
   #:expression interaction #:size 4
-  #:context    vallist    #:size 2 #:where valid-set?
+  #:context    vallist     #:size 2 #:where valid-set?
   #:link snoc
   #:evaluate (uncurry concrete-interpret))
 

@@ -93,7 +93,12 @@ TODO: create more macros:
 
 (define-syntax (define-compiler stx)
   (syntax-parse stx
-    [(_ name #:source source #:target target #:behavior-relation brel #:context-relation crel #:compile compile)
+    [(_ name
+        #:source source
+        #:target target
+        #:behavior-relation brel
+        #:context-relation crel
+        #:compile compile)
      #`(define name (compiler source target brel crel compile))]))
 
 ; Question: this definition of a compiler doesn't consider
