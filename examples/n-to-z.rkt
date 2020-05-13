@@ -273,8 +273,8 @@
 
 ; find an expression En and context Cz s.t. Cz[n-to-z En] != Cn[En] for Cn of bounded size
 (begin
-  (displayln "Trying find-exploitable-component on N-TO-Z")
-  (print-exploitable-component (find-exploitable-component N-TO-Z)))
+  (displayln "Trying find-weird-component on N-TO-Z")
+  (display-witness (time (find-weird-component N-TO-Z))))
     #;[(list vars sol)
      (let* ([vars* (map (lambda (var)
                           (concretize var sol)) vars)])

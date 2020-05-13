@@ -62,13 +62,4 @@
          define-grammar
          enumerate
 
-         (struct-out language)
-         define-language
-         (struct-out compiler)
-         define-compiler
-         find-exploit
-         find-potential-exploit
-         find-exploitable-component
-         print-exploit
-         print-exploitable-component
-         )
+         (all-from-out "private/framework.rkt"))

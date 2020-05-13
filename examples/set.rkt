@@ -190,23 +190,46 @@
 ; Demonstration synthesis tasks
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-language abstract set-api interaction (lambda (e) #t) 4 vallist valid-set? 2 snoc (uncurry abstract-interpret))
+(define-language abstract
+  #:grammar set-api
+  #:expression interaction #:size 4
+  #:context    vallist     #:size 2 #:where valid-set?
+  #:link snoc
+  #:evaluate (uncurry abstract-interpret))
 
-(define-language concrete set-api interaction (lambda (e) #t) 4 vallist valid-set? 2 snoc (uncurry concrete-interpret))
-(define-compiler abstract-to-concrete abstract concrete equal? equal? id)
+(define-language concrete
+  #:grammar set-api
+  #:expression interaction #:size 4
+  #:context    vallist    #:size 2 #:where valid-set?
+  #:link snoc
+  #:evaluate (uncurry concrete-interpret))
 
+(define-compiler abstract-to-concrete
+  #:source abstract
+  #:target concrete
+  #:behavior-relation equal?
+  #:context-relation equal?
+  #:compile id)
 
+(define-language buggy-concrete
+  #:grammar set-api
+  #:expression interaction #:size 4
+  #:context    vallist     #:size 2 #:where valid-set?
+  #:link snoc
+  #:evaluate (uncurry buggy-concrete-interpret))
 
-(define-language buggy-concrete set-api interaction (lambda (e) #t) 4 vallist valid-set? 2 snoc (uncurry buggy-concrete-interpret))
-(define-compiler abstract-to-buggyconcrete abstract buggy-concrete equal? equal? id)
+(define-compiler abstract-to-buggyconcrete
+  #:source abstract
+  #:target buggy-concrete
+  #:behavior-relation equal?
+  #:context-relation equal?
+  #:compile id)
 
-
-
-(begin 
-  (displayln "Trying to find a potential exploit in abstract-to-concrete")
+(begin
+  (displayln "Trying to find a trace with different behavior under compilation")
   (define trace (set-api interaction 6))
-  (define exploit (find-potential-exploit abstract-to-concrete trace))
-  (print-exploitable-component (cons trace exploit)))
+  (define witness (find-changed-behavior abstract-to-concrete trace))
+  (display-witness witness))
 
 ; OSTODO: (find-exploitable-component abstract-to-buggyconcrete)
 

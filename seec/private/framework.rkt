@@ -1,16 +1,18 @@
 #lang rosette/safe
+
 (provide define-language
          define-compiler
          (struct-out language)
          (struct-out compiler)
-         find-potential-exploit
-         find-exploit
-         find-exploitable-component
-         print-exploit
-         print-exploitable-component)
-(require (for-syntax syntax/parse))
-(require racket/match)
-(require "bonsai2.rkt")
+         find-changed-behavior
+         find-weird-computation
+         find-weird-component
+         (struct-out witness)
+         concretize-witness
+         display-witness)
+
+(require (for-syntax syntax/parse)
+         "bonsai2.rkt")
 
 #|
 
@@ -22,60 +24,65 @@
     In addition to the source and a target language structures,
     it contains trusted relations over behaviors and contexts and
     and a compilation function
-          
+
 
 
 TODO: deal with nondet
 TODO: create more macros:
    e.g. set e.g. 1 where verify is used instead of synthesize
    e.g. n-to-z style where C2 is computed from C1
-   
 
 |#
 
-
-
 ; Predicated syntactic class
-; For the moment, we decouple pred (symbolic restrictions) from gen (syntactic generation)
-(struct predsyn (gen; () -> bonsai-tree 
-                 pred ; name -> bool - nothing
-                 ))
-
+; For the moment, we decouple pred (symbolic restrictions) from gen
+; (syntactic generation)
+;   generator : () -> bonsai-tree
+;   predicate : bonsai-tree -> bool
+(struct predsyn (generator predicate))
 
 (define-syntax (define-predsyn stx)
   (syntax-parse stx
     [(_ grammar pat pred bound)
-        #`(predsyn (lambda ()
-                       (grammar pat bound)) pred)]
-    ))
+     #`(predsyn (thunk (grammar pat bound)) pred)]))
 
 (define (make-symbolic-var ps)
-  (let ([s ((predsyn-gen ps))])
-    (assert ((predsyn-pred ps) s))
+  (let ([s ((predsyn-generator ps))])
+    (assert ((predsyn-predicate ps) s))
     s))
 
+; A language
+; expression : predsyn
+; context : predsyn
+; link : ctxt -> expr -> program
+; evaluate : program -> behavior
+(struct language (expression context link evaluate))
 
+(begin-for-syntax
+  (define-splicing-syntax-class predsyn
+    (pattern (~seq nt:id #:size n:expr)
+             #:with gen #'nt
+             #:with pred #'(lambda (t) #t)
+             #:with bound #'n)
+    (pattern (~seq nt:id #:size n:expr #:where p:expr)
+             #:with gen #'nt
+             #:with pred #'p
+             #:with bound #'n)))
 
+(define-syntax (define-language stx)
+  (syntax-parse stx
+    [(_ name
+        #:grammar    grammar
+        #:expression expr:predsyn
+        #:context    ctxt:predsyn
+        #:link       link
+        #:evaluate   eval)
+     #'(define name
+         (let* ([predexp (define-predsyn grammar expr.gen expr.pred expr.bound)]
+                [predctx (define-predsyn grammar ctxt.gen ctxt.pred ctxt.bound)])
+           (language predexp predctx link eval)))]))
 
-#| example
-(make-predsyn exp 'interaction (lambda (e) #t))
-(make-predsyn set 'list valid-set?)
-|#
-
-
-; A language 
-(struct language (exp ; predsyn
-              ctx   ; predsyn
-              ;behavior   ; nothing
-              ;program    ; nothing
-              link       ; context -> expression -> program
-              evaluate)) ; program -> behavior
-#;(define-for-syntax (make-language name grammar exp vexp bexp ctx vctx bctx link eval)
-  #`(define #,name
-    (let* ([predexp (define-Predsyn #,grammar '#,exp '#,vexp #,bexp)]
-           [predctx (define-Predsyn #,grammar '#,ctx '#,vctx #,bctx)])
-      (lang predexp predctx #,link #,eval))))  
-
+#;
 (define-syntax (define-language stx)
   (syntax-parse stx
     [(_ name grammar exp vexp bexp ctx vctx bctx link eval)
@@ -84,174 +91,125 @@ TODO: create more macros:
                 [predctx (define-predsyn grammar ctx vctx bctx)])
            (language predexp predctx link eval)))]
     [(_ name grammar exp bexp ctx bctx link eval)
-     #`(define-language name grammar exp (lambda (e) #t) bexp ctx (lambda (c) #t) bctx link eval)]      
-       ))
-    
-
-#| example:
- (define-lang source 
-    'set-api exp 'list 'valid-set? 'list (cons 'list 'interaction) cons 'abstract-interpret)
-
-
- (define-lang target 
-    'set-api exp set  'list (cons 'list 'interaction) cons concrete-interpret)
-
- (define-lang buggy-target 
-    'set-api exp set 'list (cons 'list 'interaction) cons buggy-concrete-interpret)
-
-
-
-
-          
-|#
-
+     #`(define-language name grammar
+         exp (lambda (e) #t) bexp
+         ctx (lambda (c) #t) bctx
+         link eval)]))
 
 ; A compiler between languages consists of:
-; source: A lang structure standing in as source 
-; target: "                            as target
-; brel (behavior-relation): equivalence class for source and target's behaviors
-; crel (context-relation) : "'s context
+; source: a lang structure standing in as source
+; target: a lang structure standing in as target
+; behavior-relation: equivalence class for source and target behaviors
+; context-relation:  equivalence class for source and target contexts
 ; compile: function from source-expression to target-expression
-; contextcompile: optionally, a function from source.ctx to source.target
-(struct compiler (source target brel crel compile))
+; context-compile: optionally, a function from source.ctx to source.target
+(struct compiler (source target behavior-relation context-relation compile))
 
 (define-syntax (define-compiler stx)
   (syntax-parse stx
-    [(_ name source target brel crel compile)
-     #`(define name (compiler source target brel crel compile))]
-    ))
+    [(_ name #:source source #:target target #:behavior-relation brel #:context-relation crel #:compile compile)
+     #`(define name (compiler source target brel crel compile))]))
 
-#| example:
+; Question: this definition of a compiler doesn't consider
+; nondeterminism. Could add nondet as part of ; context, or have it be
+; a part of linking.
 
-(define-comp buggy-comp source target equal? equal? id)
+(struct witness (program context behavior solution) #:transparent)
 
-Question: this doesn't consider nondet. Could add nondetas part of context, or have it be a part of linking. 
-          if as part of con
-
-
-|#
-
-
-
-#|
-; find-simple-exploit: {r:scomp} r.source.expression -> (rel-target-context * SAT) + ()
-; Solve the following synthesis problem:
-; (\lambda v).
-; Exists c2:r.t.context,
-;     r.context-compile(c1) = c2 ->
-;       not (r.behavior-relation(r.s.apply(c1, v), r.t.apply(c2, r.compile(v))))
-(define-syntax (find-simple-exploit stx)
-  (syntax-parse stx
-    [(_ comp compilecontext v)
-     #`(let* ([source (Comp-source comp)]
-              [target (Comp-target comp)]
-              [c1 (make-symbolic-var (language-ctx source))]
-              [c2 (compilecontext c1)]
-              [b1 ((language-evaluate source) ((language-link source) c1 v))]
-              [b2 ((language-evaluate target) ((language-link target) c2 ((Comp-compile comp) v)))]
-              [equality (assert ((Comp-brel comp) b1 b2))]
-              [sol (verify equality)])
-         (if (unsat? sol)
-             '()
-             (list c2 sol)))]
-             ;(let ([instance (concretize c2 sol)])
-              ; (list instance sol))))]
-     ))
-
-|#
-
-; find-potential-exploit: {r:scomp} r.source.expression -> (rel-target-context * SAT) + ()
+; find-changed-behavior: {r:scomp} r.source.expression -> witness + #f
 ; Solve the following synthesis problem:
 ; (\lambda v).
 ; Exists c1:s.t.context c2:r.t.context,
 ;    r.ctx-relation(c1, c2)
 ;       not (r.behavior-relation(r.s.apply(c1, v), r.t.apply(c2, r.compile(v))))
-(define-syntax (find-potential-exploit stx)
+(define-syntax (find-changed-behavior stx)
   (syntax-parse stx
     [(_ comp v)
      #`(let* ([source (compiler-source comp)]
               [target (compiler-target comp)]
-              [c1 (make-symbolic-var (language-ctx source))]
-              [c2 (make-symbolic-var (language-ctx target))]
-              [b1 ((language-evaluate source) ((language-link source) c1 v))]
-              [b2 ((language-evaluate target) ((language-link target) c2 ((compiler-compile comp) v)))]
-              [ccomp ((compiler-crel comp) c1 c2)]
-              [equality (with-asserts-only (assert ((compiler-brel comp) b1 b2)))]
-              [sol (verify #:assume (assert ccomp) #:guarantee (assert (apply && equality)))])
+              [c1 (make-symbolic-var (language-context source))]
+              [c2 (make-symbolic-var (language-context target))]
+              [source-evaluate (language-evaluate source)]
+              [source-link (language-link source)]
+              [b1 (source-evaluate (source-link c1 v))]
+              [target-evaluate (language-evaluate target)]
+              [target-link (language-link target)]
+              [compile (compiler-compile comp)]
+              [b2 (target-evaluate (target-link c2 (compile v)))]
+              [context-relation (compiler-context-relation comp)]
+              [ccomp (context-relation c1 c2)]
+              [behavior-relation (compiler-behavior-relation comp)]
+              [equality (with-asserts-only (assert (behavior-relation b1 b2)))]
+              [sol (verify
+                    #:assume (assert ccomp)
+                    #:guarantee (assert (apply && equality)))])
          (if (unsat? sol)
-             '()
-             (list (list c1 c2 b1 b2) sol)))]
-     ))
+             #f
+             (witness v c2 b2 sol)))]))
 
-
-
-; find-exploit: {r:comp} r.source.expression -> (rel-target-context * SAT) + ()
+; find-emergent-computation :
+;     {r:comp} r.source.expression -> witness + #f
 ; Solve the following synthesis problem:
 ; (\lambda v).
 ; Exists c2:r.t.context,
 ;   Forall c1:r.s.context,
 ;     r.context-relation(c1, c2) ->
 ;       not (r.behavior-relation(r.s.apply(c1, v), r.t.apply(c2, r.compile(v))))
-(define-syntax (find-exploit stx)
+(define-syntax (find-weird-computation stx)
   (syntax-parse stx
     [(_ comp v)
      #`(let* ([source (compiler-source comp)]
               [target (compiler-target comp)]
-              [c1 (make-symbolic-var (language-ctx source))]
-              [c2 (make-symbolic-var (language-ctx target))]
-              [b1 ((language-evaluate source) ((language-link source) c1 v))]
-              [b2 ((language-evaluate target) ((language-link target) c2 ((compiler-compile comp) v)))]
-              [ccomp ((compiler-crel comp) c1 c2)]
-              [equality (with-asserts-only (assert ((compiler-brel comp) b1 b2)))]
-              [sol (synthesize #:forall c1 #:assume (assert ccomp) #:guarantee (assert (!(apply && equality))))])
+              [c1 (make-symbolic-var (language-context source))]
+              [c2 (make-symbolic-var (language-context target))]
+              [source-evaluate (language-evaluate source)]
+              [source-link (language-link source)]
+              [b1 (source-evaluate (source-link c1 v))]
+              [target-evaluate (language-evaluate target)]
+              [target-link (language-link target)]
+              [compile (compiler-compile comp)]
+              [b2 (target-evaluate (target-link c2 (compile v)))]
+              [context-relation  (compiler-context-relation comp)]
+              [ccomp (context-relation c1 c2)]
+              [behavior-relation (compiler-behavior-relation comp)]
+              [equality (with-asserts-only (assert (behavior-relation b1 b2)))]
+              [sol (synthesize
+                    #:forall c1
+                    #:assume (assert ccomp)
+                    #:guarantee (assert (! (apply && equality))))])
          (if (unsat? sol)
-             '()
-             (list (list c1 c2 b1 b2) sol)))]
-     ))
+             #f
+             (witness v c2 b2 sol)))]))
 
+(define (concretize-witness sym-witness)
+  (let ([program  (witness-program sym-witness)]
+        [context  (witness-context sym-witness)]
+        [behavior (witness-behavior sym-witness)]
+        [solution (witness-solution sym-witness)])
+    (let ([concretized (concretize (list program context behavior) solution)])
+      (witness (first concretized)
+               (second concretized)
+               (third concretized)
+               solution))))
 
-(define (print-exploit exploit)
-  (match exploit
-    [(list vars sol)
-     (let* ([vars* (map (lambda (var)
-                          (concretize var sol)) vars)])
-       (begin
-         (displayln "Source context:")
-         (displayln (first vars*))
-         (displayln "Target context:")
-         (displayln (second vars*))
-         (displayln "Source behavior:")
-         (displayln (third vars*))
-         (displayln "Target behavior:")
-         (displayln (fourth vars*))))]
-    [_
-     (displayln "Synthesis failed")]))     
+(define (display-witness witness)
+  (if witness
+      (let ([concretized (concretize-witness witness)])
+        (printf
+          "Expression ~a~n    has emergent behavior ~a~n    witnessed by target-level context ~a~n"
+          (witness-program concretized)
+          (witness-behavior concretized)
+          (witness-context concretized)))
+      (displayln "Failed to synthesis emergent computation")))
 
-
-; find-exploitable-component: comp -> (compiler-source-expression * compiler-target-context * SAT) + ()
+; find-weird-component
+; find-weird-component: comp -> witness + #f
 ; (\lambda r).
 ;   Exists v:r.s.expression
 ;     find-exploit r v
-(define-syntax (find-exploitable-component stx)
+(define-syntax (find-weird-component stx)
   (syntax-parse stx
     [(_ comp)
-     #`(let* ([v (make-symbolic-var (language-exp (compiler-source comp)))]
-              [exploit (find-exploit comp v)])           
-         (match exploit
-           [(list vars sol)
-              (list v vars sol)]
-           [_ '()]))]))
-                   
-
-(define (print-exploitable-component l)
-  (match l
-    [(list v vars sol)
-     (let* ([v* (concretize v sol)])
-     (begin
-       (displayln "Source expression:")
-       (displayln v*)
-       (print-exploit (list vars sol))))]
-     [_
-      (displayln "Synthesis failed")]))     
-
-       
+     #`(let* ([v (make-symbolic-var
+                  (language-expression (compiler-source comp)))])
+         (find-weird-computation comp v))]))
