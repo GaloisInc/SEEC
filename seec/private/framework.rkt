@@ -82,20 +82,6 @@ TODO: create more macros:
                 [predctx (define-predsyn grammar ctxt.gen ctxt.pred ctxt.bound)])
            (language predexp predctx link eval)))]))
 
-#;
-(define-syntax (define-language stx)
-  (syntax-parse stx
-    [(_ name grammar exp vexp bexp ctx vctx bctx link eval)
-     #`(define name
-         (let* ([predexp (define-predsyn grammar exp vexp bexp)]
-                [predctx (define-predsyn grammar ctx vctx bctx)])
-           (language predexp predctx link eval)))]
-    [(_ name grammar exp bexp ctx bctx link eval)
-     #`(define-language name grammar
-         exp (lambda (e) #t) bexp
-         ctx (lambda (c) #t) bctx
-         link eval)]))
-
 ; A compiler between languages consists of:
 ; source: a lang structure standing in as source
 ; target: a lang structure standing in as target
