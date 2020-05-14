@@ -229,9 +229,10 @@
   (displayln "Trying to find a trace with different behavior under compilation")
   (define trace (set-api interaction 6))
   (define witness (find-changed-behavior abstract-to-concrete trace))
-  (display-witness witness))
-
-; OSTODO: (find-exploitable-component abstract-to-buggyconcrete)
+  (display-changed-behavior witness))
+;  (displayln "Trying to find a trace with weird behavior under compilation")
+;  (define witness2 (find-weird-component abstract-to-concrete))
+;  (display-witness witness2))
 
 
 
