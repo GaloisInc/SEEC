@@ -206,7 +206,16 @@
   (define-symbolic* int-val integer?)
   (bonsai-integer int-val))
 
-; we do not provide new-string! because strings are not primitive types
+(define (new-char!)
+  (define char-val (new-symbolic-char))
+  (bonsai-char char-val))
+
+(define (new-string! max-length)
+  (assert (> max-length 0))
+  (define str-val (cond
+                    [(havoc!) (new-symbolic-string max-length)]
+                    [else (new-string! (- max-length 1))]))
+  (bonsai-string str-val))
 
 (define (new-natural!)
   (define-symbolic* nat-val integer?)
@@ -258,6 +267,8 @@
     [(havoc!) (new-integer!)]
     [(havoc!) (new-boolean!)]
     [(havoc!) (new-natural!)]
+    [(havoc!) (new-char!)]
+    [(havoc!) (new-string! depth)]
     [else *null*]))
 
 (define (concretize v sol)

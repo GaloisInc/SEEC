@@ -51,25 +51,45 @@
   )
 
 (define (synthesize-string-in-lang)
-  (displayln (constants (CHAR #\x)))
+  #;(displayln (constants (CHAR #\x)))
+
+  #|
+  (define t (make-tree! 2 2))
+  
+  (displayln t)
+  (define is-str
+    (match t
+      [(constants string) #t]
+      [_ #f]))
+#;  (assert is-string)
+  (displayln is-str)
+  |#
 
   (define symbolic-exp (constants const 5))
-  #;(displayln symbolic-exp)
   #;(define sol (verify (assert (not (equal? symbolic-exp (constants (CHAR #\x)))))))
   (define (is-char)
     (match symbolic-exp
-      #;[(constants (STR s:string)) #t]
       [(constants (CHAR c:char)) #t]
-      #;[(constants (BOOL b:boolean)) #t]
       [_ #f]))
+  (define (is-string)
+    (match symbolic-exp
+      [(constants (STR s:string)) #t]
+      #;[(constants (STR s:string)) (equal? (string "x") (string "x"))]
+      [_ #f]))
+  ; JP/TODO: Although we can now synthesize expressions so that they are
+  ; strings, we cannot yet synthesize specific strings.... what does equal? mean?
   (define (is-bool)
     (match symbolic-exp
       [(constants (BOOL b:boolean)) #t]
       [_ #f]))
 
-  (assert (is-char))
+  (displayln (is-bool))
+  (displayln (is-char))
+  (displayln (is-string))
+
+  #;(assert (equal? symbolic-exp (constants (STR "x"))))
+  (assert (is-string))
   (define sol (verify (assert #f)))
   sol
   )
 (synthesize-string-in-lang)
-
