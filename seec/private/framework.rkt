@@ -105,8 +105,31 @@ TODO: create more macros:
 
 
 
-;(struct variables (expression context program behavior) #:transparent)
-(struct witness (source-vars target-vars solution) #:transparent)
+(struct language-vars (expression context program behavior) #:transparent)
+
+; Utility for language-vars:
+
+;
+(define (unpack-language-vars v)
+  (list (language-vars-expression v)
+        (language-vars-context v)
+        (language-vars-program v)
+        (language-vars-behavior v)))
+
+; Group every n elements of the input list into language-vars, where n is the number of field of a language-vars
+; Assumes length l is divisible by n
+(define (pack-language-vars l)
+    (if (empty? l)
+        (list)
+        (let-values ([(hd tl) (split-at l 4)])
+          (let ([packed-hd (language-vars (first hd) (second hd) (third hd) (fourth hd))]
+                [packed-tl (pack-language-vars tl)])
+            (cons packed-hd packed-tl)))))
+
+; vars is a list of symbolic language-vars
+(struct witness (vars solution) #:transparent)
+
+
 
 
 ; find-changed-behavior: {r:scomp} r.source.expression -> witness + #f
@@ -141,7 +164,7 @@ TODO: create more macros:
                     #:guarantee (assert (apply && equality)))])
          (if (unsat? sol)
              #f
-             (witness (list v1 c1 p1 b1) (list v2 c2 p2 b2) sol)))]))
+             (witness (list (language-vars v1 c1 p1 b1) (language-vars v2 c2 p2 b2)) sol)))]))
 
 ; find-emergent-computation :
 ;     {r:comp} r.source.expression -> witness + #f
@@ -179,14 +202,17 @@ TODO: create more macros:
                       #:guarantee (assert (! (apply && equality))))])
              (if (unsat? sol)
                  #f
-                 (witness (list v1 c1 p1 b1) (list v2 c2 p2 b2) sol)))))]))
+                 (witness (list (language-vars v1 c1 p1 b1) (language-vars v2 c2 p2 b2)) sol)))))]))
 
+
+; concretize all vars included in the witness, return a list of language-vars with concrete vars
 (define (concretize-witness sym-witness)
-  (let ([source-vars (witness-source-vars sym-witness)]
-        [target-vars (witness-target-vars sym-witness)]
-        [solution (witness-solution sym-witness)])
-    (let ([concretized (concretize (append source-vars target-vars) solution)])
-      (list (take concretized 4) (drop concretized 4)))))
+  (let* ([vars (witness-vars sym-witness)]
+        [unpacked-vars (map unpack-language-vars vars)]
+        [solution (witness-solution sym-witness)]
+        [list-vars (foldr append (list) unpacked-vars)]
+        [concretized (concretize list-vars solution)])
+      (pack-language-vars concretized)))
 
 
 #;(define (display-witness witness)
@@ -209,14 +235,14 @@ TODO: create more macros:
         (begin 
           (printf
            "Expression ~a~n has behavior ~a~n in source-level context ~a~n"
-           (first source-vars)
-           (fourth source-vars)
-           (second source-vars))
+           (language-vars-expression source-vars)
+           (language-vars-behavior source-vars)
+           (language-vars-context source-vars))
           (printf
            "Compiles to ~a~n with emergent behavior ~a~n in target-level context ~a~n"
-           (first target-vars)
-           (fourth target-vars)
-           (second target-vars))))
+           (language-vars-expression target-vars)
+           (language-vars-behavior target-vars)
+           (language-vars-context target-vars))))
       (displayln "Failed to synthesis a changed behavior")))
 
 ; find-weird-component
@@ -239,16 +265,28 @@ TODO: create more macros:
              [source-vars (first vars)]
              [target-vars (second vars)])
         (printf
-          "Expression ~a~n has emergent behavior ~a~n witnessed by target-level context ~a~n"
-          (first source-vars)
-          (fourth target-vars)
-          (second target-vars)))
+         "Expression ~a~n has emergent behavior ~a~n witnessed by target-level context ~a~n"
+         (language-vars-expression source-vars)
+         (language-vars-behavior target-vars)
+         (language-vars-context target-vars)))
       (displayln "Failed to synthesis a changed behavior")))
 
 
 
-;
+
 ; Source: format-str, (arg-list x acc), cons, run
-; Target:  ", run'
-; Compiler: ?
-; Goal: find a format-str s.t. given a ctx (arg-list, acc), increment the acc. (input is Source, v-ctx:Context -> bool (in addition to the one in source), spec:Context -> behavior
+; Goal: find a format-str s.t. given a ctx (arg-list, acc), increment the acc. (input is Source, v-ctx:Context -> bool (in addition to the one in source), spec:Context -> behavior -> bool
+(define-syntax (find-gadget stx)
+  (syntax-parse stx
+    [(_ lang valid-context specification)
+     #`(let* ([c1 (make-symbolic-var (language-context lang))]
+              [v1 (make-symbolic-var (language-expression lang))]
+              [p1 ((language-link lang) c1 v1)]
+              [b1 ((language-evaluate lang) p1)]
+              [sol (synthesize
+                    #:forall c1
+                    #:assume valid-context c1
+                    #:guarantee (assert (specification c1 b1)))])
+         (if (unsat? sol)
+             #f
+             (witness (list (language-witness v1 c1 p1 b1)) sol)))]))
