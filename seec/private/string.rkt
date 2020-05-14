@@ -93,15 +93,15 @@
   (letrec ([make-string (lambda (n)
                           (if (<= n 0)
                               '()
-                              (cons new-symbolic-char (make-string (- len 1)))))]
+                              (cons (new-symbolic-char) (make-string (- n 1)))))]
            )
     (make-string len)))
 (define (new-symbolic-string* len)
-  (letrec ([c new-symbolic-char*]
+  (letrec ([c (new-symbolic-char*)]
            [make-string (lambda (n)
                           (if (<= n 0)
                               '()
-                              (cons c (make-string (- len 1)))))]
+                              (cons c (make-string (- n 1)))))]
            )
     (make-string len)))
 
@@ -147,3 +147,4 @@
             )
        (string-append (number->string q) (char->string (digit->char r)))
        )]))
+
