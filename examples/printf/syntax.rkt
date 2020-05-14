@@ -36,8 +36,6 @@
 (define-language printf-lang
   (fmt ::= list<fmt-elt>)
   (fmt-elt ::= string
-               ; (% fmt-type) (% width fmt-type) ; always require fmt-type for now
-               #;(% parameter $ fmt-type)
                (% parameter $ width fmt-type))
   (width ::= NONE (* offset) natural)
   (parameter ::= offset)

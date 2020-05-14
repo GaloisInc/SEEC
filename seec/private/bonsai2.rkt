@@ -211,11 +211,10 @@
   (bonsai-char char-val))
 
 (define (new-string! max-length)
-  (assert (> max-length 0))
-  (define str-val (cond
-                    [(havoc!) (new-symbolic-string max-length)]
-                    [else (new-string! (- max-length 1))]))
-  (bonsai-string str-val))
+  (assert (>= max-length 0))
+  (if (havoc!)
+      (bonsai-string (new-symbolic-string max-length))
+      (new-string! (- max-length 1))))
 
 (define (new-natural!)
   (define-symbolic* nat-val integer?)

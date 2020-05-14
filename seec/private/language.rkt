@@ -461,7 +461,7 @@
      #`(bonsai-list (list (make-concrete-term! lang pat) ...))]))
 
 (define-syntax (make-term! stx)
-  #;(printf "make-term! ~a ~n" stx)
+  ;#(printf "make-term! ~a ~n" stx)
   (syntax-parse stx
     [(_ lang:id pat depth:expr)
      #`(let ([tree (make-tree! depth (language-max-width lang))])

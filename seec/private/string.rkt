@@ -12,7 +12,6 @@
                   raise-argument-error
                   raise-arguments-error))
 
-(require (only-in racket/contract listof))
 (provide char?
          string?
          symbolic-string?
@@ -32,8 +31,10 @@
 
 ;; A character is just a number between 0 and 256
 (define (char? c) (and (integer? c) (<= 0 c 256)))
+
 ;; A string is just a list of characters
-(define string? (listof char?))
+(define (string? s) (and (list? s)
+                         (andmap char? s)))
 
 (define (symbolic-string? s)
   (ormap term? s))
@@ -61,6 +62,7 @@
   (map mk-char (racket/string->list s)))
 (define (char->string c)
   (list c))
+
 
 (define (char c) (mk-char c))
 ;  (cond 
@@ -93,7 +95,7 @@
   (letrec ([make-string (lambda (n)
                           (if (<= n 0)
                               '()
-                              (cons (new-symbolic-char) (make-string (- n 1)))))]
+                              (cons (new-symbolic-char*) (make-string (- n 1)))))]
            )
     (make-string len)))
 (define (new-symbolic-string* len)
@@ -106,25 +108,15 @@
     (make-string len)))
 
 
-#|
-; TESTING
 
-(mk-char #\x)
-(print-char (mk-char #\x))
-(mk-string "Hello, world!")
-(symbolic-string? (mk-string "Hello, world!"))
-(print-string (mk-string "Hello, world!"))
-(define-symbolic-char)
-(print-char (define-symbolic-char))
-(define-symbolic-string 5)
-(symbolic-string? (define-symbolic-string 5))
-(print-string (define-symbolic-string 5))
-(string "Hello, world!")
-(string (define-symbolic-string 5))
-|#
   
 ;; functions on strings ;;
 (define (string-length s) (length s))
+
+#;(define (string-equal? s1 s2)
+  (and (equal? (string-length s1) (string-length s2))
+       (andmap equal? s1 s2)))
+
 
 ;; given a number n between 0 and 9 inclusive,
 ;; output the character corresponding to n

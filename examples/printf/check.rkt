@@ -136,7 +136,7 @@
   (define args (printf-lang (cons 100 nil)))
   (displayln args)
   (displayln (vlist? args))
-  (define conf (printf-lang (0 mnil)))
+  (define conf (printf-lang (-5 mnil)))
   (displayln conf)
   (displayln (conf? conf))
   (define exec (interp-fmt-safe f args conf))
@@ -145,31 +145,49 @@
     [(list s+ conf+) (equal? (+ 1 (conf->acc conf)) (conf->acc conf+))])
   (is-constant-add f 1 args conf)
   )
+#;(demo-add-constant)
 
+
+(define (synthesize-string)
+  (define s (new-symbolic-string 2))
+  (define sol (verify (assert (not (equal? s (string "x"))))))
+  (if (unsat? sol)
+      (displayln "Failed to synthesize")
+      (begin
+        (displayln "Synthesis succeeded")
+        #;(define s-instance (concretize s sol))
+        #;(printf "s: ~a~n" s-instance)
+        ))
+  )
+(synthesize-string)
 
 
 (define (find-add-constant)
   (define f (printf-lang fmt 5))
+  #;(define f (printf-lang (cons "x" nil)))
+  #;(assert (match f
+            [(printf-lang (cons "x" nil)) #t]
+            [_ #f]))
+  (assert (equal? f (printf-lang (cons "x" nil))))
   (define acc0 (printf-lang integer 1))
   (define conf (printf-lang (,acc0 mnil)))
-  (displayln (conf? conf))
+            
   (define args (printf-lang nil))
+
+
+  (displayln "")
   (displayln "Searching for a format string that adds 1 to the accumulator")
-  #|
-  (define acc (conf->acc conf))
-  (define acc+ (match (interp-fmt-unsafe f args conf)
-                 [(list _ conf+) (conf->acc conf+)]))
-  (displayln acc)
-  (displayln acc+)
-  (displayln (equal? acc acc+))
-  (displayln (+ 1 acc))
-  (displayln (equal? (+ 1 acc) acc+))
-  (displayln (= (+ 1 acc) acc+))
-  |#
-  (define sol (synthesize 
-               #:forall acc0
-               #:assume (fmt-consistent-with-vlist? f args)
-               #:guarantee (is-constant-add f 1 args conf)))
+  (define sol (verify (assert #f)))
+  #;(define sol (verify #f
+;#;               #:guarantee (assert (not (and (fmt-consistent-with-vlist? f args)
+                                             #;(is-constant-add f 1 args conf)))
+  #;(define sol (synthesize
+               #:forall '()
+               ; #:forall acc0
+               #:assume (assert (fmt-consistent-with-vlist? f args))
+               #:guarantee (assert (is-constant-add f 1 args conf))))
+  #;(assert (fmt-consistent-with-vlist? f args))
+  #;(define sol (verify #:guarantee (assert (not (is-constant-add f 1 args conf)))))
   (if (unsat? sol)
       (displayln "Failed to synthesize")
       (begin
@@ -181,7 +199,7 @@
         (displayln "acc0...")
         (displayln acc0-instance)
         (define conf-instance (printf-lang (,acc0-instance mnil)))
-        (displayln (conf? conf-instance))
+        (printf "Problem: conf-instance is not a conf?~a~n" (not (conf? conf-instance)))
 
         (match (interp-fmt-safe f-instance args conf-instance)
             [(list _ conf+-instance) (displayln conf+-instance)])
@@ -219,17 +237,17 @@
 |#
 
 
-(test-lookup-offset)
-(displayln "")
-(test-mem-update)
-(displayln "")
-(test-interp-fmt-safe)
-(displayln "")
-(test-interp-fmt-unsafe)
-(displayln "")
-(find-exploit)
-(displayln "")
-(demo-add-constant)
-(displayln "")
-(find-add-constant)
+;; (test-lookup-offset)
+;; (displayln "")
+;; (test-mem-update)
+;; (displayln "")
+;; (test-interp-fmt-safe)
+;; (displayln "")
+;; (test-interp-fmt-unsafe)
+;; (displayln "")
+;; (find-exploit)
+;; (displayln "")
+;; (demo-add-constant)
+;; (displayln "")
+;; (find-add-constant)
 (displayln "")

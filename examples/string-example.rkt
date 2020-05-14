@@ -2,6 +2,7 @@
 
 (require seec/private/string)
 (require (only-in racket/base integer->char))
+(require seec/private/bonsai2)
 
 (define-language constants
   (const ::= (BOOL boolean) num (STR string) (CHAR char))
@@ -65,19 +66,18 @@
   (displayln is-str)
   |#
 
-  (define symbolic-exp (constants const 5))
+  (define symbolic-exp (constants const 6))
   #;(define sol (verify (assert (not (equal? symbolic-exp (constants (CHAR #\x)))))))
   (define (is-char)
     (match symbolic-exp
-      [(constants (CHAR c:char)) #t]
+      #;[(constants (CHAR c:char)) #t]
+      [(constants (CHAR c:char)) (equal? (bonsai-char-value c) (char #\y))]
       [_ #f]))
   (define (is-string)
     (match symbolic-exp
-      [(constants (STR s:string)) #t]
-      #;[(constants (STR s:string)) (equal? (string "x") (string "x"))]
+      #;[(constants (STR s:string)) #t]
+      [(constants (STR s:string)) (equal? (bonsai-string-value s) (string "hello"))]
       [_ #f]))
-  ; JP/TODO: Although we can now synthesize expressions so that they are
-  ; strings, we cannot yet synthesize specific strings.... what does equal? mean?
   (define (is-bool)
     (match symbolic-exp
       [(constants (BOOL b:boolean)) #t]
@@ -87,9 +87,52 @@
   (displayln (is-char))
   (displayln (is-string))
 
+  (displayln "")
+  #;(define (get-string)
+    (match symbolic-exp
+      [(constants (STR s:string)) s]))
+  #;(displayln (get-string))
+  #;(displayln (equal? (get-string) (string "")))
+
   #;(assert (equal? symbolic-exp (constants (STR "x"))))
   (assert (is-string))
   (define sol (verify (assert #f)))
-  sol
+  (if (unsat? sol)
+      (displayln "Failed to synthesize")
+      (begin
+        (displayln "Synthesis succeeded:")
+        (define instance (concretize symbolic-exp sol))
+        (displayln instance)
+        ))
   )
 (synthesize-string-in-lang)
+
+
+
+
+
+(define (more-tests)
+  #;(define t (bonsai-list (cons (new-char!) (cons (new-char!) (cons (bonsai-null) '())))))
+  #;(define t (make-string-tree! 2 2))
+  #;(define t (new-string! 5))
+  (define t (constants string 5))
+  (define x (match t
+              [(constants s:string) (equal? (bonsai-string-value s) (string "hi"))]
+              #;[(constants s:string) (equal? (string-length (bonsai-string-value s)) 3)]
+              [_ #f]))
+  (displayln x)
+  #;(displayln (string-length (bonsai-string-value t)))
+  #;(displayln (print-string (bonsai-string-value t)))
+  #;(displayln t)
+  #;(displayln (= (string-length (bonsai-string-value t)) 3))
+  #;(displayln (equal? (bonsai-string-value t) (string "")))
+  #;(displayln (string? (bonsai-string-value t)))
+
+  #;(define x (constants string 4))
+  #;(match t
+    [(constants s:string) (equal? (bonsai-string-value s) (string "x"))]
+    [_ #f]
+    )
+  (displayln #t)
+  )
+#;(more-tests)
