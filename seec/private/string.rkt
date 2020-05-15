@@ -29,8 +29,8 @@
          string
          )
 
-;; A character is just a number between 0 and 256
-(define (char? c) (and (integer? c) (<= 0 c 256)))
+;; A (printable, ASCII) character is just a number between 32 and 126
+(define (char? c) (and (integer? c) (<= 32 c 126)))
 
 ;; A string is just a list of characters
 (define (string? s) (and (list? s)
@@ -82,12 +82,12 @@
 (define (new-symbolic-char)
   (begin
     (define-symbolic c integer?)
-    (assert (<= 0 c 256))
+    (assert (char? c))
     c))
 (define (new-symbolic-char*)
   (begin
     (define-symbolic* c integer?)
-    (assert (<= 0 c 256))
+    (assert (char? c))
     c))
 ; create a symbolic string of length len
 ; len must not be symbolic or termination could occur

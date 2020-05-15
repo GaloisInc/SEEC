@@ -36,6 +36,8 @@
          bonsai-ll-tail
          bonsai-ll-length
          bonsai-ll-append
+
+         bonsai-pretty
          )
 
 (require (for-syntax syntax/parse)
@@ -129,6 +131,7 @@
          (map (λ (n) (out " ") (out n)) (rest nodes))))
      (out ")")]))
 
+
 (define (bonsai-print b out)
   (cond
     [(bonsai-terminal? b)
@@ -157,6 +160,28 @@
      (out "(bonsai-list (")
      (map out (add-between (bonsai-list-nodes b) " "))
      (out "))")]))
+
+(define (bonsai-pretty b)
+  (cond
+    [(bonsai-terminal? b)
+     (bonsai-terminal-value b)]
+    [(bonsai-integer? b)
+     (bonsai-integer-value b)]
+    [(bonsai-char? b)
+     (print-char (bonsai-char-value b))
+     ]
+    [(bonsai-string? b)
+     (print-string (bonsai-string-value b))
+     ]
+    [(bonsai-boolean? b)
+     (bonsai-boolean-value b)
+     ]
+    [(bonsai-null? b) "-"]
+    [(bonsai-list? b)
+     (add-between (map bonsai-pretty (bonsai-list-nodes b)) " ")
+     ]
+    ))
+
 
 (define (bonsai-tree? b)
   (cond

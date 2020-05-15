@@ -1,6 +1,7 @@
 #lang seec
 (require (file "syntax.rkt"))
-
+(require (only-in seec/private/bonsai2
+                  bonsai-pretty))
 
 (define (test-lookup-offset)
   (displayln "Testing lookup-offset...")
@@ -148,7 +149,7 @@
 #;(demo-add-constant)
 
 
-(define (synthesize-string)
+#;(define (synthesize-string)
   (define s (new-symbolic-string 2))
   (define sol (verify (assert (not (equal? s (string "x"))))))
   (if (unsat? sol)
@@ -159,16 +160,12 @@
         #;(printf "s: ~a~n" s-instance)
         ))
   )
-(synthesize-string)
+#;(synthesize-string)
 
 
 (define (find-add-constant)
   (define f (printf-lang fmt 5))
-  #;(define f (printf-lang (cons "x" nil)))
-  #;(assert (match f
-            [(printf-lang (cons "x" nil)) #t]
-            [_ #f]))
-  (assert (equal? f (printf-lang (cons "x" nil))))
+  ;(assert (equal? f (printf-lang (cons "x" nil))))
   (define acc0 (printf-lang integer 1))
   (define conf (printf-lang (,acc0 mnil)))
             
@@ -177,32 +174,26 @@
 
   (displayln "")
   (displayln "Searching for a format string that adds 1 to the accumulator")
-  (define sol (verify (assert #f)))
-  #;(define sol (verify #f
-;#;               #:guarantee (assert (not (and (fmt-consistent-with-vlist? f args)
-                                             #;(is-constant-add f 1 args conf)))
-  #;(define sol (synthesize
+  (define sol (synthesize
                #:forall '()
-               ; #:forall acc0
                #:assume (assert (fmt-consistent-with-vlist? f args))
                #:guarantee (assert (is-constant-add f 1 args conf))))
-  #;(assert (fmt-consistent-with-vlist? f args))
-  #;(define sol (verify #:guarantee (assert (not (is-constant-add f 1 args conf)))))
   (if (unsat? sol)
       (displayln "Failed to synthesize")
       (begin
         (displayln "Synthesis succeeded.")
         (displayln "f...")
         (define f-instance (concretize f sol))
-        (displayln f-instance)
+        (displayln (bonsai-pretty f-instance))
         (define acc0-instance (concretize acc0 sol))
         (displayln "acc0...")
         (displayln acc0-instance)
         (define conf-instance (printf-lang (,acc0-instance mnil)))
-        (printf "Problem: conf-instance is not a conf?~a~n" (not (conf? conf-instance)))
+        (displayln "conf...")
+        (displayln conf-instance)
 
         (match (interp-fmt-safe f-instance args conf-instance)
-            [(list _ conf+-instance) (displayln conf+-instance)])
+            [(list res conf+-instance) (displayln conf+-instance)])
         #;(define acc+-instance
           (match (interp-fmt-safe f-instance args conf-instance)
             [(list _ conf+-instance) (conf->acc conf+-instance)]))
@@ -249,5 +240,5 @@
 ;; (displayln "")
 ;; (demo-add-constant)
 ;; (displayln "")
-;; (find-add-constant)
+(find-add-constant)
 (displayln "")

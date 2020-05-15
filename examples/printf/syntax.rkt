@@ -7,7 +7,8 @@
 (require (only-in racket/base
                   [make-string unsafe:make-string]
                   ))
-
+(require (only-in seec/private/bonsai2
+                  bonsai-pretty))
 
 (provide printf-lang
          bonsai->number
@@ -208,9 +209,13 @@
 ; INPUT: a format string, an argument list, and a configuration
 ; OUTPUT: an outputted string and a configuration
 (define (interp-fmt-elt-safe f args conf)
+  #;(printf "(interp-fmt-elt-safe ~a ~a ~a)~n" (bonsai-pretty f) args conf)
   (match f
     [(printf-lang s:string)
-     (list (bonsai-string-value s) (config-add conf (string-length (bonsai-string-value s))))]
+     (let ([s+ (bonsai-string-value s)])
+       (begin
+         #;(printf "string length of ~a: ~a ~n" (print-string s+) (string-length s+))
+         (list s+ (config-add conf (string-length s+)))))]
 
     [(printf-lang (% p:parameter $ NONE ftype:fmt-type))
      (interp-ftype-safe ftype p args conf)]
@@ -229,6 +234,7 @@
     [_ (raise-argument-error 'interp-fmt-elt-safe "(printf-lang fmt-elt)" f)]
     ))
 (define (interp-fmt-safe f args conf)
+  #;(printf "(interp-fmt-safe ~a ~a ~a)~n" (bonsai-pretty f) args conf)
   (match f
     [(printf-lang nil)
      (list (string "") conf)]
