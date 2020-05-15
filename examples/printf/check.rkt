@@ -96,13 +96,20 @@
         )))
 
 (define (find-exploit)
-  (define f (printf-lang fmt 2))
+  (define f (printf-lang fmt 5))
+  ;(assert (equal? f (printf-lang (cons (% (0 $) NONE d) nil))))
   (define args (printf-lang vlist 2))
+  ;(assert (equal? args (printf-lang nil)))
   (define conf (printf-lang config 5))
   (displayln "Searching for a format string that evaluates in the target but not in the source")
   (displayln "NOTE: times out when increasing size of vlist beyond 2")
-  (define sol (verify #:assume (assert (match (interp-fmt-unsafe f args conf)
-                                         [(list str conf+) (conf? conf+)]))
+  (define conf+ (match (interp-fmt-unsafe f args conf)
+                  [(list str conf+) conf+]))
+  (define sol (synthesize
+               #:forall '()
+               #:guarantee (assert (and (not (fmt-consistent-with-vlist? f args))
+                                        (conf? conf+)))))
+  #;(define sol (verify #:assume (assert (conf? conf+))
                       #:guarantee (assert (fmt-consistent-with-vlist? f args))
                       ))
   (if (unsat? sol)
@@ -123,6 +130,7 @@
         (displayln (fmt-consistent-with-vlist? f-instance args-instance))
         )))
 
+
 (define (is-constant-add f c args conf)
   (match (interp-fmt-safe f args conf)
     [(list _ conf+)
@@ -132,7 +140,7 @@
 (define (demo-add-constant)
   (define f (printf-lang (cons "x" nil)))
   (displayln f)
-  #;(define f (printf-lang (cons (% 0 $ d) nil)))
+  #;(define f (printf-lang (cons (% (0 $) d) nil)))
   (displayln (fmt? f))
   (define args (printf-lang (cons 100 nil)))
   (displayln args)
@@ -146,7 +154,6 @@
     [(list s+ conf+) (equal? (+ 1 (conf->acc conf)) (conf->acc conf+))])
   (is-constant-add f 1 args conf)
   )
-#;(demo-add-constant)
 
 
 #;(define (synthesize-string)
@@ -163,8 +170,9 @@
 #;(synthesize-string)
 
 
+
 (define (find-add-constant)
-  (define f (printf-lang fmt 5))
+  (define f (printf-lang fmt 3))
   ;(assert (equal? f (printf-lang (cons "x" nil))))
   (define acc0 (printf-lang integer 1))
   (define conf (printf-lang (,acc0 mnil)))
@@ -199,6 +207,9 @@
         ))
   )
 
+;(define (find-add-argument)
+;  (define f (printf-lang 
+
 #|
 (define (is-addition f x y x+y conf)
   (let ([args (printf-lang (cons ,x (cons ,y (cons ,x+y nil))))])
@@ -220,17 +231,15 @@
 |#
 
 
-(test-lookup-offset)
-(displayln "")
-(test-mem-update)
-(displayln "")
-(test-interp-fmt-safe)
-(displayln "")
-(test-interp-fmt-unsafe)
-(displayln "")
-(find-exploit)
-(displayln "")
-(demo-add-constant)
-(displayln "")
+;; (test-lookup-offset)
+;; (displayln "")
+;; (test-mem-update)
+;; (displayln "")
+;; (test-interp-fmt-safe)
+;; (displayln "")
+;; (test-interp-fmt-unsafe)
+;; (displayln "")
+;; (find-exploit)
+;; (displayln "")
 (find-add-constant)
 (displayln "")
