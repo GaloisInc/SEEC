@@ -216,19 +216,24 @@
     [(printf-lang (o:offset $)) (bonsai->number o)]
     ))
 
+; 
 (define (interp-ftype-safe ftype param args conf)
   (match (cons ftype (lookup-offset (param->offset param) args))
+    ; if the type = 'd', the corresponding argument should be an integer
+    ; The function `print-d-integer` is shared between safe and unsafe versions
     [(cons (printf-lang d) (printf-lang n:integer))
      (print-d-integer conf (bonsai->number n))
      ]
+    ; if the type = 'n', the correesponding argument should be a location
+    ; The function `print-n-loc` is shared between safe and unsafe versions
     [(cons (printf-lang n) (printf-lang (LOC l:ident)))
      (list (string "") (print-n-loc conf l))]
-    [(cons x y) (raise-arguments-error 'interp-ftype-safe
-                                       "Offset does not map to a value of the correct type"
-                                       "fmt-type" (display ftype)
-                                       "parameter" param
-                                       "vlist" args
-                                       )]
+    [_ (raise-arguments-error 'interp-ftype-safe
+                              "Offset does not map to a value of the correct type"
+                              "fmt-type" (display ftype)
+                              "parameter" param
+                              "vlist" args
+                              )]
     ))
 
 ; ensure str-conf-pair has width at least w, and if not, pad the beginning of
@@ -305,13 +310,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(define (interp-d-unsafe offset args conf)
+#;(define (interp-d-unsafe offset args conf)
   (match (lookup-offset (bonsai->number offset) args)
        [(printf-lang n:integer) (print-d-integer conf (bonsai->number n))]
        [_ ; if the offset does not map to a number, do nothing
         (list (string "") conf)]
        ))
-(define (interp-n-unsafe offset args conf)
+#;(define (interp-n-unsafe offset args conf)
   (match (lookup-offset (bonsai->number offset) args)
        [(printf-lang (LOC l:ident)) (list (string "") (print-n-loc conf l))]
        [_ ; if the offset does not map to a location, do nothing
@@ -321,11 +326,25 @@
 
 (define (interp-ftype-unsafe ftype param args conf)
   (match (cons ftype (lookup-offset (param->offset param) args))
+    ; if ftype = 'd' and the argument is an integer, call `print-d-integer`
     [(cons (printf-lang d) (printf-lang n:integer))
      (print-d-integer conf (bonsai->number n))
      ]
+    ; if ftype = 'd' and the argument is a location, we interpret the location
+    ; as an integer value and call `print-d-integer`
+    [(cons (printf-lang d) (printf-lang (LOC l:ident)))
+     (print-d-integer conf (bonsai->number l))
+
+     ; if ftype = 'n' and the argument is a location, call `print-n-loc`
     [(cons (printf-lang n) (printf-lang (LOC l:ident)))
      (list (string "") (print-n-loc conf l))]
+
+    ; if ftype = 'n' and the argument is an integer, we interpret the integer
+    ; value as a location and call `print-n-loc`
+    [(cons (printf-lang n) (printf-lang n:integer))
+     (list (string "") (print-n-loc conf n))
+
+    ; otherwise, do not throw an error, but execute a no-op.
     [_ (list (string "") conf)]
     ))
 
