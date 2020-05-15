@@ -219,7 +219,7 @@ TODO: create more macros:
   (if solution
       (let ([concretized (concretize-witness solution)])
         (printf
-          "Expression ~a~n    has emergent behavior ~a~n    solutioned by target-level context ~a~n"
+          "Expression ~a~n    has emergent behavior ~a~n    witnessed by target-level context ~a~n"
           (solution-program concretized)
           (solution-behavior concretized)
           (solution-context concretized)))
@@ -265,7 +265,7 @@ TODO: create more macros:
              [source-vars (first vars)]
              [target-vars (second vars)])
         (printf
-         "Expression ~a~n has emergent behavior ~a~n solutioned by target-level context ~a~n"
+         "Expression ~a~n has emergent behavior ~a~n witnessed by target-level context ~a~n"
          (language-witness-expression source-vars)
          (language-witness-behavior target-vars)
          (language-witness-context target-vars)))
