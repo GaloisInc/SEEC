@@ -42,7 +42,7 @@
   (define conf (printf-lang config 4))
   (assert (fmt-consistent-with-vlist? f args))
   (define sol (verify (match (interp-fmt-safe f args conf)
-                        [(list str conf+) (conf? conf+)]
+                        [(printf-lang (trace conf+:config)) (conf? conf+)]
                         )))
   (if (unsat? sol)
       (displayln "Verified")
@@ -71,7 +71,7 @@
   #;(assert (fmt-consistent-with-vlist? f args))
   (define guarantee
     (match (interp-fmt-unsafe f args conf)
-      [(list _ conf+) (conf? conf+)]
+      [(printf-lang (trace conf+:config)) (conf? conf+)]
       [_ #f]))
   (define sol (verify
                #:guarantee guarantee
@@ -91,8 +91,7 @@
         (displayln conf-instance)
         (define res-instance (interp-fmt-unsafe f-instance args-instance conf-instance))
         (displayln res-instance)
-        (match res-instance
-          [(list _ conf+) (conf? conf+)])
+        (conf? (behavior->config res-instance))
         )))
 
 (define (find-exploit)
@@ -103,8 +102,7 @@
   (define conf (printf-lang config 5))
   (displayln "Searching for a format string that evaluates in the target but not in the source")
   (displayln "NOTE: times out when increasing size of vlist beyond 2")
-  (define conf+ (match (interp-fmt-unsafe f args conf)
-                  [(list str conf+) conf+]))
+  (define conf+ (behavior->config (interp-fmt-unsafe f args conf)))
   (define sol (synthesize
                #:forall '()
                #:guarantee (assert (and (not (fmt-consistent-with-vlist? f args))
@@ -132,9 +130,8 @@
 
 
 (define (is-constant-add f c args conf)
-  (match (interp-fmt-safe f args conf)
-    [(list _ conf+)
-     (equal? (conf->acc conf+) (+ c (conf->acc conf)))]))
+  (let ([conf+ (behavior->config (interp-fmt-safe f args conf))])
+    (equal? (conf->acc conf+) (+ c (conf->acc conf)))))
 
 
 (define (demo-add-constant)
@@ -202,8 +199,7 @@
         (displayln conf-instance)
 
         (displayln "conf after...")
-        (match (interp-fmt-safe f-instance args conf-instance)
-            [(list res conf+-instance) (displayln conf+-instance)])
+        (displayln (behavior->config (interp-fmt-safe f-instance args conf-instance)))
         ))
   )
 
@@ -229,9 +225,6 @@
   (define args (printf-lang (cons ,x nil)))
   (printf "Defined args: ~a~n" args)
 
-  (define x->str (number->string (bonsai->number x)))
-  (displayln x->str)
-  ; as soon as we symbolically interpret the function, we throw an error
 
   (define result (interp-fmt-unsafe f args conf))
   #;(printf "Defined result: ~a~n" result)
@@ -273,15 +266,15 @@
 
 
 
-;; (test-lookup-offset)
-;; (displayln "")
-;; (test-mem-update)
-;; (displayln "")
-;; (test-interp-fmt-safe)
-;; (displayln "")
-;; (test-interp-fmt-unsafe)
-;; (displayln "")
-;; (find-exploit)
-;; (displayln "")
-;; (find-add-constant)
-;; (displayln "")
+(test-lookup-offset)
+(displayln "")
+(test-mem-update)
+(displayln "")
+(test-interp-fmt-safe)
+(displayln "")
+(test-interp-fmt-unsafe)
+(displayln "")
+(find-exploit)
+(displayln "")
+(find-add-constant)
+(displayln "")
