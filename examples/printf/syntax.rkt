@@ -32,7 +32,7 @@
          fmt-consistent-with-vlist?
          )
 
-(define-language printf-lang
+(define-grammar printf-lang
   (fmt ::= list<fmt-elt>)
   (fmt-elt ::= string
                ; (% fmt-type) (% width fmt-type) ; always require fmt-type for now
@@ -48,7 +48,11 @@
   (ident ::= integer)
   ; a configuration consists of an accumulator and a memory value
   (config ::= (integer mem))
+  (context ::= (config vlist))
   )
+
+
+
 
 #||||||||||||||||||||||||||||#
 #| Projections out of types |#
@@ -437,3 +441,39 @@
     [(printf-lang (i:integer m:mem)) (and (bonsai-integer? i) (mem? m))] 
     [_ #f]
     ))
+
+
+; There is probably a better way of doing this
+; I just want to limit the size of config and of the vlist separately
+(define (max-context-size config-size args-size)
+  (lambda (ctx)
+  ((match ctx
+     [(printf-lang (conf:config args:vlist))
+     (let ([c* (printf-lang config config-size)]
+           [a* (printf-lang vlist args-size)])
+       (and (equal? conf c*) (equal? args a*)))]))))
+
+(define (interp-fmt-unsafe-uncurry prog)
+  (match prog
+    [(cons ctx f)
+     (match ctx
+       [(printf-lang (conf:config args:vlist))
+        (interp-fmt-unsafe f args conf)])]))
+
+; only link when the vlist is consistant with the format-string
+; I think a cleaner way of doing this would be
+; context-relation: s.exp -> t.exp -> s.ctx -> t.ctx
+(define (link-context-fmt ctx f)
+  (match ctx
+    [(printf-lang (conf:config args:vlist))
+     (if (fmt-consistent-with-vlist? f args)
+         (cons ctx f)
+         (assert #f))]))
+
+(define-language printf
+  #:grammar printf-lang
+  #:expression fmt #:size 5
+  #:context context #:size 5 #:where (max-context-size 5 2)
+  #:link cons ;link-context-fmt
+  #:evaluate interp-fmt-unsafe-uncurry)
+  

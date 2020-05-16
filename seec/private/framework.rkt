@@ -10,7 +10,9 @@
          (struct-out solution)
          concretize-witness
          display-changed-behavior
-         display-weird-component)
+         display-weird-component
+         find-gadget
+         display-gadget)
 
 (require (for-syntax syntax/parse)
          "bonsai2.rkt")
@@ -313,10 +315,22 @@ Specification:
               [v1 (make-symbolic-var (language-expression lang))]
               [p1 ((language-link lang) c1 v1)]
               [b1 ((language-evaluate lang) p1)]
-              [sol (synthesize
-                    #:forall c1
+              [sol (verify ;synthesize
+;                    #:forall c1
                     #:assume (assert (valid-program p1))
                     #:guarantee (assert (specification p1 b1)))])
          (if (unsat? sol)
              #f
-             (solution (list (language-solution v1 c1 p1 b1)) sol)))]))
+             (solution (list (language-witness v1 c1 p1 b1)) sol)))]))
+
+(define (display-gadget solution)
+  (if solution
+      (let* ([vars (concretize-witness solution)]
+             [lang-vars (first vars)])
+        (printf
+         "Expression ~a~n is a gadget for the provided specification, as witnessed by behavior ~a~n in context ~a~n"
+         (language-witness-expression lang-vars)
+         (language-witness-behavior lang-vars)
+         (language-witness-context lang-vars)))
+      (displayln "Failed to synthesis a gadget")))
+

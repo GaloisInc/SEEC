@@ -126,6 +126,25 @@
         )))
 (find-exploit)
 
+
+
+;find-exploit-gadget
+(define (valid-conf prog)
+  (match (first prog)
+    [(printf-lang (conf:config args:vlist))
+     (match (interp-fmt-unsafe (second prog) args conf)
+       [(list str conf+) (conf? conf+)])]))
+     
+
+(define (fmt-consistent-with-vlist?-uncurry prog beh)
+  (match (first prog)
+    [(printf-lang (conf:config args:vlist))
+     (fmt-consistent-with-vlist? (second prog) args)]))
+
+
+(displayln "Trying to find the same exploit using the framework")
+(display-gadget (find-gadget printf valid-conf fmt-consistent-with-vlist?-uncurry))
+
 #|
 (define (find-addition)
   (define f (printf-lang fmt 5))
