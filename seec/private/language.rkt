@@ -6,7 +6,11 @@
          )
 
 (require "bonsai2.rkt"
-         "match.rkt")
+         "match.rkt"
+         (only-in "string.rkt"
+                  char
+                  string)
+         )
 
 (require (for-syntax syntax/parse)
          (prefix-in unsafe:
@@ -39,6 +43,7 @@
                               string-trim
                               )
                      )))
+
 
 (struct grammar (nonterminals
                   terminals
@@ -443,9 +448,9 @@
     [(_ lang:id n:integer)
      #`(bonsai-integer n)]
     [(_ lang:id c:char)
-     #`(bonsai-char c)]
+     #`(bonsai-char (char c))]
     [(_ lang:id s:string)
-     #`(bonsai-string s)]
+     #`(bonsai-string (string s))]
     [(_ lang:id b:boolean)
      #`(bonsai-boolean b)]
     [(_ lang:id s:id)

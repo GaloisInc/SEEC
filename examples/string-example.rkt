@@ -11,30 +11,25 @@
 
 (define b (constants (BOOL #f)))
 (define five (constants (NAT 5)))
-(define hi (constants (STR "hi")))
-;(print-char (char #\x))
-;(bonsai-char #\x)
-(define c (constants (CHAR #\x)))
-;hi
-;c
 
-#;(match (bonsai-char #\x)
-  [(bonsai-string x) #t]
-  [(bonsai-integer x) #f]
-  [(bonsai-char x) #f]
+
+(define hi-desired (constants (STR "hi")))
+(define c-desired (constants (CHAR #\x)))
+(displayln hi-desired)
+(displayln c-desired)
+(match hi-desired
+  [(constants (STR s:string)) (displayln s)]
+  )
+(match c-desired
+  [(constants (CHAR c:char)) (displayln c)]
   )
 
-(match b
-  #;[(constants const) #t]
-  [(constants (BOOL boolean)) #t]
-  #;[(constants (STR s:string)) s]
-  #;[(constants (CHAR c:char)) c]
-  )
-(define c-symbolic (constants const 5))
-#;c
 
+
+#|
 (define (any-lang x)
   (match x
     [(constants any) #t]
     ))
 (any-lang b)
+|#

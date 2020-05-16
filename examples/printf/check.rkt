@@ -71,9 +71,13 @@
   (define args (printf-lang vlist 2))
   (define conf (printf-lang config 5))
   #;(assert (fmt-consistent-with-vlist? f args))
-  (define sol (verify (match (interp-fmt-unsafe f args conf)
-                        [(list _ conf+) (conf? conf+)]
-                        )))
+  (define guarantee
+    (match (interp-fmt-unsafe f args conf)
+      [(list _ conf+) (conf? conf+)]
+      [_ #f]))
+  (define sol (verify
+               #:guarantee guarantee
+               ))
   (if (unsat? sol)
       (displayln "Verified")
       (begin
@@ -93,16 +97,6 @@
           [(list _ conf+) (conf? conf+)])
         )))
 (test-interp-fmt-unsafe)
-;;; WHY IS THIS A COUNTEREXAMPLE???
-
-#|
-(define fmt-ex (printf-lang (cons (% 0 $ 1 d) nil)))
-(define args-ex (printf-lang nil))
-(define conf-ex (printf-lang (0 mnil)))
-(define res (interp-fmt-unsafe fmt-ex args-ex conf-ex))
-(match res
-  [(list s conf+) (conf? conf+)])
-|#
 
 (define (find-exploit)
   (define f (printf-lang fmt 5))
