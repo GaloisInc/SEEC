@@ -25,8 +25,11 @@
          new-symbolic-string*
          string-length
          number->string
+         digit->char
          string-append
          string
+
+         (rename-out [bv-max-width string/bv-max-width])
          )
 
 ;; A (printable, ASCII) character is just a number between 32 and 126
@@ -128,15 +131,22 @@
                             "digit between 0 and 9"
                             n)))
 
+(define bv-max-width 32)
+; this is effectively unbounded for symbolic numbers.
 (define (number->string n)
-  (cond
-    [(negative? n) (string-append (mk-string "-") (number->string (* -1 n)))]
-    [(<= 0 n 9) (char->string (digit->char n))]
-    [else 
-     ;; n = 10*q + r
-     (let* ([q (quotient n 10)]
-            [r (remainder n 10)]
-            )
-       (string-append (number->string q) (char->string (digit->char r)))
-       )]))
+  (define max-int (- (expt 2 bv-max-width) 1))
+  (define max-str-len (ceiling (/ max-int 10)))
+  #;(printf "max-str-len = ~a~n" max-str-len)
+  (define (to-str fuel x)
+    (cond
+      [(negative? n) (string-append (mk-string "-") (to-str (- fuel 1) (* -1 n)))]
+      [(<= 0 n 9) (char->string (digit->char n))]
+      [else
+       ;; n = 10*q + r
+       (let* ([q (quotient n 10)]
+              [r (remainder n 10)]
+              )
+         (string-append (to-str (- fuel 1) q) (char->string (digit->char r)))
+         )]))
+  (to-str max-str-len n))
 

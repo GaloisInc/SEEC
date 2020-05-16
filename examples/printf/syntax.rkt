@@ -169,7 +169,12 @@
 
 ; INPUT: a config conf and an integer n
 ; OUTPUT: a pair of the string representing n and an updated configuration
+;
+; Problem: when n is symbolic, (number->string n) is effectively unbounded.
+; instead, perhaps the output of these operations should be a trace of numbers
+; or strings in place of actual strings for everything.
 (define (print-d-integer conf n)
+  #;(printf "(print-d-integer ~a): ~a" n (print-string (number->string n)))
   (let* ([s (number->string n)]
          [new-conf (config-add conf (string-length s))])
     (list s new-conf)))
@@ -177,6 +182,7 @@
 ; INPUT: a config conf and a location identifier l
 ; OUTPUT: an updated configuration that assigns l the value of the accumulator.
 (define (print-n-loc conf l)
+  #;(printf "(print-n-loc ~a): ~a~n" l)
   (let* ([acc (bonsai-integer (conf->acc conf))]
          [acc-val (printf-lang ,acc)]
          [new-mem (mem-update (conf->mem conf) l acc-val)]
@@ -227,7 +233,8 @@
     ; if the type = 'n', the correesponding argument should be a location
     ; The function `print-n-loc` is shared between safe and unsafe versions
     [(cons (printf-lang n) (printf-lang (LOC l:ident)))
-     (list (string "") (print-n-loc conf l))]
+     (list (string "") (print-n-loc conf l))
+     ]
     [_ (raise-arguments-error 'interp-ftype-safe
                               "Offset does not map to a value of the correct type"
                               "fmt-type" (display ftype)
@@ -334,15 +341,18 @@
     ; as an integer value and call `print-d-integer`
     [(cons (printf-lang d) (printf-lang (LOC l:ident)))
      (print-d-integer conf (bonsai->number l))
+     ]
 
      ; if ftype = 'n' and the argument is a location, call `print-n-loc`
     [(cons (printf-lang n) (printf-lang (LOC l:ident)))
-     (list (string "") (print-n-loc conf l))]
+     (list (string "") (print-n-loc conf l))
+     ]
 
     ; if ftype = 'n' and the argument is an integer, we interpret the integer
     ; value as a location and call `print-n-loc`
     [(cons (printf-lang n) (printf-lang n:integer))
      (list (string "") (print-n-loc conf n))
+     ]
 
     ; otherwise, do not throw an error, but execute a no-op.
     [_ (list (string "") conf)]

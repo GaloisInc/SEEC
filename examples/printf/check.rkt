@@ -207,28 +207,70 @@
         ))
   )
 
-;(define (find-add-argument)
-;  (define f (printf-lang 
+(define (find-add-argument)
+  #;(define f (printf-lang fmt 4)) ; 4 seems to be the minimum this size can be,
+                                 ; but it times out/gets killed by my computer.
+  (displayln "Defined f")
+  (define f (printf-lang (cons (% (0 $) (* 0) d) nil)))
+  #;(assert (equal? f f-concrete))
+  #;(displayln "Asserted equality of f and f-concrete")
 
-#|
-(define (is-addition f x y x+y conf)
-  (let ([args (printf-lang (cons ,x (cons ,y (cons ,x+y nil))))])
-    (match (interp-fmt-unsafe f args conf)
-      [(list str conf+)
-       (match (lookup-loc 
-(define (find-addition)
-  (define f (printf-lang fmt 5))
-  (define-symbolic x integer?)
-  (define-symbolic y integer?)
-  (define-symbolic x+y integer?)
-  (define conf (printf-lang config 5))
-  (displayln "Searching for a format string that performs addition")
+  (define acc0 (printf-lang 0))
+  #;(define acc0 (printf-lang integer 1))
+  #;(assert (equal? acc0 (printf-lang 0)))
+  (define conf (printf-lang (,acc0 mnil)))
+  (printf "Defined conf: ~a~n" conf)
 
-         
 
-  (define sol (verify #:assume (assert (match (interp-fmt-unsafe f args conf)
-                                         [(list str conf+) (
-|#
+  (define x (printf-lang integer 1))
+  #;(assert (> (bonsai->number x) 0))
+  #;(define x (printf-lang 5))
+  (assert (equal? x (printf-lang 2)))
+  (define args (printf-lang (cons ,x nil)))
+  (printf "Defined args: ~a~n" args)
+
+  (define x->str (number->string (bonsai->number x)))
+  (displayln x->str)
+  ; as soon as we symbolically interpret the function, we throw an error
+
+  (define result (interp-fmt-unsafe f args conf))
+  #;(printf "Defined result: ~a~n" result)
+  #;(define conf+ (second (interp-fmt-safe f args conf)))
+  #;(printf "Result: (~a ~a)~n" (print-string result) conf+)
+
+  #;(assert (is-constant-add f (bonsai->number x) args conf))
+
+
+
+  (displayln "Searching for a format string that adds the value of x to the accumulator")
+  (define sol (time (synthesize
+               #:forall '() #;(list acc0 x)
+               ; #:assume (assert (fmt-consistent-with-vlist? f args))
+               ; #:assume (assert (is-constant-add f (bonsai->number x) args conf))
+               #:guarantee (assert #t)
+               )))
+  (if (unsat? sol)
+      (displayln "Failed to synthesize")
+      (begin
+        (displayln "Synthesis succeeded.")
+        (define f-instance (concretize f sol))
+        (define acc0-instance (bonsai-integer 20) #;(concretize acc0 sol))
+        (define conf-instance (printf-lang (,acc0-instance mnil)))
+        (define x-instance (bonsai-integer 2) #;(concretize x sol))
+        (define args-instance (printf-lang (cons ,x-instance nil)))
+
+        (define result (interp-fmt-safe f-instance args-instance conf-instance))
+        (define str-result (first result))
+        (define conf+ (second result))
+
+        (printf "f: ~a~n" f-instance)
+        (printf "acc0 instance: ~a~n" acc0-instance)
+        (printf "x instance: ~a~n" x-instance)
+        (printf "result: (~a ~a)~n" (print-string str-result) conf+)
+        ))
+  )
+(find-add-argument)
+
 
 
 ;; (test-lookup-offset)
@@ -241,5 +283,5 @@
 ;; (displayln "")
 ;; (find-exploit)
 ;; (displayln "")
-(find-add-constant)
-(displayln "")
+;; (find-add-constant)
+;; (displayln "")
