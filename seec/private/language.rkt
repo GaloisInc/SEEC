@@ -3,23 +3,22 @@
 (provide define-grammar
          syntax-match?
          enumerate
-         )
+         make-generator)
 
 (require "bonsai2.rkt"
          "match.rkt"
          (only-in "string.rkt"
                   char
-                  string)
-         )
+                  string))
 
 (require (for-syntax syntax/parse)
          (prefix-in unsafe:
                     (combine-in
-                     (only-in racket/match)
                      (only-in racket
                               for
                               for/fold
                               for/hash
+                              for/list
                               in-list
                               in-set
                               list->set
@@ -36,13 +35,15 @@
                               symbol?
                               symbol->string
                               string->symbol
-                              )
+                              sequence->stream
+                              in-range
+                              in-producer)
+                     racket/match
+                     racket/generator
                      (only-in racket/string
                               string-prefix?
                               string-suffix?
-                              string-trim
-                              )
-                     )))
+                              string-trim))))
 
 
 (struct grammar (nonterminals
@@ -471,20 +472,34 @@
             [_ #f]))
          tree)]))
 
+(define-syntax (make-generator stx)
+  (syntax-parse stx
+    [(_ pat (~optional (~seq #:where assert-fun:expr)
+                       #:defaults ([assert-fun #'(lambda (t) #t)])))
+     #'(unsafe:generator
+        ()
+        (let loop ([found (list)])
+          (let* ([tmp pat]
+                 [tmpsol (solve (assert
+                                 (and (not (ormap (lambda (t) (equal? tmp t)) found))
+                                      (assert-fun tmp))))])
+            (if (unsat? tmpsol)
+                #f
+                (let ([newfound (concretize tmp tmpsol)])
+                  (unsafe:yield newfound)
+                  (loop (cons newfound found)))))))]))
+
 (define-syntax (enumerate stx)
   (syntax-parse stx
-    [(_ pat assert-fun:expr max:expr)
-     #'(let ()
-         (define (loop found count)
-           (if (> count 0)
-               (let* ([tmp pat]
-                      [tmpsol (solve (assert (and (not (ormap (λ (f) (equal? tmp f)) found))
-                                                  (assert-fun tmp))))])
-                 (if (unsat? tmpsol)
-                     found
-                     (loop (cons (concretize tmp tmpsol) found) (- count 1))))
-               found))
-         (loop '() max))]))
+    [(_ (~optional (~seq #:count max:expr)
+                   #:defaults ([max #'#f]))
+        pat
+        (~optional (~seq #:where assert-fun:expr)
+                   #:defaults ([assert-fun #'(lambda (t) #t)])))
+     #'(let ([generator (make-generator pat #:where assert-fun)])
+         (unsafe:for/list ([i (unsafe:in-range max)]
+                           [t (unsafe:in-producer generator #f)])
+                          t))]))
 
 (module* test rosette/safe
   (require rackunit)
