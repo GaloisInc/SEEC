@@ -14,6 +14,8 @@
          find-gadget
          display-gadget
          display-list
+         seec-add
+         seec-subtract
          link
          evaluate
          link-and-evaluate
@@ -347,8 +349,16 @@ Specification:
          (language-witness-expression lang-vars)
          (language-witness-behavior lang-vars)
          (language-witness-context lang-vars)))
-      (displayln "Failed to synthesis a gadget")))
+      (displayln "Failed to synthesize a gadget")))
 
 (define (display-list list)
   (for-each displayln list)
   (void))
+
+(define (seec-add n1 n2)
+  (bonsai-integer (+ (bonsai-integer-value n1)
+                     (bonsai-integer-value n2))))
+
+(define (seec-subtract n1 n2)
+  (bonsai-integer (- (bonsai-integer-value n1)
+                     (bonsai-integer-value n2))))

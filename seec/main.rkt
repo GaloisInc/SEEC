@@ -11,7 +11,8 @@
          (all-from-out "private/string.rkt")
 
          bonsai->racket
-         (rename-out [bonsai->racket seec->racket])
+         (rename-out [bonsai->racket seec->racket]
+                     [bonsai-integer-value seec->int])
 
          bonsai-null
          bonsai-null?
