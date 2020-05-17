@@ -10,6 +10,9 @@
          
          (all-from-out "private/string.rkt")
 
+         bonsai->racket
+         (rename-out [bonsai->racket seec->racket])
+
          bonsai-null
          bonsai-null?
 
