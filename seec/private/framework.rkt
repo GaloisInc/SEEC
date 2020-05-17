@@ -12,7 +12,12 @@
          display-changed-behavior
          display-weird-component
          find-gadget
-         display-gadget)
+         display-gadget
+         display-list
+         link
+         evaluate
+         link-and-evaluate
+         compile)
 
 (require (for-syntax syntax/parse)
          "bonsai2.rkt")
@@ -62,6 +67,15 @@ TODO: create more macros:
 ; evaluate : program -> behavior
 (struct language (expression context link evaluate))
 
+(define (link language expr context)
+  ((language-link language) expr context))
+
+(define (evaluate language program)
+  ((language-evaluate language) program))
+
+(define (link-and-evaluate language expr context)
+  (evaluate language (link language expr context)))
+
 (begin-for-syntax
   (define-splicing-syntax-class predsyn
     (pattern (~seq nt:id #:size n:expr)
@@ -105,7 +119,8 @@ TODO: create more macros:
         #:compile compile)
      #`(define name (compiler source target brel crel compile))]))
 
-
+(define (compile compiler prog)
+  ((compiler-compile compiler) prog))
 
 (struct language-witness (expression context program behavior) #:transparent)
 
@@ -334,3 +349,6 @@ Specification:
          (language-witness-context lang-vars)))
       (displayln "Failed to synthesis a gadget")))
 
+(define (display-list list)
+  (for-each displayln list)
+  (void))
