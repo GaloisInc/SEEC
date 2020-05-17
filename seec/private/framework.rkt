@@ -117,7 +117,8 @@ TODO: create more macros:
         #:source source
         #:target target
         #:behavior-relation brel
-        #:context-relation crel
+        (~optional (~seq #:context-relation crel)
+                   #:defaults ([crel #'#f]))
         #:compile compile)
      #`(define name (compiler source target brel crel compile))]))
 
@@ -175,7 +176,9 @@ TODO: create more macros:
               [p2 (target-link c2 v2)]
               [b2 (target-evaluate p2)]
               [context-relation (compiler-context-relation comp)]
-              [ccomp (context-relation c1 c2)]
+              [ccomp (if context-relation
+                         (context-relation c1 c2)
+                         #t)]
               [behavior-relation (compiler-behavior-relation comp)]
               [equality (with-asserts-only (assert (behavior-relation b1 b2)))]
               [sol (verify
@@ -206,7 +209,9 @@ TODO: create more macros:
               [target-link (language-link target)]
               [compile (compiler-compile comp)]
               [context-relation  (compiler-context-relation comp)]
-              [ccomp (context-relation c1 c2)]
+              [ccomp (if context-relation
+                         (context-relation c1 c2)
+                         #t)]
               [behavior-relation (compiler-behavior-relation comp)]
               [v2 (compile v1)]
               [p1 (source-link c1 v1)]
