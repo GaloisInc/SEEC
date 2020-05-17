@@ -267,7 +267,7 @@ TODO: create more macros:
            (language-witness-expression target-vars)
            (language-witness-behavior target-vars)
            (language-witness-context target-vars))))
-      (displayln "Failed to synthesis a changed behavior")))
+      (displayln "Failed to synthesize a changed behavior")))
 
 ; find-weird-component
 ; find-weird-component: comp -> solution + #f
@@ -293,7 +293,7 @@ TODO: create more macros:
          (language-witness-expression source-vars)
          (language-witness-behavior target-vars)
          (language-witness-context target-vars)))
-      (displayln "Failed to synthesis a changed behavior")))
+      (displayln "Failed to synthesize a weird computation")))
 
 
 
