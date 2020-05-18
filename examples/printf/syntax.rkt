@@ -3,6 +3,7 @@
 (require (only-in racket/base
                   raise-argument-error
                   raise-arguments-error))
+(require rosette/lib/value-browser)
 
 (require (only-in racket/base
                   [make-string unsafe:make-string]
@@ -34,6 +35,8 @@
          mem?
          conf?
          fmt-consistent-with-vlist?
+
+         int->string-length
          )
 
 ; We aim to eventually support all or most of the syntax for printf formats:
@@ -178,6 +181,10 @@
 ;
 ; i.e. base^{x-1} < y <= base^x
 (define (is-ceil-log? x base y)
+  #;(printf "(is-ceil-log? ~a ~a ~a)~n" x base y)
+  #;(printf "(number? ~a) = ~a~n" (- x 1) (number? (- x 1)))
+  #;(printf "(expt ~a ~a) = ~a~n" base x (expt base x))
+  ; NOTE: the problem is in (expt base x) when x is symbolic
   (and (< (expt base (- x 1) ) y)
        (<= y (expt base x)))
   )
@@ -191,6 +198,7 @@
 ; if n is symbolic, create a new symbolic integer that is the power set of n
 ; if n is concrete, then do a simple algorithm
 (define (int->string-length n)
+  #;(printf "(int->string-length ~a) [~a]~n" n (number? n))
   (define (concrete-defn x)
     (cond
       [(negative? x) (+ 1 (concrete-defn (* -1 x)))]
@@ -215,7 +223,8 @@
     l
     )
 
-  (if (term? n)
+  #;(render-value/window n)
+  (if (or (union? n) (term? n))
       (abstract-defn n)
       (concrete-defn n)
       ))
@@ -224,6 +233,7 @@
 ; If the constant is a string, give the length of the string
 ; If the constant is an integer, give the length of the corresponding string
 (define (constant-length c)
+  #;(printf "(constant-length ~a)~n" c)
   (match c
     [(printf-lang s:string) (string-length (bonsai-string-value s))]
     [(printf-lang n:integer) (int->string-length (bonsai->number n))]
@@ -232,6 +242,7 @@
 ; INPUT: a config conf and constant c
 ; OUTPUT: a behavior consisting of the trace containing n and the upated configuration
 (define (print-constant conf c)
+  #;(printf "(print-constant ~a ~a)~n" conf c)
   (let* ([conf+ (config-add conf (constant-length c))]
          [t (printf-lang (cons ,c nil))]
          )
@@ -264,7 +275,7 @@
 
 ; 
 (define (interp-ftype-safe ftype param args conf)
-  #;(printf "(interp-ftype-safe ~a ~a ~a ~a) [~a] ~n" ftype param args conf (lookup-offset (param->offset param) args))
+  #;(printf "(interp-ftype-safe ~a ~a ~a ~a)~n" ftype param args conf)
   (match (cons ftype (lookup-offset (param->offset param) args))
     ; if the type = 'd', the corresponding argument should be an integer
     ; The function `print-constant` is shared between safe and unsafe versions
@@ -316,7 +327,7 @@
 ; OUTPUT: an outputted string and a configuration
 (define (interp-fmt-elt-safe f args conf)
   #;(printf "(interp-fmt-elt-safe ~a ~a ~a)~n" (bonsai-pretty f) args conf)
-  (displayln f)
+  #;(displayln f)
   (match f
     [(printf-lang s:string)
      (print-constant conf s)]

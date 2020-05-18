@@ -207,7 +207,7 @@
   #;(define f (printf-lang fmt 4)) ; 4 seems to be the minimum this size can be,
                                  ; but it times out/gets killed by my computer.
   (define f (printf-lang (cons (% (0 $) (* 0) d) nil)))
-  (printf "Defined f:")
+  (printf "Defined f: ")
   (displayln f)
   #;(assert (equal? f f-concrete))
   #;(displayln "Asserted equality of f and f-concrete")
@@ -219,22 +219,19 @@
   (printf "Defined conf: ~a~n" conf)
 
 
-  #;(define x (printf-lang integer 1))
+  (define x (printf-lang integer 1))
   #;(assert (> (bonsai->number x) 0))
-  #;(assert (equal? x (printf-lang 2)))
-  (define x (printf-lang 5))
+  (assert (equal? x (printf-lang 5)))
+  #;(define x (printf-lang 5))
   (define args (printf-lang (cons ,x nil)))
   (printf "Defined args: ~a~n" args)
 
 
   (define result (interp-fmt-safe f args conf))
   (printf "Defined result: ~a~n" result)
-  #;(define conf+ (second (interp-fmt-safe f args conf)))
-  #;(printf "Result: (~a ~a)~n" (print-string result) conf+)
 
-  #;(assert (is-constant-add f (bonsai->number x) args conf))
-
-
+  ; This test currently doesn't work because it calls `int->string-length` on a
+  ; symbolic integer, which is currently broken
 
   (displayln "Searching for a format string that adds the value of x to the accumulator")
   (define sol (time (synthesize
@@ -243,6 +240,7 @@
                ; #:assume (assert (is-constant-add f (bonsai->number x) args conf))
                #:guarantee (assert #t)
                )))
+
   (if (unsat? sol)
       (displayln "Failed to synthesize")
       (begin
@@ -263,7 +261,13 @@
 ;        (printf "result: (~a ~a)~n" (print-string str-result) conf+)
         ))
   )
-(find-add-argument)
+
+
+(define (test-int->string-length)
+  (define-symbolic x integer?)
+  (int->string-length x)
+  )
+#;(test-int->string-length)
 
 
 
@@ -279,3 +283,4 @@
 (displayln "")
 (find-add-constant)
 (displayln "")
+;(find-add-argument)
