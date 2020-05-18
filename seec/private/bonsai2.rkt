@@ -15,6 +15,7 @@
                      [match-bonsai-char bonsai-char]
                      [match-bonsai-string bonsai-string]
                      [match-bonsai-list bonsai-list])
+
          bonsai-depth
          bonsai-leaves
          enum->symbol
@@ -36,6 +37,7 @@
          bonsai-ll-tail
          bonsai-ll-length
          bonsai-ll-append
+         bonsai->racket
 
          bonsai-pretty
          )
@@ -208,6 +210,16 @@
     [(bonsai-list? b) (foldl + 0 (map bonsai-leaves (bonsai-list-nodes b)))]
     [(bonsai-null? b) 0]
     [else 1]))
+
+(define (bonsai->racket b)
+  (cond
+    [(bonsai-null? b) #f]
+    [(bonsai-terminal? b) (enum->symbol (bonsai-terminal-value b))]
+    [(bonsai-boolean? b) (bonsai-boolean-value b)]
+    [(bonsai-integer? b) (bonsai-integer-value b)]
+    [(bonsai-list? b)
+     (map bonsai->racket (filter (lambda (b) (not (bonsai-null? b)))
+                                 (bonsai-list-nodes b)))]))
 
 (define nondeterminism (make-parameter (list)))
 

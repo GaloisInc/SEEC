@@ -263,12 +263,6 @@
   )
 
 
-(define (test-int->string-length)
-  (define-symbolic x integer?)
-  (int->string-length x)
-  )
-#;(test-int->string-length)
-
 
 
 (test-lookup-offset)

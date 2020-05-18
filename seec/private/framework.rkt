@@ -7,9 +7,19 @@
          find-changed-behavior
          find-weird-computation
          find-weird-component
-         (struct-out witness)
+         (struct-out solution)
          concretize-witness
-         display-witness)
+         display-changed-behavior
+         display-weird-component
+         find-gadget
+         display-gadget
+         display-list
+         seec-add
+         seec-subtract
+         link
+         evaluate
+         link-and-evaluate
+         compile)
 
 (require (for-syntax syntax/parse)
          "bonsai2.rkt")
@@ -27,7 +37,8 @@
 
 
 
-TODO: deal with nondet
+TODO: give more examples with nondet (e.g. buggy set)
+TODO: pack the vars in solution in a structure
 TODO: create more macros:
    e.g. set e.g. 1 where verify is used instead of synthesize
    e.g. n-to-z style where C2 is computed from C1
@@ -57,6 +68,15 @@ TODO: create more macros:
 ; link : ctxt -> expr -> program
 ; evaluate : program -> behavior
 (struct language (expression context link evaluate))
+
+(define (link language expr context)
+  ((language-link language) expr context))
+
+(define (evaluate language program)
+  ((language-evaluate language) program))
+
+(define (link-and-evaluate language expr context)
+  (evaluate language (link language expr context)))
 
 (begin-for-syntax
   (define-splicing-syntax-class predsyn
@@ -97,38 +117,68 @@ TODO: create more macros:
         #:source source
         #:target target
         #:behavior-relation brel
-        #:context-relation crel
+        (~optional (~seq #:context-relation crel)
+                   #:defaults ([crel #'#f]))
         #:compile compile)
      #`(define name (compiler source target brel crel compile))]))
 
-; Question: this definition of a compiler doesn't consider
-; nondeterminism. Could add nondet as part of ; context, or have it be
-; a part of linking.
+(define (compile compiler prog)
+  ((compiler-compile compiler) prog))
 
-(struct witness (program context behavior solution) #:transparent)
+(struct language-witness (expression context program behavior) #:transparent)
 
-; find-changed-behavior: {r:scomp} r.source.expression -> witness + #f
+; Utility for language-witness:
+
+;
+(define (unpack-language-witness v)
+  (list (language-witness-expression v)
+        (language-witness-context v)
+        (language-witness-program v)
+        (language-witness-behavior v)))
+
+; Group every n elements of the input list into language-witness, where n is the number of field of a language-witness
+; Assumes length l is divisible by n
+(define (pack-language-witness l)
+    (if (empty? l)
+        (list)
+        (let-values ([(hd tl) (split-at l 4)])
+          (let ([packed-hd (language-witness (first hd) (second hd) (third hd) (fourth hd))]
+                [packed-tl (pack-language-witness tl)])
+            (cons packed-hd packed-tl)))))
+
+; witness is a list of language-witness 
+(struct solution (witness model) #:transparent)
+
+
+
+
+; find-changed-behavior: {r:scomp} r.source.expression -> solution + #f
 ; Solve the following synthesis problem:
-; (\lambda v).
+; (\lambda v1).
 ; Exists c1:s.t.context c2:r.t.context,
 ;    r.ctx-relation(c1, c2)
-;       not (r.behavior-relation(r.s.apply(c1, v), r.t.apply(c2, r.compile(v))))
+;       not (r.behavior-relation(r.s.apply(c1, v1), r.t.apply(c2, r.compile(v1))))
 (define-syntax (find-changed-behavior stx)
   (syntax-parse stx
-    [(_ comp v)
+    [(_ comp v1)
      #`(let* ([source (compiler-source comp)]
               [target (compiler-target comp)]
               [c1 (make-symbolic-var (language-context source))]
               [c2 (make-symbolic-var (language-context target))]
               [source-evaluate (language-evaluate source)]
               [source-link (language-link source)]
-              [b1 (source-evaluate (source-link c1 v))]
+              [p1 (source-link c1 v1)]
+              [b1 (source-evaluate p1)]
               [target-evaluate (language-evaluate target)]
               [target-link (language-link target)]
               [compile (compiler-compile comp)]
-              [b2 (target-evaluate (target-link c2 (compile v)))]
+              [v2 (compile v1)]
+              [p2 (target-link c2 v2)]
+              [b2 (target-evaluate p2)]
               [context-relation (compiler-context-relation comp)]
-              [ccomp (context-relation c1 c2)]
+              [ccomp (if context-relation
+                         (context-relation c1 c2)
+                         #t)]
               [behavior-relation (compiler-behavior-relation comp)]
               [equality (with-asserts-only (assert (behavior-relation b1 b2)))]
               [sol (verify
@@ -136,65 +186,91 @@ TODO: create more macros:
                     #:guarantee (assert (apply && equality)))])
          (if (unsat? sol)
              #f
-             (witness v c2 b2 sol)))]))
+             (solution (list (language-witness v1 c1 p1 b1) (language-witness v2 c2 p2 b2)) sol)))]))
 
 ; find-emergent-computation :
-;     {r:comp} r.source.expression -> witness + #f
+;     {r:comp} r.source.expression -> solution + #f
 ; Solve the following synthesis problem:
-; (\lambda v).
+; (\lambda v1).
 ; Exists c2:r.t.context,
 ;   Forall c1:r.s.context,
 ;     r.context-relation(c1, c2) ->
-;       not (r.behavior-relation(r.s.apply(c1, v), r.t.apply(c2, r.compile(v))))
+;       not (r.behavior-relation(r.s.apply(c1, v1), r.t.apply(c2, r.compile(v1))))
 (define-syntax (find-weird-computation stx)
   (syntax-parse stx
-    [(_ comp v)
+    [(_ comp v1)
      #`(let* ([source (compiler-source comp)]
               [target (compiler-target comp)]
               [c1 (make-symbolic-var (language-context source))]
               [c2 (make-symbolic-var (language-context target))]
-              [source-evaluate (language-evaluate source)]
+              [source-evaluate (language-evaluate source)] 
               [source-link (language-link source)]
-              [b1 (source-evaluate (source-link c1 v))]
-              [target-evaluate (language-evaluate target)]
+              [target-evaluate (language-evaluate target)] 
               [target-link (language-link target)]
               [compile (compiler-compile comp)]
-              [b2 (target-evaluate (target-link c2 (compile v)))]
               [context-relation  (compiler-context-relation comp)]
-              [ccomp (context-relation c1 c2)]
+              [ccomp (if context-relation
+                         (context-relation c1 c2)
+                         #t)]
               [behavior-relation (compiler-behavior-relation comp)]
-              [equality (with-asserts-only (assert (behavior-relation b1 b2)))]
-              [sol (synthesize
-                    #:forall c1
-                    #:assume (assert ccomp)
-                    #:guarantee (assert (! (apply && equality))))])
-         (if (unsat? sol)
-             #f
-             (witness v c2 b2 sol)))]))
+              [v2 (compile v1)]
+              [p1 (source-link c1 v1)]
+              [p2 (target-link c2 v2)])
+         (let*-values ([(b1 nondet1) (capture-nondeterminism (source-evaluate p1))] ; capture nondet
+                       [(b2 nondet2) (capture-nondeterminism (target-evaluate p2))])
+           (let*
+               ([equality (with-asserts-only (assert (behavior-relation b1 b2)))]
+                [sol (synthesize
+                      #:forall (cons c1 (cons nondet1 nondet2)) ; quantify over nondet
+                      #:assume (assert ccomp) 
+                      #:guarantee (assert (! (apply && equality))))])
+             (if (unsat? sol)
+                 #f
+                 (solution (list (language-witness v1 c1 p1 b1) (language-witness v2 c2 p2 b2)) sol)))))]))
 
-(define (concretize-witness sym-witness)
-  (let ([program  (witness-program sym-witness)]
-        [context  (witness-context sym-witness)]
-        [behavior (witness-behavior sym-witness)]
-        [solution (witness-solution sym-witness)])
-    (let ([concretized (concretize (list program context behavior) solution)])
-      (witness (first concretized)
-               (second concretized)
-               (third concretized)
-               solution))))
 
-(define (display-witness witness)
-  (if witness
-      (let ([concretized (concretize-witness witness)])
+; concretize all vars included in the solution, return a list of language-witness with concrete vars
+(define (concretize-witness sym-solution)
+  (let* ([vars (solution-witness sym-solution)]
+        [unpacked-vars (map unpack-language-witness vars)]
+        [model (solution-model sym-solution)]
+        [list-vars (foldr append (list) unpacked-vars)]
+        [concretized (concretize list-vars model)])
+      (pack-language-witness concretized)))
+
+
+#;(define (display-solution solution)
+  (if solution
+      (let ([concretized (concretize-witness solution)])
         (printf
           "Expression ~a~n    has emergent behavior ~a~n    witnessed by target-level context ~a~n"
-          (witness-program concretized)
-          (witness-behavior concretized)
-          (witness-context concretized)))
+          (solution-program concretized)
+          (solution-behavior concretized)
+          (solution-context concretized)))
       (displayln "Failed to synthesis emergent computation")))
 
+
+; show (c1, v1) ~> b1 and (c2, v2) ~> b2
+(define (display-changed-behavior solution)
+  (if solution
+      (let* ([vars (concretize-witness solution)]
+             [source-vars (first vars)]
+             [target-vars (second vars)])
+        (begin 
+          (printf
+           "Expression ~a~n has behavior ~a~n in source-level context ~a~n"
+           (language-witness-expression source-vars)
+           (language-witness-behavior source-vars)
+           (language-witness-context source-vars))
+          (printf
+           "Compiles to ~a~n with emergent behavior ~a~n in target-level context ~a~n"
+           (language-witness-expression target-vars)
+           (language-witness-behavior target-vars)
+           (language-witness-context target-vars))))
+      (displayln "Failed to synthesize a changed behavior")))
+
 ; find-weird-component
-; find-weird-component: comp -> witness + #f
+; find-weird-component: comp -> solution + #f
 ; (\lambda r).
 ;   Exists v:r.s.expression
 ;     find-exploit r v
@@ -204,3 +280,90 @@ TODO: create more macros:
      #`(let* ([v (make-symbolic-var
                   (language-expression (compiler-source comp)))])
          (find-weird-computation comp v))]))
+
+
+; show v1, c2 and b2
+(define (display-weird-component solution)
+  (if solution
+      (let* ([vars (concretize-witness solution)]
+             [source-vars (first vars)]
+             [target-vars (second vars)])
+        (printf
+         "Expression ~a~n has emergent behavior ~a~n witnessed by target-level context ~a~n"
+         (language-witness-expression source-vars)
+         (language-witness-behavior target-vars)
+         (language-witness-context target-vars)))
+      (displayln "Failed to synthesize a weird computation")))
+
+
+
+
+#|
+ Notes for Printf's uses of the framework:
+
+LANG
+Expression:
+fmt (format strings)
+Context:
+
+Behavior:
+(res, config)
+Program:
+(f:fmt, args:vlist, conf:config)
+Link:
+
+Evaluate:
+interp-fmt-unsafe
+
+OTHER:
+Valid-program:
+
+conf is of the form (,(printf-lang integer 1) mnil)
+AND
+fmt-consistent-with-vlist? f args
+
+Specification:
+ get f and conf and arg out of program
+  is-constant-add f 1 args conf
+
+|#
+
+; Source: format-str, (arg-list x acc), cons, run
+; Goal: find a format-str s.t. given a ctx (arg-list, acc), increment the acc. (input is Source, v-ctx:Context -> bool (in addition to the one in source), spec:Context -> behavior -> bool
+(define-syntax (find-gadget stx)
+  (syntax-parse stx
+    [(_ lang valid-program specification)
+     #`(let* ([c1 (make-symbolic-var (language-context lang))]
+              [v1 (make-symbolic-var (language-expression lang))]
+              [p1 ((language-link lang) c1 v1)]
+              [b1 ((language-evaluate lang) p1)]
+              [sol (verify ;synthesize
+;                    #:forall c1
+                    #:assume (assert (valid-program p1))
+                    #:guarantee (assert (specification p1 b1)))])
+         (if (unsat? sol)
+             #f
+             (solution (list (language-witness v1 c1 p1 b1)) sol)))]))
+
+(define (display-gadget solution)
+  (if solution
+      (let* ([vars (concretize-witness solution)]
+             [lang-vars (first vars)])
+        (printf
+         "Expression ~a~n is a gadget for the provided specification, as witnessed by behavior ~a~n in context ~a~n"
+         (language-witness-expression lang-vars)
+         (language-witness-behavior lang-vars)
+         (language-witness-context lang-vars)))
+      (displayln "Failed to synthesize a gadget")))
+
+(define (display-list list)
+  (for-each displayln list)
+  (void))
+
+(define (seec-add n1 n2)
+  (bonsai-integer (+ (bonsai-integer-value n1)
+                     (bonsai-integer-value n2))))
+
+(define (seec-subtract n1 n2)
+  (bonsai-integer (- (bonsai-integer-value n1)
+                     (bonsai-integer-value n2))))

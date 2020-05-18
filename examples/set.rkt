@@ -226,12 +226,15 @@
   #:compile id)
 
 (begin
+  (displayln "Trying to find a trace with weird behavior under buggy compilation")
+  (display-weird-component (time (find-weird-component abstract-to-buggyconcrete))))
+
+(begin
   (displayln "Trying to find a trace with different behavior under compilation")
   (define trace (set-api interaction 6))
   (define witness (find-changed-behavior abstract-to-concrete trace))
-  (display-witness witness))
+  (display-changed-behavior witness))
 
-; OSTODO: (find-exploitable-component abstract-to-buggyconcrete)
 
 
 
