@@ -3,7 +3,8 @@
 (require "private/bonsai2.rkt"
          "private/match.rkt"
          "private/language.rkt"
-         "private/string.rkt")
+         "private/string.rkt"
+         "private/framework.rkt")
 
 (provide (all-from-out rosette/safe)
          
@@ -58,5 +59,7 @@
          match
          match-let*
 
-         define-language
-         enumerate)
+         define-grammar
+         enumerate
+
+         (all-from-out "private/framework.rkt"))

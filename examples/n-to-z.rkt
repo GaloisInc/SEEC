@@ -6,7 +6,7 @@
     ))
 
 
-(define-language lang
+(define-grammar lang
   (expn  ::= (Var name) (Valn natural) (Sn expn) (binop expn expn))
   (expz  ::= (Var name) (Valz integer) (Sz expz) (Pz expz) (binop expz expz))
   (binop ::= + *)
@@ -22,6 +22,22 @@
   [(lang *)
    (* n1 n2)]))
 
+
+#| |#
+(define (uncurry f)
+  (lambda (ab)
+    (match ab
+      [(cons a b)
+       (f a b)])))
+
+(define id
+  (lambda (a)
+    a))
+
+
+; cons in reverse order
+(define snoc
+  (lambda (a b) (cons b a)))
 
 #||||||||||||||||||||||||||||#
 #| Language expN            |#
@@ -93,9 +109,24 @@
     [(lang (Valn n:natural))
      (bonsai->number n)]))
 
+(define (eval-expn-pair ce)
+  (match ce
+    [(cons env e)
+     (eval-expn env e)]))
+
 (define (apply-ctxn c e)
   (eval-expn (lang (Envn ,e empty)) c))
 
+(define (link-ctxn c e)
+  (cons (lang (Envn ,e empty)) c))
+
+
+(define-language EXPN
+  #:grammar lang
+  #:expression expn #:size 4 #:where (lambda (v) (well-scopedn? (lang empty) v))
+  #:context    expn #:size 4 #:where ctx-expn
+  #:link link-ctxn
+  #:evaluate (uncurry eval-expn))
 
 #||||||||||||||||||||||||||||#
 #| Language expZ            |#
@@ -173,10 +204,19 @@
     [(lang (Valz z:integer))
      (bonsai->number z)]))
 
-
 (define (apply-ctxz c e)
   (eval-expz (lang (Envz ,e empty)) c))
 
+; decouple eval-expz from apply-ctxz
+(define (link-ctxz c e)
+  (cons (lang (Envz ,e empty)) c))
+
+(define-language EXPZ
+  #:grammar lang
+  #:expression expz #:size 4 #:where (lambda (v) (well-scopedz? (lang empty) v))
+  #:context    expz #:size 4 #:where ctx-expz
+  #:link link-ctxz
+  #:evaluate (uncurry eval-expz))
 
 #||||||||||||||||||||||||||||#
 #| Compilation              |#
@@ -206,13 +246,26 @@
              (lang (,e1z ,env1z)))]))
 
 
+(define (crel cn cz)
+  (let ([cnz (n-to-z-env cn)])
+    (equal? cnz cz)))
+
+
+(define-compiler N-TO-Z
+  #:source EXPN
+  #:target EXPZ
+  #:behavior-relation equal?
+  #:context-relation (lambda (c1 c2) #t)
+  #:compile n-to-z)
+
+
 #||||||||||||||||||||||||||||#
 #| Tests                    |#
 #||||||||||||||||||||||||||||#
 
 
 (define test-expn1
-  (lang (Var 0)))
+  (lang (Valn 0)))
 (define test-expn2
   (lang (+ (Sn (Valn 2)) (Var 0))))
 (define test-expn3
@@ -233,9 +286,25 @@
   (lang (+ (Sz (Valz 2)) (Valz 3))))
 
 
-;(displayln (apply-ctxz (n-to-z test-expn2) (n-to-z test-expn3)))
-;(displayln (apply-ctxz test-expz2 test-expz3))
-;(displayln (apply-ctxz (n-to-z test-expn2) (n-to-z test-expn3)))
+; find an expression En and context Cz s.t. Cz[n-to-z En] != Cn[En] for Cn of bounded size
+(begin
+  (displayln "Trying find-weird-component on N-TO-Z")
+  (display-witness (time (find-weird-component N-TO-Z))))
+    #;[(list vars sol)
+     (let* ([vars* (map (lambda (var)
+                          (concretize var sol)) vars)])
+       (begin
+         (displayln "Source, target exp:")
+         (displayln (first vars*))
+         (displayln (n-to-z (first vars*)))
+         (displayln "Target context:")
+         (displayln (third vars*))
+         (displayln "Target behavior:")
+         (displayln (fifth vars*))))]
+    #;[_
+     (displayln "Synthesis failed")]
+
+
 
 
 #||||||||||||||||||||||||||||#
@@ -272,7 +341,7 @@
 (displayln "Found a source expression (Expn) which fails to evaluate a well-scoped context")
 (displayln c)
 (displayln e)
-|#
+li|#
 
 #|
 ; Find a z* which evaluates to a result which no (bounded) expn evaluates to
@@ -299,7 +368,7 @@
 (displayln (eval-expz (lang empty) z))
 |#
 
-
+#|
 ; find an expression En and context Cz s.t. Cz[n-to-z En] != Cn[En] for Cn of bounded size
 (displayln "Creating a symbolic expression, restricting it to closed expression and compiling it")
 (define n* (time (lang expn 4)))
@@ -340,4 +409,4 @@
 
 
 
-
+|#

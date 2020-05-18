@@ -7,7 +7,7 @@
 ; Define a language of API calls for a set datastructure
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-language set-api
+(define-grammar set-api
   (value       ::= integer boolean)
   (vallist        ::= empty (value vallist))
   (method      ::= (insert integer) (remove integer) (member? integer) select)
@@ -82,6 +82,7 @@
      (set-api (,(abstract-member? state v) ,(abstract-interpret r state)))]
     [(set-api (select r:interaction))
      (set-api (,(abstract-select state) ,(abstract-interpret r state)))]))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Define an concrete implementation of the set API
@@ -170,9 +171,74 @@
        [(set-api #t) #f])]
     [_ #f]))
 
+(define (uncurry f)
+  (lambda (ab)
+    (match ab
+      [(cons a b)
+       (f a b)])))
+
+(define id
+  (lambda (a)
+    a))
+
+
+; cons in reverse order
+(define snoc
+  (lambda (a b) (cons b a)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Demonstration synthesis tasks
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-language abstract
+  #:grammar set-api
+  #:expression interaction #:size 4
+  #:context    vallist     #:size 2 #:where valid-set?
+  #:link snoc
+  #:evaluate (uncurry abstract-interpret))
+
+(define-language concrete
+  #:grammar set-api
+  #:expression interaction #:size 4
+  #:context    vallist     #:size 2 #:where valid-set?
+  #:link snoc
+  #:evaluate (uncurry concrete-interpret))
+
+(define-compiler abstract-to-concrete
+  #:source abstract
+  #:target concrete
+  #:behavior-relation equal?
+  #:context-relation equal?
+  #:compile id)
+
+(define-language buggy-concrete
+  #:grammar set-api
+  #:expression interaction #:size 4
+  #:context    vallist     #:size 2 #:where valid-set?
+  #:link snoc
+  #:evaluate (uncurry buggy-concrete-interpret))
+
+(define-compiler abstract-to-buggyconcrete
+  #:source abstract
+  #:target buggy-concrete
+  #:behavior-relation equal?
+  #:context-relation equal?
+  #:compile id)
+
+(begin
+  (displayln "Trying to find a trace with different behavior under compilation")
+  (define trace (set-api interaction 6))
+  (define witness (find-changed-behavior abstract-to-concrete trace))
+  (display-witness witness))
+
+; OSTODO: (find-exploitable-component abstract-to-buggyconcrete)
+
+
+
+
+
+
+#|
 
 (define (set-context-experiment buggy)
   (define test-interpret
@@ -225,11 +291,11 @@
                      trace-instance
                      concrete-set-instance)))))
   (newline)
-  (displayln "Solving for trace with different behavior under all contexts...")
-  (define universal-sol
+  #;(displayln "Solving for trace with different behavior under all contexts...")
+  #;(define universal-sol
     (time (synthesize #:forall (cons abstract-set nondet)
                       #:guarantee (assert (! (apply && equality-assertions))))))
-  (if (unsat? universal-sol)
+  #;(if (unsat? universal-sol)
       (displayln "Synthesis failed")
       (begin
         (displayln "Found initial set with divergent traces...")
@@ -262,3 +328,4 @@
 
 (displayln "Experiment with correct concrete interpretation...")
 (set-context-experiment #f)
+|#
