@@ -225,8 +225,8 @@
 ; If the constant is an integer, give the length of the corresponding string
 (define (constant-length c)
   (match c
-    [(printf-lang s:string) (string-length s)]
-    [(printf-lang n:integer) (int->string-length n)]
+    [(printf-lang s:string) (string-length (bonsai-string-value s))]
+    [(printf-lang n:integer) (int->string-length (bonsai->number n))]
     ))
 
 ; INPUT: a config conf and constant c
@@ -264,6 +264,7 @@
 
 ; 
 (define (interp-ftype-safe ftype param args conf)
+  #;(printf "(interp-ftype-safe ~a ~a ~a ~a) [~a] ~n" ftype param args conf (lookup-offset (param->offset param) args))
   (match (cons ftype (lookup-offset (param->offset param) args))
     ; if the type = 'd', the corresponding argument should be an integer
     ; The function `print-constant` is shared between safe and unsafe versions
@@ -277,7 +278,7 @@
      ]
     [_ (raise-arguments-error 'interp-ftype-safe
                               "Offset does not map to a value of the correct type"
-                              "fmt-type" (display ftype)
+                              "fmt-type" ftype
                               "parameter" param
                               "vlist" args
                               )]
@@ -286,6 +287,7 @@
 ; ensure the trace in the behavior b has width at least w, and if not, pad the
 ; beginning of the string by the appropriate number of spaces on the left.
 (define (pad-by-width w b)
+  #;(printf "(pad-by-width ~a ~a)~n" w b)
   (match b
     [(printf-lang (t:trace conf:config))
      (let ([acc (conf->acc conf)])
@@ -314,6 +316,7 @@
 ; OUTPUT: an outputted string and a configuration
 (define (interp-fmt-elt-safe f args conf)
   #;(printf "(interp-fmt-elt-safe ~a ~a ~a)~n" (bonsai-pretty f) args conf)
+  (displayln f)
   (match f
     [(printf-lang s:string)
      (print-constant conf s)]
@@ -345,7 +348,7 @@
 (define (interp-fmt-safe f args conf)
   #;(printf "(interp-fmt-safe ~a ~a ~a)~n" (bonsai-pretty f) args conf)
   (match f
-    [(printf-lang nil) (printf-lang nil conf)]
+    [(printf-lang nil) (printf-lang (nil ,conf))]
     #;[(printf-lang (cons f:fmt-elt f+:fmt))
      (match-let* ([(list s-1 conf-1) (interp-fmt-elt-safe fmt-elt args conf)]
                   [(list s-2 conf-2) (interp-fmt-safe f+ args conf-1)])

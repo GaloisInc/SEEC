@@ -182,7 +182,7 @@
   (define sol (synthesize
                #:forall acc0
                #:assume (assert (fmt-consistent-with-vlist? f args))
-               #:guarantee (assert (is-constant-add f 3 args conf))))
+               #:guarantee (assert (is-constant-add f 1 args conf))))
   (displayln "")
   (if (unsat? sol)
       (displayln "Failed to synthesize")
@@ -206,8 +206,9 @@
 (define (find-add-argument)
   #;(define f (printf-lang fmt 4)) ; 4 seems to be the minimum this size can be,
                                  ; but it times out/gets killed by my computer.
-  (displayln "Defined f")
   (define f (printf-lang (cons (% (0 $) (* 0) d) nil)))
+  (printf "Defined f:")
+  (displayln f)
   #;(assert (equal? f f-concrete))
   #;(displayln "Asserted equality of f and f-concrete")
 
@@ -218,16 +219,16 @@
   (printf "Defined conf: ~a~n" conf)
 
 
-  (define x (printf-lang integer 1))
+  #;(define x (printf-lang integer 1))
   #;(assert (> (bonsai->number x) 0))
-  #;(define x (printf-lang 5))
-  (assert (equal? x (printf-lang 2)))
+  #;(assert (equal? x (printf-lang 2)))
+  (define x (printf-lang 5))
   (define args (printf-lang (cons ,x nil)))
   (printf "Defined args: ~a~n" args)
 
 
-  (define result (interp-fmt-unsafe f args conf))
-  #;(printf "Defined result: ~a~n" result)
+  (define result (interp-fmt-safe f args conf))
+  (printf "Defined result: ~a~n" result)
   #;(define conf+ (second (interp-fmt-safe f args conf)))
   #;(printf "Result: (~a ~a)~n" (print-string result) conf+)
 
@@ -253,13 +254,13 @@
         (define args-instance (printf-lang (cons ,x-instance nil)))
 
         (define result (interp-fmt-safe f-instance args-instance conf-instance))
-        (define str-result (first result))
-        (define conf+ (second result))
+        (define str-result (behavior->trace result))
+        (define conf+ (behavior->config result))
 
         (printf "f: ~a~n" f-instance)
         (printf "acc0 instance: ~a~n" acc0-instance)
         (printf "x instance: ~a~n" x-instance)
-        (printf "result: (~a ~a)~n" (print-string str-result) conf+)
+;        (printf "result: (~a ~a)~n" (print-string str-result) conf+)
         ))
   )
 (find-add-argument)
