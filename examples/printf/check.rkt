@@ -6,7 +6,7 @@
 (define (test-lookup-offset)
   (displayln "Testing lookup-offset...")
   (define-symbolic* offset integer?)
-  (define args (printf-lang vlist 5))
+  (define args (printf-lang arglist 5))
   (assert (< offset (bonsai-ll-length args)))
   (define sol
     (verify (val? (lookup-offset offset args))))
@@ -16,7 +16,7 @@
         (displayln "Counterexample found.")
         (displayln "Offset...")
         (concretize offset sol)
-        (displayln "Vlist...")
+        (displayln "Arglist...")
         (concretize args sol)
         ))
 )
@@ -38,9 +38,9 @@
   (displayln "Testing interp-fmt-safe")
   (displayln "NOTE: times out when increasing size of f beyond 2")
   (define f (printf-lang fmt 2))
-  (define args (printf-lang vlist 4))
+  (define args (printf-lang arglist 4))
   (define conf (printf-lang config 4))
-  (assert (fmt-consistent-with-vlist? f args))
+  (assert (fmt-consistent-with-arglist? f args))
   (define sol (verify (match (interp-fmt-safe f args conf)
                         [(printf-lang (trace conf+:config)) (conf? conf+)]
                         )))
@@ -64,11 +64,11 @@
 
 (define (test-interp-fmt-unsafe)
   (displayln "Testing interp-fmt-unsafe")
-  (displayln "NOTE: times out when increasing size of vlist beyond 2")
+  (displayln "NOTE: times out when increasing size of arglist beyond 2")
   (define f (printf-lang fmt 2))
-  (define args (printf-lang vlist 4))
+  (define args (printf-lang arglist 4))
   (define conf (printf-lang config 5))
-  #;(assert (fmt-consistent-with-vlist? f args))
+  #;(assert (fmt-consistent-with-arglist? f args))
   (define guarantee
     (match (interp-fmt-unsafe f args conf)
       [(printf-lang (trace conf+:config)) (conf? conf+)]
@@ -97,18 +97,18 @@
 (define (find-exploit)
   (define f (printf-lang fmt 5))
   ;(assert (equal? f (printf-lang (cons (% (0 $) NONE d) nil))))
-  (define args (printf-lang vlist 2))
+  (define args (printf-lang arglist 2))
   ;(assert (equal? args (printf-lang nil)))
   (define conf (printf-lang config 5))
   (displayln "Searching for a format string that evaluates in the target but not in the source")
-  (displayln "NOTE: times out when increasing size of vlist beyond 2")
+  (displayln "NOTE: times out when increasing size of arglist beyond 2")
   (define conf+ (behavior->config (interp-fmt-unsafe f args conf)))
   (define sol (synthesize
                #:forall '()
-               #:guarantee (assert (and (not (fmt-consistent-with-vlist? f args))
+               #:guarantee (assert (and (not (fmt-consistent-with-arglist? f args))
                                         (conf? conf+)))))
   #;(define sol (verify #:assume (assert (conf? conf+))
-                      #:guarantee (assert (fmt-consistent-with-vlist? f args))
+                      #:guarantee (assert (fmt-consistent-with-arglist? f args))
                       ))
   (if (unsat? sol)
       (displayln "Failed to synthesize")
@@ -125,7 +125,7 @@
         (displayln conf-instance)
         (define res-instance (interp-fmt-unsafe f-instance args-instance conf-instance))
         (displayln res-instance)
-        (displayln (fmt-consistent-with-vlist? f-instance args-instance))
+        (displayln (fmt-consistent-with-arglist? f-instance args-instance))
         )))
 
 
@@ -141,7 +141,7 @@
   (displayln (fmt? f))
   (define args (printf-lang (cons 100 nil)))
   (displayln args)
-  (displayln (vlist? args))
+  (displayln (arglist? args))
   (define conf (printf-lang (-5 mnil)))
   (displayln conf)
   (displayln (conf? conf))
@@ -181,7 +181,7 @@
   (displayln "Searching for a format string that adds 1 to the accumulator")
   (define sol (synthesize
                #:forall acc0
-               #:assume (assert (fmt-consistent-with-vlist? f args))
+               #:assume (assert (fmt-consistent-with-arglist? f args))
                #:guarantee (assert (is-constant-add f 1 args conf))))
   (displayln "")
   (if (unsat? sol)
@@ -236,7 +236,7 @@
   (displayln "Searching for a format string that adds the value of x to the accumulator")
   (define sol (time (synthesize
                #:forall '() #;(list acc0 x)
-               ; #:assume (assert (fmt-consistent-with-vlist? f args))
+               ; #:assume (assert (fmt-consistent-with-arglist? f args))
                ; #:assume (assert (is-constant-add f (bonsai->number x) args conf))
                #:guarantee (assert #t)
                )))

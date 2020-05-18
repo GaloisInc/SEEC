@@ -20,7 +20,6 @@
          behavior->trace
          behavior->config
          lookup-offset
-         vlist-length
          lookup-loc
          config-add
          mem-update
@@ -31,10 +30,10 @@
          val?
          const?
          loc?
-         vlist?
+         arglist?
          mem?
          conf?
-         fmt-consistent-with-vlist?
+         fmt-consistent-with-arglist?
 
          int->string-length
          )
@@ -73,7 +72,7 @@
 ;       If the type of arguments don't line up, the implementation language will
 ;       interpret constant numbers as pointers into memory and vice versa.
 
-(define-language printf-lang
+(define-grammar printf-lang
   (fmt ::= list<fmt-elt>)
   (fmt-elt ::= string
                (% parameter width fmt-type))
@@ -82,7 +81,7 @@
   (offset ::= natural)
   (fmt-type ::= #;s d n)
 
-  (vlist ::= list<val>)
+  (arglist ::= list<val>)
   (mem ::= mnil (mcons ident val mem))
   (val ::= (LOC ident) integer ERR #;(DEREF val)) 
   (ident ::= integer)
@@ -90,6 +89,7 @@
   (constant ::= string integer)
   ; a configuration consists of an accumulator and a memory value
   (config ::= (integer mem))
+  (context ::= (arglist config))
   (behavior ::= (trace config))
   )
 
@@ -134,20 +134,12 @@
 (define (lookup-offset offset args)
   (match args
     [(printf-lang nil) (printf-lang ERR)]
-    [(printf-lang (cons v:val args+:vlist))
+    [(printf-lang (cons v:val args+:arglist))
      (if (<= offset 0)
          v
          (lookup-offset (- offset 1) args+))]
     )
   )
-
-(define (vlist-length args)
-  (match args
-    [(printf-lang nil) 0]
-    [(printf-lang (cons val args+:vlist))
-     (+ 1 (vlist-length args+))]
-    [_ (raise-argument-error 'vlist-length "vlist?" args)]
-    ))
 
 ; INPUT: a location identifier l and a memory value m with l in the domain of m
 ; OUTPUT: the value mapped to by the identifier
@@ -291,7 +283,7 @@
                               "Offset does not map to a value of the correct type"
                               "fmt-type" ftype
                               "parameter" param
-                              "vlist" args
+                              "arglist" args
                               )]
     ))
 
@@ -343,7 +335,7 @@
        [_ (raise-arguments-error 'interp-fmt-elt-safe
                                  "Offset does not map to a number in the arglist"
                                  "offset" (bonsai->number o)
-                                 "vlist" args)]
+                                 "arglist" args)]
        )]
 
     [_ (raise-argument-error 'interp-fmt-elt-safe "(printf-lang fmt-elt)" f)]
@@ -526,9 +518,9 @@
     ))
 
 
-(define (vlist? args)
+(define (arglist? args)
   (match args
-    [(printf-lang vlist) #t]
+    [(printf-lang arglist) #t]
     #;[(printf-lang nil) #t]
     #;[(printf-lang (cons v:val args+:vlist)) (and (val? v) (vlist? args+))]
     [_ #f]
@@ -536,7 +528,7 @@
 
 ; p is the parameter offset as a bonsai number
 ; ftype is the format type associated with the parameter
-(define (parameter-consistent-with-vlist p ftype args)
+(define (parameter-consistent-with-arglist p ftype args)
   (let* ([offset (param->offset p)]
          [arg (lookup-offset offset args)])
     (and (< offset (bonsai-ll-length args))
@@ -544,7 +536,7 @@
            [(printf-lang d) (const? arg)]
            [(printf-lang n) (loc? arg)]
            ))))
-(define (width-consistent-with-vlist w args)
+(define (width-consistent-with-arglist w args)
   (match w
     [(printf-lang NONE) #t]
     [(printf-lang natural) #t]
@@ -554,20 +546,20 @@
     ))
 
 
-(define (fmt-consistent-with-vlist? f args)
-  (define (fmt-elt-consistent-with-vlist? f0)
+(define (fmt-consistent-with-arglist? f args)
+  (define (fmt-elt-consistent-with-arglist? f0)
     (match f0
       [(printf-lang string) #t]
 
       [(printf-lang (% p:parameter w:width ftype:fmt-type))
-       (and (parameter-consistent-with-vlist p ftype args)
-            (width-consistent-with-vlist w args))]
+       (and (parameter-consistent-with-arglist p ftype args)
+            (width-consistent-with-arglist w args))]
       ))
   (match f
     [(printf-lang nil) #t]
     [(printf-lang (cons f0:fmt-elt f+:fmt))
-     (and (fmt-elt-consistent-with-vlist? f0)
-          (fmt-consistent-with-vlist? f+ args))]
+     (and (fmt-elt-consistent-with-arglist? f0)
+          (fmt-consistent-with-arglist? f+ args))]
     ))
 
 #|
@@ -576,8 +568,8 @@
     [(printf-lang (%n offset:natural))
      (loc? (lookup-offset (bonsai->number offset) args))]
     [(printf-lang (++ f1:fmt f2:fmt)) 
-     (and (fmt-consistent-with-vlist? f1 args)
-          (fmt-consistent-with-vlist? f2 args))]
+     (and (fmt-consistent-with-arglist? f1 args)
+          (fmt-consistent-with-arglist? f2 args))]
     ))
 |#
 
