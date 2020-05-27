@@ -287,7 +287,7 @@
 
 
 ; find an expression En and context Cz s.t. Cz[n-to-z En] != Cn[En] for Cn of bounded size
-(begin
+#;(begin
   (displayln "Trying find-weird-component on N-TO-Z")
   (display-weird-component (time (find-weird-component N-TO-Z))))
     #;[(list vars sol)
@@ -303,6 +303,41 @@
          (displayln (fifth vars*))))]
     #;[_
      (displayln "Synthesis failed")]
+
+
+;spec of add1 function for expn
+(define (add1spec p b)
+  (match p
+    [(cons c e)
+     (let* ([n (eval-expn (lang empty) (lookup-envn 0 c))])
+       (equal? b (+ n 1)))]))
+
+
+(define (link-ctxn2 c e)
+  (cons (lang (Envn ,c empty)) e))
+
+; same as expn but with exp and ctx switched
+; expression has 1 hole
+; ctx has 1 closed expn
+(define-language EXPN2
+  #:grammar lang
+  #:expression expn #:size 4 #:where ctx-expn
+  #:context    expn #:size 4 #:where (lambda (v) (well-scopedn? (lang empty) v))
+  #:link link-ctxn2
+  #:evaluate (uncurry eval-expn))
+
+(begin
+  (displayln "Trying to find add1 gadget")
+  (let* ([val-ctx (eval-expn (lang empty) (lang (Sn (* (Valn 0) (Valn 7719)))))]
+        [val-eval (eval-expn (lang (Envn (Sn (* (Valn 0) (Valn 7719))) empty)) (lang (Sn (Var 0))))]
+        [val-evalun ((uncurry eval-expn) (link-ctxn2 (lang (Sn (* (Valn 0) (Valn 7719)))) (lang (Sn (Var 0)))))]
+        [val-pred (add1spec (link-ctxn2 (lang (Sn (* (Valn 0) (Valn 7719)))) (lang (Sn (Var 0)))) val-eval)])
+    (displayln val-ctx)
+    (displayln val-eval)
+    (displayln val-evalun)
+    (displayln val-pred)
+    (display-gadget (find-gadget EXPN2 (lambda (v) #t) add1spec))))
+; trying to find an exp that adds 1 to the context
 
 
 

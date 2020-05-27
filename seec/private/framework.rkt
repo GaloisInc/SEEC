@@ -337,13 +337,17 @@ Specification:
               [v1 (make-symbolic-var (language-expression lang))]
               [p1 ((language-link lang) c1 v1)]
               [b1 ((language-evaluate lang) p1)]
-              [sol (verify ;synthesize
-;                    #:forall c1
+              ; Creating a second context to return as example
+              [c2 (make-symbolic-var (language-context lang))]
+              [p2 ((language-link lang) c2 v1)]
+              [b2 ((language-evaluate lang) p2)]
+              [sol (synthesize
+                    #:forall c1
                     #:assume (assert (valid-program p1))
                     #:guarantee (assert (specification p1 b1)))])
          (if (unsat? sol)
              #f
-             (solution (list (language-witness v1 c1 p1 b1)) sol)))]))
+             (solution (list (language-witness v1 c2 p2 b2)) sol)))]))
 
 (define (display-gadget solution)
   (if solution
@@ -353,7 +357,8 @@ Specification:
          "Expression ~a~n is a gadget for the provided specification, as witnessed by behavior ~a~n in context ~a~n"
          (language-witness-expression lang-vars)
          (language-witness-behavior lang-vars)
-         (language-witness-context lang-vars)))
+         (language-witness-context lang-vars)
+         ))
       (displayln "Failed to synthesize a gadget")))
 
 (define (display-list list)
