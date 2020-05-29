@@ -149,10 +149,27 @@ TODO: create more macros:
 ; witness is a list of language-witness 
 (struct solution (witness model) #:transparent)
 
+(struct failure (message) #:transparent
+  #:methods gen:custom-write
+  [(define (write-proc f port mode)
+     (display (failure-message f) port))])
+
+(define (changed-behavior-solution-write sol port mode)
+  (display-changed-behavior sol (lambda (v) (display v port))))
+
+(struct changed-behavior-solution solution () #:transparent
+  #:methods gen:custom-write
+  [(define write-proc changed-behavior-solution-write)])
+
+(define (weird-component-solution-write sol port mode)
+  (display-weird-component sol (lambda (v) (display v port))))
+
+(struct weird-component-solution solution () #:transparent
+  #:methods gen:custom-write
+  [(define write-proc weird-component-solution-write)])
 
 
-
-; find-changed-behavior: {r:scomp} r.source.expression -> solution + #f
+; find-changed-behavior: {r:scomp} r.source.expression -> solution + failure
 ; Solve the following synthesis problem:
 ; (\lambda v1).
 ; Exists c1:s.t.context c2:r.t.context,
@@ -185,11 +202,11 @@ TODO: create more macros:
                     #:assume (assert ccomp)
                     #:guarantee (assert (apply && equality)))])
          (if (unsat? sol)
-             #f
-             (solution (list (language-witness v1 c1 p1 b1) (language-witness v2 c2 p2 b2)) sol)))]))
+             (failure "Failed to synthesize a changed behavior")
+             (changed-behavior-solution (list (language-witness v1 c1 p1 b1) (language-witness v2 c2 p2 b2)) sol)))]))
 
 ; find-emergent-computation :
-;     {r:comp} r.source.expression -> solution + #f
+;     {r:comp} r.source.expression -> solution + failure
 ; Solve the following synthesis problem:
 ; (\lambda v1).
 ; Exists c2:r.t.context,
@@ -225,8 +242,8 @@ TODO: create more macros:
                       #:assume (assert ccomp) 
                       #:guarantee (assert (! (apply && equality))))])
              (if (unsat? sol)
-                 #f
-                 (solution (list (language-witness v1 c1 p1 b1) (language-witness v2 c2 p2 b2)) sol)))))]))
+                 (failure "Failed to synthesize a weird computation")
+                 (weird-component-solution (list (language-witness v1 c1 p1 b1) (language-witness v2 c2 p2 b2)) sol)))))]))
 
 
 ; concretize all vars included in the solution, return a list of language-witness with concrete vars
@@ -251,26 +268,24 @@ TODO: create more macros:
 
 
 ; show (c1, v1) ~> b1 and (c2, v2) ~> b2
-(define (display-changed-behavior solution)
-  (if solution
-      (let* ([vars (concretize-witness solution)]
-             [source-vars (first vars)]
-             [target-vars (second vars)])
-        (begin 
-          (printf
-           "Expression ~a~n has behavior ~a~n in source-level context ~a~n"
-           (language-witness-expression source-vars)
-           (language-witness-behavior source-vars)
-           (language-witness-context source-vars))
-          (printf
-           "Compiles to ~a~n with emergent behavior ~a~n in target-level context ~a~n"
-           (language-witness-expression target-vars)
-           (language-witness-behavior target-vars)
-           (language-witness-context target-vars))))
-      (displayln "Failed to synthesize a changed behavior")))
+(define (display-changed-behavior solution out)
+  (let* ([vars (concretize-witness solution)]
+         [source-vars (first vars)]
+         [target-vars (second vars)])
+    (begin 
+      (out (format
+            "Expression ~a~n has behavior ~a~n in source-level context ~a~n"
+            (language-witness-expression source-vars)
+            (language-witness-behavior source-vars)
+            (language-witness-context source-vars)))
+      (out (format
+            "Compiles to ~a~n with emergent behavior ~a~n in target-level context ~a~n"
+            (language-witness-expression target-vars)
+            (language-witness-behavior target-vars)
+            (language-witness-context target-vars))))))
 
 ; find-weird-component
-; find-weird-component: comp -> solution + #f
+; find-weird-component: comp -> solution + failure
 ; (\lambda r).
 ;   Exists v:r.s.expression
 ;     find-exploit r v
@@ -283,17 +298,15 @@ TODO: create more macros:
 
 
 ; show v1, c2 and b2
-(define (display-weird-component solution)
-  (if solution
-      (let* ([vars (concretize-witness solution)]
-             [source-vars (first vars)]
-             [target-vars (second vars)])
-        (printf
-         "Expression ~a~n has emergent behavior ~a~n witnessed by target-level context ~a~n"
-         (language-witness-expression source-vars)
-         (language-witness-behavior target-vars)
-         (language-witness-context target-vars)))
-      (displayln "Failed to synthesize a weird computation")))
+(define (display-weird-component solution out)
+  (let* ([vars (concretize-witness solution)]
+         [source-vars (first vars)]
+         [target-vars (second vars)])
+    (out (format
+          "Expression ~a~n has emergent behavior ~a~n witnessed by target-level context ~a~n"
+          (language-witness-expression source-vars)
+          (language-witness-behavior target-vars)
+          (language-witness-context target-vars)))))
 
 
 
@@ -346,20 +359,17 @@ Specification:
                     #:assume (assert (valid-program p1))
                     #:guarantee (assert (specification p1 b1)))])
          (if (unsat? sol)
-             #f
-             (solution (list (language-witness v1 c2 p2 b2)) sol)))]))
+             (failure "Failed to synthesize a gadget")
+             (solution (list (language-witness v1 c1 p1 b1)) sol)))]))
 
-(define (display-gadget solution)
-  (if solution
-      (let* ([vars (concretize-witness solution)]
-             [lang-vars (first vars)])
-        (printf
-         "Expression ~a~n is a gadget for the provided specification, as witnessed by behavior ~a~n in context ~a~n"
-         (language-witness-expression lang-vars)
-         (language-witness-behavior lang-vars)
-         (language-witness-context lang-vars)
-         ))
-      (displayln "Failed to synthesize a gadget")))
+(define (display-gadget solution out)
+  (let* ([vars (concretize-witness solution)]
+         [lang-vars (first vars)])
+    (out (format
+          "Expression ~a~n is a gadget for the provided specification, as witnessed by behavior ~a~n in context ~a~n"
+          (language-witness-expression lang-vars)
+          (language-witness-behavior lang-vars)
+          (language-witness-context lang-vars)))))
 
 (define (display-list list)
   (for-each displayln list)
