@@ -46,9 +46,10 @@
 
 
 
-(define (link-context-empty-args conf f)
-    (let* ([args (printf-lang nil)]
-           [ctx (printf-lang (,args ,conf))])
+(define (link-context-empty-args acc f)
+  (let* ([args (printf-lang nil)]
+         [conf (printf-lang (,acc mnil))]
+         [ctx (printf-lang (,args ,conf))])
         (cons ctx f)))
     
 
@@ -56,7 +57,7 @@
   #:grammar printf-lang
   #:expression fmt #:size 3
   ; any way to make the where clause assume consistency with the format?
-  #:context config #:size 2
+  #:context integer #:size 1
   #:link link-context-empty-args
   #:evaluate spec-interpret
   )
@@ -93,7 +94,7 @@
   (match prog
     [(cons ctx f)     
      (match ctx
-       [(printf-lang (conf:config args:arglist))
+       [(printf-lang (args:arglist conf:config))
         (match (interp-fmt-unsafe f args conf)
           [(list str conf+) (conf? conf+)])])]))
      
@@ -102,7 +103,7 @@
     (match prog
       [(cons ctx f)
        (match ctx
-         [(printf-lang (conf:config args:arglist))
+         [(printf-lang (args:arglist conf:config))
           (fmt-consistent-with-arglist? f args)])]))
 
 
@@ -115,7 +116,7 @@
     (match prog
     [(cons ctx f)
      (match ctx
-       [(printf-lang (conf:config args:arglist))
+       [(printf-lang (args:arglist conf:config))
         (is-constant-add f 1 args conf)])]))
 
 
