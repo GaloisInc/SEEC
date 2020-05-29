@@ -328,7 +328,7 @@
 
 #;(begin
   (displayln "Trying to find add1 gadget")
-  (display-gadget (find-gadget EXPN2 (lambda (v) #t) add1spec)))
+  (display-gadget (find-gadget EXPN2 (lambda (v) #t) add1spec) displayln))
 ; trying to find an exp that adds 1 to the context
 
 
@@ -349,7 +349,7 @@
 
 (begin
   (displayln "Trying to find addNM gadget")
-  (display-gadget (find-gadget EXPN3 (lambda (v) #t) addnmspec)))
+  (display-gadget (find-gadget EXPN3 (lambda (v) #t) addnmspec) displayln))
 
 
 #||||||||||||||||||||||||||||#

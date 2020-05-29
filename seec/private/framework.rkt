@@ -360,7 +360,7 @@ Specification:
                     #:guarantee (assert (specification p1 b1)))])
          (if (unsat? sol)
              (failure "Failed to synthesize a gadget")
-             (solution (list (language-witness v1 c1 p1 b1)) sol)))]))
+             (solution (list (language-witness v1 c2 p2 b2)) sol)))]))
 
 (define (display-gadget solution out)
   (let* ([vars (concretize-witness solution)]

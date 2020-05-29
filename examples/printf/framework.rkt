@@ -121,4 +121,4 @@
 
 
 (displayln "Trying to find-add-constant using the framework")
-(display-gadget (find-gadget printf-spec fmt-consistent-with-arglist?-uncurry  is-constant-add-spec))
+(display-gadget (find-gadget printf-spec fmt-consistent-with-arglist?-uncurry  is-constant-add-spec) displayln)
