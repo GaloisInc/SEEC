@@ -1,18 +1,19 @@
 #lang seec
 (require (file "syntax.rkt"))
 
+
 (define (spec-interpret p)
   (match p
     [(cons ctx f)     
      (match ctx
-       [(printf-lang (conf:config args:arglist))
+       [(printf-lang (args:arglist conf:config))
         (interp-fmt-safe f args conf)])]))
 
 (define (impl-interpret p)
   (match p
     [(cons ctx f)     
      (match ctx
-       [(printf-lang (conf:config args:arglist))
+       [(printf-lang (args:arglist conf:config))
         (interp-fmt-unsafe f args conf)])]))
 
 
@@ -37,13 +38,26 @@
          (assert #f))]))
 
 
+(define (valid-context valid-args valid-config)
+  (lambda (ctx)
+    (match ctx
+      [(printf-lang (args:arglist conf:config))
+       (and (valid-args args) (valid-config conf))])))
+
+
+
+(define (link-context-empty-args conf f)
+    (let* ([args (printf-lang nil)]
+           [ctx (printf-lang (,args ,conf))])
+        (cons ctx f)))
+    
 
 (define-language printf-spec
   #:grammar printf-lang
-  #:expression fmt #:size 2
+  #:expression fmt #:size 3
   ; any way to make the where clause assume consistency with the format?
-  #:context context #:size 6; #:where (max-context-size 5 2)
-  #:link cons ;link-context-fmt
+  #:context config #:size 2
+  #:link link-context-empty-args
   #:evaluate spec-interpret
   )
 
@@ -84,14 +98,26 @@
           [(list str conf+) (conf? conf+)])])]))
      
 
-(define (fmt-consistent-with-arglist?-uncurry prog beh)
-  (match prog
+(define (fmt-consistent-with-arglist?-uncurry prog)
+    (match prog
+      [(cons ctx f)
+       (match ctx
+         [(printf-lang (conf:config args:arglist))
+          (fmt-consistent-with-arglist? f args)])]))
+
+
+
+(define (is-constant-add f c args conf)
+  (let ([conf+ (behavior->config (interp-fmt-safe f args conf))])
+    (equal? (conf->acc conf+) (+ c (conf->acc conf)))))
+
+(define (is-constant-add-spec prog beh)
+    (match prog
     [(cons ctx f)
      (match ctx
        [(printf-lang (conf:config args:arglist))
-        (fmt-consistent-with-arglist? f args)])]))
+        (is-constant-add f 1 args conf)])]))
 
 
-(displayln "Trying to find the same exploit using the framework")
-(find-gadget printf-spec valid-conf  fmt-consistent-with-arglist?-uncurry)
-;(display-gadget (find-gadget printf-spec valid-conf fmt-consistent-with-arglist?-uncurry))
+(displayln "Trying to find-add-constant using the framework")
+(display-gadget (find-gadget printf-spec fmt-consistent-with-arglist?-uncurry  is-constant-add-spec))

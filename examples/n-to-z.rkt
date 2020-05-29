@@ -326,20 +326,30 @@
   #:link link-ctxn2
   #:evaluate (uncurry eval-expn))
 
-(begin
+#;(begin
   (displayln "Trying to find add1 gadget")
-  (let* ([val-ctx (eval-expn (lang empty) (lang (Sn (* (Valn 0) (Valn 7719)))))]
-        [val-eval (eval-expn (lang (Envn (Sn (* (Valn 0) (Valn 7719))) empty)) (lang (Sn (Var 0))))]
-        [val-evalun ((uncurry eval-expn) (link-ctxn2 (lang (Sn (* (Valn 0) (Valn 7719)))) (lang (Sn (Var 0)))))]
-        [val-pred (add1spec (link-ctxn2 (lang (Sn (* (Valn 0) (Valn 7719)))) (lang (Sn (Var 0)))) val-eval)])
-    (displayln val-ctx)
-    (displayln val-eval)
-    (displayln val-evalun)
-    (displayln val-pred)
-    (display-gadget (find-gadget EXPN2 (lambda (v) #t) add1spec))))
+  (display-gadget (find-gadget EXPN2 (lambda (v) #t) add1spec)))
 ; trying to find an exp that adds 1 to the context
 
 
+; Generating  n + m with a size two context
+(define-language EXPN3
+  #:grammar lang
+  #:expression expn #:size 4 #:where (lambda (v) (<= (scope-expn v) 2))
+  #:context envn #:size 5 #:where (lambda (c) (and (equal? (size-envn c) 2) (wf-envn? c)))
+  #:link cons
+  #:evaluate (uncurry eval-expn))
+
+(define (addnmspec p b)
+  (match p
+    [(cons c e)
+     (let* ([n (eval-expn (lang empty) (lookup-envn 0 c))]
+            [m (eval-expn (lang empty) (lookup-envn 1 c))])
+       (equal? b (+ n m)))]))
+
+(begin
+  (displayln "Trying to find addNM gadget")
+  (display-gadget (find-gadget EXPN3 (lambda (v) #t) addnmspec)))
 
 
 #||||||||||||||||||||||||||||#
