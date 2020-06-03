@@ -19,7 +19,8 @@
          link
          evaluate
          link-and-evaluate
-         compile)
+         compile
+         )
 
 (require (for-syntax syntax/parse)
          "bonsai2.rkt")
@@ -298,15 +299,19 @@ TODO: create more macros:
 
 
 ; show v1, c2 and b2
-(define (display-weird-component solution out)
-  (let* ([vars (concretize-witness solution)]
-         [source-vars (first vars)]
-         [target-vars (second vars)])
-    (out (format
-          "Expression ~a~n has emergent behavior ~a~n witnessed by target-level context ~a~n"
-          (language-witness-expression source-vars)
-          (language-witness-behavior target-vars)
-          (language-witness-context target-vars)))))
+(define (display-weird-component sol out)
+  (cond
+    [(failure? sol) (out sol)]
+    [(solution? sol)
+     (let* ([vars (concretize-witness sol)]
+            [source-vars (first vars)]
+            [target-vars (second vars)])
+       (out (format
+             "Expression ~a~n has emergent behavior ~a~n witnessed by target-level context ~a~n"
+             (language-witness-expression source-vars)
+             (language-witness-behavior target-vars)
+             (language-witness-context target-vars))))]
+    ))
 
 
 
