@@ -1,31 +1,38 @@
 #lang seec
 (require (file "syntax.rkt"))
+(require seec/private/framework)
 
+(require (only-in racket/base
+                  raise-argument-error
+                  raise-arguments-error))
 
 (define (spec-interpret p)
   (match p
-    [(cons ctx f)     
-     (match ctx
-       [(printf-lang (args:arglist conf:config))
-        (interp-fmt-safe f args conf)])]))
+    [(cons (printf-lang (args:arglist conf:config)) f)
+     (interp-fmt-safe f args conf)]
+    [_ (raise-argument-error 'spec-interpret
+                              "(cons (printf-lang (arglist config)) (printf-lang fmt))"
+                              p)]
+    ))
 
 (define (impl-interpret p)
   (match p
-    [(cons ctx f)     
-     (match ctx
-       [(printf-lang (args:arglist conf:config))
-        (interp-fmt-unsafe f args conf)])]))
-
+    [(cons (printf-lang (args:arglist conf:config)) f)
+     (interp-fmt-unsafe f args conf)]
+    [_ (raise-argument-error 'impl-interpret
+                              "(cons (printf-lang (arglist config)) (printf-lang fmt))"
+                              p)]
+    ))
 
 ; There is probably a better way of doing this
 ; I just want to limit the size of config and of the vlist separately
 (define (max-context-size config-size args-size)
   (lambda (ctx)
-    ((match ctx
+    (match ctx
        [(printf-lang (args:arglist conf:config))
         (let ([c* (printf-lang config config-size)]
               [a* (printf-lang arglist args-size)])
-          (and (equal? conf c*) (equal? args a*)))]))))
+          (and (equal? conf c*) (equal? args a*)))])))
 
 ; only link when the arglist is consistant with the format-string
 ; I think a cleaner way of doing this would be
@@ -52,15 +59,23 @@
          [ctx (printf-lang (,args ,conf))])
         (cons ctx f)))
     
-
-(define-language printf-spec
+;; Note: moved the nil-arglist version of printf-spec to its own language since
+;; it has no weird machines
+(define-language printf-spec-simpl
   #:grammar printf-lang
   #:expression fmt #:size 3
-  ; any way to make the where clause assume consistency with the format?
   #:context integer #:size 1
   #:link link-context-empty-args
   #:evaluate spec-interpret
   )
+(define-language printf-spec
+  #:grammar printf-lang
+  #:expression fmt #:size 4
+  #:context context #:size 5 #:where (max-context-size 5 2)
+  #:link cons
+  #:evaluate spec-interpret
+  )
+
 
 (define-language printf-impl
   #:grammar printf-lang
@@ -70,22 +85,30 @@
   #:evaluate impl-interpret)
 
 
+;; ctx1 in printf-spec is an integer consisting just of the accumulator.
+;; ctx2 in printf-impl is a printf-lang context.
+;; they are related when the accumulator values are the same and the argument list and memory in ctx2 is nil.
+;; we do allow ctx2 to have a non-trivial arglist. If not, there would be no weird machines.
+(define (spec-to-impl-context-relation ctx1 ctx2)
+  (match ctx2
+    [(printf-lang (arglist (acc:integer mnil)))
+     (equal? (bonsai->number acc) (bonsai->number ctx1))]
+    [_ #f]))
+
 (define-compiler spec-to-impl
   #:source printf-spec
   #:target printf-impl
   #:behavior-relation equal?
-  #:context-relation equal?
+  #:context-relation equal? #;spec-to-impl-context-relation
   #:compile (λ (x) x)
   )
 
-#;(define (find-add-constant-gadget)
-  (displayln "Trying to find a format string that adds a constant number to the accumulator")
-)
-#;(begin
-  (displayln "Trying to find a trace with different behavior under compilation")
-  (define trace (printf-lang interaction 6))
-  (define witness (find-changed-behavior abstract-to-concrete trace))
-  (display-witness witness))
+;; find-weird-component
+(begin
+  (displayln "Trying to find a format string with weird behavior")
+  (define witness (time (find-weird-component spec-to-impl)))
+  (display-weird-component witness displayln)
+  )
 
 
 
@@ -119,6 +142,6 @@
        [(printf-lang (args:arglist conf:config))
         (is-constant-add f 1 args conf)])]))
 
-
-(displayln "Trying to find-add-constant using the framework")
-(display-gadget (find-gadget printf-spec fmt-consistent-with-arglist?-uncurry  is-constant-add-spec) displayln)
+(begin
+  (displayln "Trying to find-add-constant using the framework")
+  (display-gadget (find-gadget printf-spec fmt-consistent-with-arglist?-uncurry is-constant-add-spec) displayln))

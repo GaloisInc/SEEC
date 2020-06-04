@@ -282,7 +282,9 @@
     [(cons (printf-lang n) (printf-lang (LOC l:ident)))
      (printf-lang (nil ,(print-n-loc conf l)))
      ]
-    [_ (raise-arguments-error 'interp-ftype-safe
+    [_ (printf-lang ERR)]
+
+    #;[_ (raise-arguments-error 'interp-ftype-safe
                               "Offset does not map to a value of the correct type"
                               "fmt-type" ftype
                               "parameter" param
@@ -335,10 +337,11 @@
      (match (lookup-offset (bonsai->number o) args)
        [(printf-lang w:integer)
         (pad-by-width (bonsai->number w) (interp-ftype-safe ftype p args conf))]
-       [_ (raise-arguments-error 'interp-fmt-elt-safe
+       #;[_ (raise-arguments-error 'interp-fmt-elt-safe
                                  "Offset does not map to a number in the arglist"
                                  "offset" (bonsai->number o)
                                  "arglist" args)]
+       [_ (printf-lang ERR)]
        )]
 
     [_ (raise-argument-error 'interp-fmt-elt-safe "(printf-lang fmt-elt)" f)]
@@ -350,6 +353,14 @@
 (define (behavior->config b)
   (match b
     [(printf-lang (trace c:config)) c]))
+
+(define (behavior-append b1 b2)
+  (match (cons b1 b2)
+    [(cons (printf-lang (t1:trace config)) (printf-lang (t2:trace cfg:config)))
+     (printf-lang (,(bonsai-ll-append t1 t2) ,cfg))]
+
+    [_ (printf-lang ERR)]
+    ))
   
 (define (interp-fmt-safe f args conf)
   #;(printf "(interp-fmt-safe ~a ~a ~a)~n" (bonsai-pretty f) args conf)
@@ -361,16 +372,21 @@
        (cons (string-append s-1 s-2) conf-2))]
     [(printf-lang (cons f1:fmt-elt f+:fmt))
 
-     (let* ([b1 (interp-fmt-elt-safe f1 args conf)]
+     (match (interp-fmt-elt-safe f1 args conf)
+       [(printf-lang ERR) (printf-lang ERR)]
+       [(printf-lang (t1:trace conf+:config))
+        (match (interp-fmt-safe f+ args conf+)
+          [(printf-lang ERR) (printf-lang ERR)]
+          [(printf-lang (t2:trace conf++:config))
+           (printf-lang (,(bonsai-ll-append t1 t2) ,conf++))]
+          )]
+       )
+
+     #;(let* ([b1 (interp-fmt-elt-safe f1 args conf)]
             [b2 (interp-fmt-safe f+ args (behavior->config b1))]
-            [t+ (bonsai-ll-append (behavior->trace b1) (behavior->trace b2))]
             )
-       (printf-lang (,t+ ,(behavior->config b2))))
-     #;(match (interp-fmt-elt-safe f1 args conf)
-       [(list s-1 conf-1)
-        (match (interp-fmt-safe f+ args conf-1)
-          [(list s-2 conf-2)
-           (list (string-append s-1 s-2) conf-2)])])]
+       (behavior-append b1 b2))
+     ]
 
     [_ (raise-argument-error 'interp-fmt-safe "(printf-lang fmt)" f)]
     ))
