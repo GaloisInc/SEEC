@@ -5,6 +5,7 @@
          (struct-out language)
          (struct-out compiler)
          find-changed-behavior
+         find-changed-component
          find-weird-computation
          find-weird-component
          (struct-out solution)
@@ -101,6 +102,24 @@ TODO: create more macros:
          (let* ([predexp (define-predsyn grammar expr.gen expr.pred expr.bound)]
                 [predctx (define-predsyn grammar ctxt.gen ctxt.pred ctxt.bound)])
            (language predexp predctx link eval)))]))
+
+; TODO:
+; Augment exp or context's where-clause
+#|
+
+(define-syntax (refine-language stx)
+  (syntax-parse stx
+    [(_ name (~optional (~seq #:context-where cf)
+                        (~seq #:expression-where ef)
+                        #:defaults ([cf #'#f]
+                                    [ef #'#f])))
+     (let* ([exp (if ef () ()]
+            [ctx (if cf () ()])
+       #'(struct-copy language name
+                      [exp]
+                      [ctx]))
+     ])]))
+|#
 
 ; A compiler between languages consists of:
 ; source: a lang structure standing in as source
@@ -283,6 +302,19 @@ TODO: create more macros:
             (language-witness-expression target-vars)
             (language-witness-behavior target-vars)
             (language-witness-context target-vars))))))
+
+
+; find-changed-component: comp -> solution + failure
+; (\lambda r).
+;   Exists v:r.s.expression
+;     find-changed-behavior r v
+(define-syntax (find-changed-component stx)
+  (syntax-parse stx
+    [(_ comp)
+     #`(let* ([v (make-symbolic-var
+                  (language-expression (compiler-source comp)))])
+         (find-changed-behavior comp v))]))
+
 
 ; find-weird-component
 ; find-weird-component: comp -> solution + failure
