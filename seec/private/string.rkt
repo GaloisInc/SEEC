@@ -11,6 +11,10 @@
 (require (only-in racket/base
                   raise-argument-error
                   raise-arguments-error))
+(require (only-in racket/base
+                  [log unsafe/log]))
+(require rosette/lib/value-browser)
+
 
 (provide char?
          string?
@@ -24,12 +28,14 @@
          new-symbolic-string
          new-symbolic-string*
          string-length
+         number->string+
          number->string
          digit->char
          string-append
          string
+         max-str-len
 
-         (rename-out [bv-max-width string/bv-max-width])
+         #;(rename-out [bv-max-width string/bv-max-width])
          )
 
 ;; A (printable, ASCII) character is just a number between 32 and 126
@@ -116,37 +122,55 @@
 ;; functions on strings ;;
 (define (string-length s) (length s))
 
-#;(define (string-equal? s1 s2)
-  (and (equal? (string-length s1) (string-length s2))
-       (andmap equal? s1 s2)))
-
-
 ;; given a number n between 0 and 9 inclusive,
 ;; output the character corresponding to n
 ;; (since 0 starts at 48, increase from there)
 (define (digit->char n)
-  (if (<= 0 n 9)
-      (+ n 48)
-      (raise-argument-error 'digit->char
-                            "digit between 0 and 9"
-                            n)))
+  (assert (<= 0 n 9))
+  (+ n 48)
+  )
 
-(define bv-max-width 32)
-; this is effectively unbounded for symbolic numbers.
+(define (number->string+ x fuel)
+  (cond
+    [(< fuel 0)    (raise-argument-error 'number->string+ "ran out of fuel" fuel)]
+    [(negative? x) (string-append (string "-") (number->string+ (* -1 x) (- fuel 1)))]
+    [(<= 0 x 9)    (char->string (digit->char x))]
+    [(>= x 10)     (let* ([q (quotient x 10)]
+                          [r (remainder x 10)]
+                          [q-str (number->string+ q (- fuel 1))]
+                          [r-str (char->string (digit->char r))]
+                          )
+                     (string-append q-str r-str))]
+    ))
+
+(define (max-str-len)
+  (let ([max-int+1 (expt 2 (current-bitwidth))])
+    ; unsafe/log is only safe when both arguments are concrete
+    (ceiling (unsafe/log max-int+1 10))))
+
 (define (number->string n)
-  (define max-int (- (expt 2 bv-max-width) 1))
-  (define max-str-len (ceiling (/ max-int 10)))
-  #;(printf "max-str-len = ~a~n" max-str-len)
-  (define (to-str fuel x)
-    (cond
-      [(negative? n) (string-append (mk-string "-") (to-str (- fuel 1) (* -1 n)))]
-      [(<= 0 n 9) (char->string (digit->char n))]
-      [else
-       ;; n = 10*q + r
-       (let* ([q (quotient n 10)]
-              [r (remainder n 10)]
-              )
-         (string-append (to-str (- fuel 1) q) (char->string (digit->char r)))
-         )]))
-  (to-str max-str-len n))
+  (number->string+ n (max-str-len))
+  )
 
+#;(current-bitwidth 32)
+
+#;(print-string (number->string 1000000000))
+
+; testing number->string
+#|
+(define-symbolic* x integer?)
+(define s (number->string x))
+#;(print-string s)
+#;(render-value/window s)
+#;(define len (string-length s))
+#;(render-value/window len)
+#;(assert (equal? x 10000000000000000)) ; note: this will just truncate the result
+(assert (equal? (string-length s) 11)) ; can go up to 11
+(define sol (synthesize #:forall '()
+                        #:guarantee (assert #t)
+                        ))
+sol
+(define x-val (evaluate x (complete-solution sol (symbolics x))))
+(print-string (number->string x-val))
+(string-length (number->string x-val))
+|#

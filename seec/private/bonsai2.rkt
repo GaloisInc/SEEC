@@ -51,9 +51,7 @@
 (require "string.rkt"
          "match.rkt")
 
-; moved definition of bonsai-width to string so it could be used in
-; number->string
-(define bonsai-width string/bv-max-width)
+(define bonsai-width 32)
 
 (define (bonsai-write b port mode)
   (case mode

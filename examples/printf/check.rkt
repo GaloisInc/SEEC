@@ -233,15 +233,15 @@
   ; This test currently doesn't work because it calls `int->string-length` on a
   ; symbolic integer, which is currently broken
 
-  (displayln "Searching for a format string that adds the value of x to the accumulator")
-  (define sol (time (synthesize
+  #;(displayln "Searching for a format string that adds the value of x to the accumulator")
+  #;(define sol (time (synthesize
                #:forall '() #;(list acc0 x)
                ; #:assume (assert (fmt-consistent-with-arglist? f args))
                ; #:assume (assert (is-constant-add f (bonsai->number x) args conf))
                #:guarantee (assert #t)
                )))
 
-  (if (unsat? sol)
+  #;(if (unsat? sol)
       (displayln "Failed to synthesize")
       (begin
         (displayln "Synthesis succeeded.")
@@ -277,4 +277,4 @@
 (displayln "")
 (find-add-constant)
 (displayln "")
-;(find-add-argument)
+(find-add-argument)
