@@ -204,6 +204,8 @@
   )
 
 (define (find-add-argument)
+
+  (current-bitwidth 32)
   #;(define f (printf-lang fmt 4)) ; 4 seems to be the minimum this size can be,
                                  ; but it times out/gets killed by my computer.
   (define f (printf-lang (cons (% (0 $) (* 0) d) nil)))
@@ -212,69 +214,76 @@
   #;(assert (equal? f f-concrete))
   #;(displayln "Asserted equality of f and f-concrete")
 
-  (define acc0 (printf-lang 0))
-  #;(define acc0 (printf-lang integer 1))
-  #;(assert (equal? acc0 (printf-lang 0)))
+  #;(define acc0 (printf-lang 0))
+  (define acc0 (printf-lang integer 1))
   (define conf (printf-lang (,acc0 mnil)))
   (printf "Defined conf: ~a~n" conf)
 
 
-  (define x (printf-lang integer 1))
-  #;(assert (> (bonsai->number x) 0))
-  (assert (equal? x (printf-lang 5)))
-  #;(define x (printf-lang 5))
+  (define-symbolic x-val integer?)
+  #;(define x-val 214787040)
+  (define x (printf-lang ,(bonsai-integer x-val)))
   (define args (printf-lang (cons ,x nil)))
   (printf "Defined args: ~a~n" args)
 
 
   (define result (interp-fmt-safe f args conf))
   (printf "Defined result: ~a~n" result)
+  (printf "(is-constant-add f x args conf): ~a~n"
+          (is-constant-add f x-val args conf))
 
-  ; This test currently doesn't work because it calls `int->string-length` on a
-  ; symbolic integer, which is currently broken
 
-  #;(displayln "Searching for a format string that adds the value of x to the accumulator")
-  #;(define sol (time (synthesize
-               #:forall '() #;(list acc0 x)
-               ; #:assume (assert (fmt-consistent-with-arglist? f args))
-               ; #:assume (assert (is-constant-add f (bonsai->number x) args conf))
-               #:guarantee (assert #t)
+  ; TODO: find out why adding acc0 and x-val to forall doesn't work for concrete-f.
+  ; specifically, do this by synthesizing (not (is-constant-add ...))
+  ; ... where x and acc0 are abstract, but not quantified over.
+  ; ... this yields acc0=0, x = 10... but this isn't a counterexample. I'm confused.
+
+  (displayln "Searching for a format string that adds the value of x to the accumulator")
+  (define sol (time (synthesize
+                     ; this works if I don't quantify over either of x-val or
+                     ; acc0, but as soon as I add either, it fails
+               #:forall '() #;(list acc0 x-val)
+               ; #:guarantee (assert (fmt-consistent-with-arglist? f args))
+               #:guarantee (assert (not (is-constant-add f (bonsai->number x) args conf)))
+               ; #:guarantee (assert #t)
                )))
 
-  #;(if (unsat? sol)
+  (if (unsat? sol)
       (displayln "Failed to synthesize")
       (begin
         (displayln "Synthesis succeeded.")
         (define f-instance (concretize f sol))
-        (define acc0-instance (bonsai-integer 20) #;(concretize acc0 sol))
+        (printf "f: ~a~n" f-instance)
+        (define acc0-instance (bonsai-integer 0) #;(concretize acc0 sol))
+        (printf "acc0 instance: ~a~n" acc0-instance)
         (define conf-instance (printf-lang (,acc0-instance mnil)))
-        (define x-instance (bonsai-integer 2) #;(concretize x sol))
+        (define x-instance #;(bonsai-integer 5) (concretize x sol))
+        (printf "x instance: ~a~n" x-instance)
         (define args-instance (printf-lang (cons ,x-instance nil)))
 
         (define result (interp-fmt-safe f-instance args-instance conf-instance))
-        (define str-result (behavior->trace result))
+        (define t (behavior->trace result))
         (define conf+ (behavior->config result))
+        (printf "result: (~a ~a)~n" t conf+)
 
-        (printf "f: ~a~n" f-instance)
-        (printf "acc0 instance: ~a~n" acc0-instance)
-        (printf "x instance: ~a~n" x-instance)
-;        (printf "result: (~a ~a)~n" (print-string str-result) conf+)
+        (printf "(is-constant-add f x args conf): ~a~n"
+                (is-constant-add f-instance (bonsai->number x-instance) args-instance conf-instance))
         ))
   )
 
 
 
 
-(test-lookup-offset)
-(displayln "")
-(test-mem-update)
-(displayln "")
-(test-interp-fmt-safe)
-(displayln "")
-(test-interp-fmt-unsafe)
-(displayln "")
-(find-exploit)
-(displayln "")
-(find-add-constant)
-(displayln "")
+;; (test-lookup-offset)
+;; (displayln "")
+;; (test-mem-update)
+;; (displayln "")
+;; (test-interp-fmt-safe)
+;; (displayln "")
+;; (test-interp-fmt-unsafe)
+;; (displayln "")
+;; (find-exploit)
+;; (displayln "")
+;; (find-add-constant)
+;; (displayln "")
 (find-add-argument)

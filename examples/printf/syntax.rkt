@@ -17,6 +17,7 @@
          val->loc
          conf->acc
          conf->mem
+         behavior->trace
          behavior->config
          lookup-offset
          lookup-loc
@@ -305,7 +306,7 @@
        )]
     ))
 
-; INPUT: a config conf and constant c
+; INPUT: a config OR behavior conf and constant c
 ; OUTPUT: a behavior consisting of the trace containing n and the upated configuration
 (define (print-constant conf c)
   #;(printf "(print-constant ~a ~a)~n" conf c)
@@ -315,9 +316,14 @@
             [acc+ (bonsai-integer (+ (bonsai->number acc) len-c))]
             )
        (printf-lang ((cons ,c nil) (,acc+ ,m))))]
+    [(printf-lang (t:trace (acc:integer m:mem)))
+     (let* ([len-c (constant-length c)]
+            [acc+ (bonsai-integer (+ (bonsai->number acc) len-c))]
+            )
+       (printf-lang ((cons ,c ,t) (,acc+ ,m))))]
     )
   )
-  #;(printf "computed print-constant~n")
+  #;(printf "computed print-constant: ~a~n" res)
   res
   )
 
@@ -368,16 +374,29 @@
 ; beginning of the string by the appropriate number of spaces on the left.
 (define (pad-by-width w b)
   #;(printf "(pad-by-width ~a ~a)~n" w b)
-  (match b
+  (define res
+    (let* ([acc (conf->acc (behavior->config b))]
+           [remainder (bonsai-integer (- w acc))]
+           )
+      (cond
+        [(<= w acc) b]
+        [else (print-constant b (printf-lang (pad-by ,remainder)))]
+        )))
+
+  #;(define res (match b
     [(printf-lang (t:trace conf:config))
      (let ([acc (conf->acc conf)])
        (cond
-         [(<= w acc) (printf-lang (,t ,conf))]
-         [else (let* ([remainder (- w acc)])
-                 (print-constant conf (printf-lang (pad-by ,remainder))))]
+         [(<= w acc) b]
+         [else (let* ([remainder (bonsai-integer (- w acc))])
+                 (print-constant b (printf-lang (pad-by ,remainder))))]
          ))]
+    [_ (raise-argument-error 'pad-by-width
+                             "behavior?"
+                             b)]
     ))
-    
+  #;(printf "result of pad-by-width: ~a~n" res)
+  res)
 
 ; INPUT: a format string, an argument list, and a configuration
 ; OUTPUT: an outputted string and a configuration OR ERR
