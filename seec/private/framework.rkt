@@ -1,6 +1,7 @@
 #lang rosette/safe
 
 (provide define-language
+         refine-language
          define-compiler
          (struct-out language)
          (struct-out compiler)
@@ -39,11 +40,14 @@
 
 
 
-TODO: give more examples with nondet (e.g. buggy set)
-TODO: pack the vars in solution in a structure
-TODO: create more macros:
-   e.g. set e.g. 1 where verify is used instead of synthesize
-   e.g. n-to-z style where C2 is computed from C1
+ TODO: change bound as separate call or part of query, replace the #:size argument in language
+ TODO: change rel to be
+  Eq (use the same symbolic var)
+  Fn 
+ TODO: make solution into a generator
+
+
+
 
 |#
 
@@ -104,23 +108,47 @@ TODO: create more macros:
                 [predctx (define-predsyn grammar ctxt.gen ctxt.pred ctxt.bound)])
            (language predexp predctx link eval)))]))
 
-; TODO:
-; Augment exp or context's where-clause
-#|
+(define-syntax (define-language-class stx)
+  (syntax-parse stx
+    [(_ name
+        #:grammar    grammar
+        #:expression expr:id
+        #:context    ctxt:id
+        #:link       link
+        #:evaluate   eval)
+     #'(define (name expr-tuple ctx-tuple)         
+         (let* ([predexp (define-predsyn grammar expr (first expr-tuple) (second expr-tuple))]
+                [predctx (define-predsyn grammar ctxt (first ctx-tuple) (second expr-tuple))])
+           (language predexp predctx link eval)))]))
 
+
+; Refine the "where" clause on expression or context
 (define-syntax (refine-language stx)
   (syntax-parse stx
-    [(_ name (~optional (~seq #:context-where cf)
-                        (~seq #:expression-where ef)
-                        #:defaults ([cf #'#f]
-                                    [ef #'#f])))
-     (let* ([exp (if ef () ()]
-            [ctx (if cf () ()])
-       #'(struct-copy language name
-                      [exp]
-                      [ctx]))
-     ])]))
-|#
+    [(_ name (~seq (~optional
+                    (~seq #:expression-where ef)
+                    #:defaults ([ef #'#f]))
+                   (~optional
+                    (~seq #:context-where cf)
+                    #:defaults ([cf #'#f]))
+                   ))     
+     #`(let* ([oldexpression (language-expression name)]
+              [olde-generator (predsyn-generator oldexpression)]
+              [olde-predicate (predsyn-predicate oldexpression)]
+              [exp (if ef
+                       (predsyn olde-generator (lambda (x) (and (olde-predicate x)
+                                                                 (ef x))))
+                       oldexpression)]
+              [oldcontext (language-context name)]
+              [oldc-generator (predsyn-generator oldcontext)]
+              [oldc-predicate (predsyn-predicate oldcontext)]
+              [ctx (if cf
+                       (predsyn oldc-generator (lambda (x) (and (oldc-predicate x)
+                                                               (cf x))))
+                       oldcontext)])              
+         (language exp ctx (language-link name) (language-evaluate name)))]))
+
+
 
 ; A compiler between languages consists of:
 ; source: a lang structure standing in as source
@@ -187,6 +215,24 @@ TODO: create more macros:
 (struct weird-component-solution solution () #:transparent
   #:methods gen:custom-write
   [(define write-proc weird-component-solution-write)])
+
+; generators for solution
+#;(define-syntax (enumerate stx)
+  (syntax-parse stx
+    [(_ sol)     
+     #'(let ()
+         (define (loop found count)
+           (if (> count 0)
+               (let* ([tmp vars]
+                      [tmpsol (solve (assert (and (not (ormap (λ (f) (equal? tmp f)) found))
+                                                  (assert-fun tmp))))])
+                 (if (unsat? tmpsol)
+                     found
+                     (loop (cons (concretize tmp tmpsol) found) (- count 1))))
+               found))
+         (loop '() max))]))
+
+
 
 
 ; find-changed-behavior: {r:scomp} r.source.expression -> solution + failure
@@ -276,15 +322,6 @@ TODO: create more macros:
       (pack-language-witness concretized)))
 
 
-#;(define (display-solution solution)
-  (if solution
-      (let ([concretized (concretize-witness solution)])
-        (printf
-          "Expression ~a~n    has emergent behavior ~a~n    witnessed by target-level context ~a~n"
-          (solution-program concretized)
-          (solution-behavior concretized)
-          (solution-context concretized)))
-      (displayln "Failed to synthesis emergent computation")))
 
 
 ; show (c1, v1) ~> b1 and (c2, v2) ~> b2
@@ -347,36 +384,6 @@ TODO: create more macros:
 
 
 
-
-#|
- Notes for Printf's uses of the framework:
-
-LANG
-Expression:
-fmt (format strings)
-Context:
-
-Behavior:
-(res, config)
-Program:
-(f:fmt, args:vlist, conf:config)
-Link:
-
-Evaluate:
-interp-fmt-unsafe
-
-OTHER:
-Valid-program:
-
-conf is of the form (,(printf-lang integer 1) mnil)
-AND
-fmt-consistent-with-vlist? f args
-
-Specification:
- get f and conf and arg out of program
-  is-constant-add f 1 args conf
-
-|#
 
 ; Source: format-str, (arg-list x acc), cons, run
 ; Goal: find a format-str s.t. given a ctx (arg-list, acc), increment the acc. (input is Source, v-ctx:Context -> bool (in addition to the one in source), spec:Context -> behavior -> bool

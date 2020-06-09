@@ -1,9 +1,32 @@
 #lang seec
 
+
+; TODO: these should be in a lib
 (define (bonsai->number n)
   (match n
     [(bonsai-integer i) i]
     ))
+
+(define (uncurry f)
+  (lambda (ab)
+    (match ab
+      [(cons a b)
+       (f a b)])))
+
+(define id
+  (lambda (a)
+    a))
+
+(define snoc
+  (lambda (a b) (cons b a)))
+
+
+#||||||||||||||||||||||||||||#
+#| Defining grammar for     |#
+#| toy languages:           |#
+#| expN, with natural number|#
+#| expZ, with integers      |#
+#||||||||||||||||||||||||||||#
 
 
 (define-grammar lang
@@ -23,34 +46,25 @@
    (* n1 n2)]))
 
 
-#| |#
-(define (uncurry f)
-  (lambda (ab)
-    (match ab
-      [(cons a b)
-       (f a b)])))
-
-(define id
-  (lambda (a)
-    a))
 
 
-; cons in reverse order
-(define snoc
-  (lambda (a b) (cons b a)))
+
+
 
 #||||||||||||||||||||||||||||#
 #| Language expN            |#
 #||||||||||||||||||||||||||||#
 
 
+; Returns the nth projection of env
 (define (lookup-envn n env)
   (match env
     [(lang (Envn e1:expn env1:envn))
      (if (equal? n 0)
          (lang ,e1)
          (lookup-envn (- n 1) env1))]))
-  
+
+; Returns |env|
 (define (size-envn env)
   (match env
     [(lang empty)
@@ -82,15 +96,16 @@
     [_
      0]))
 
-; expn with a single hole (Var 0)
-(define (ctx-expn e)
-    (assert (and (equal? (scope-expn e) 1) (equal? (numhole-expn e) 1))))
 
+
+
+; e is properly scoped by env (assuming closed env)
 (define (well-scopedn? env e)
   (let* ([s-e (scope-expn e)]
          [s-env (size-envn env)])
-          (assert (<= s-e s-env))))
+          (<= s-e s-env)))
 
+; True if all expn in env are closed
 (define (wf-envn? env)
    (match env
     [(lang empty)
@@ -109,23 +124,20 @@
     [(lang (Valn n:natural))
      (bonsai->number n)]))
 
-(define (eval-expn-pair ce)
-  (match ce
-    [(cons env e)
-     (eval-expn env e)]))
+; Alternative way of modeling applicative contexts
+(define (ctx-expn e)
+    (assert (and (equal? (scope-expn e) 1) (equal? (numhole-expn e) 1))))
 
 (define (apply-ctxn c e)
   (eval-expn (lang (Envn ,e empty)) c))
 
-(define (link-ctxn c e)
-  (cons (lang (Envn ,e empty)) c))
 
 
 (define-language EXPN
   #:grammar lang
-  #:expression expn #:size 4 #:where (lambda (v) (well-scopedn? (lang empty) v))
-  #:context    expn #:size 4 #:where ctx-expn
-  #:link link-ctxn
+  #:expression expn #:size 4 
+  #:context envn #:size 4 #:where (lambda (c) (wf-envn? c))
+  #:link cons
   #:evaluate (uncurry eval-expn))
 
 #||||||||||||||||||||||||||||#
@@ -172,14 +184,12 @@
     [_
      0]))
 
-; expz with a single hole (Var 0)
-(define (ctx-expz e)
-  (assert (and (equal? (scope-expz e) 1) (equal? (numhole-expz e) 1))))
+
 
 (define (well-scopedz? env e)
   (let* ([s-e (scope-expz e)]
          [s-env (size-envz env)])
-          (assert (<= s-e s-env))))
+          (<= s-e s-env)))
 
 
 (define (wf-envz? env)
@@ -204,19 +214,22 @@
     [(lang (Valz z:integer))
      (bonsai->number z)]))
 
+
+(define (ctx-expz e)
+  (assert (and (equal? (scope-expz e) 1) (equal? (numhole-expz e) 1))))
+
+
 (define (apply-ctxz c e)
   (eval-expz (lang (Envz ,e empty)) c))
 
-; decouple eval-expz from apply-ctxz
-(define (link-ctxz c e)
-  (cons (lang (Envz ,e empty)) c))
 
 (define-language EXPZ
   #:grammar lang
-  #:expression expz #:size 4 #:where (lambda (v) (well-scopedz? (lang empty) v))
-  #:context    expz #:size 4 #:where ctx-expz
-  #:link link-ctxz
+  #:expression expz #:size 4 
+  #:context envz #:size 4 #:where (lambda (c) (wf-envz? c))
+  #:link cons
   #:evaluate (uncurry eval-expz))
+
 
 #||||||||||||||||||||||||||||#
 #| Compilation              |#
@@ -244,11 +257,6 @@
            (let* ([e1z (n-to-z e1)]
                   [env1z (n-to-z-env env1)])
              (lang (,e1z ,env1z)))]))
-
-
-(define (crel cn cz)
-  (let ([cnz (n-to-z-env cn)])
-    (equal? cnz cz)))
 
 
 (define-compiler N-TO-Z
@@ -286,59 +294,54 @@
   (lang (+ (Sz (Valz 2)) (Valz 3))))
 
 
-; find an expression En and context Cz s.t. Cz[n-to-z En] != Cn[En] for Cn of bounded size
+
+#||||||||||||||||||||||||||||#
+#| Synthesis                |#
+#||||||||||||||||||||||||||||#
+
+
+; (1) TODO: not working at the moment -- I would expect something like context (-1, empty) and an expression "Var 0"
+; trying to find a weird-component of N-TO-Z
+;  find an expression En and context Cz s.t. Cz[n-to-z En] != Cn[En]
+
+
 #;(begin
-  (displayln "Trying find-weird-component on N-TO-Z")
-  (display-weird-component (time (find-weird-component N-TO-Z))))
-    #;[(list vars sol)
-     (let* ([vars* (map (lambda (var)
-                          (concretize var sol)) vars)])
-       (begin
-         (displayln "Source, target exp:")
-         (displayln (first vars*))
-         (displayln (n-to-z (first vars*)))
-         (displayln "Target context:")
-         (displayln (third vars*))
-         (displayln "Target behavior:")
-         (displayln (fifth vars*))))]
-    #;[_
-     (displayln "Synthesis failed")]
+    (displayln "(1a) Trying to find a weird component in n1-to-z1 compiler")
+  (display-weird-component (time (find-weird-component N1-TO-Z1)) displayln)
+  (displayln "(1) Trying to find a weird component in n-to-z compiler")
+  (display-weird-component (time (find-weird-component N-TO-Z)) displayln))
 
 
-;spec of add1 function for expn
-(define (add1spec p b)
+
+; (2)
+; trying to synthesize gadget n + 1 in a size 1 context
+(define EXPN1
+  (refine-language EXPN
+                   #:expression-where (lambda (v) (<= (scope-expn v) 1))
+                   #:context-where (lambda (c) (equal? (size-envn c) 1))
+                   ))
+
+
+(define (addn1spec p b)
   (match p
     [(cons c e)
      (let* ([n (eval-expn (lang empty) (lookup-envn 0 c))])
        (equal? b (+ n 1)))]))
 
 
-(define (link-ctxn2 c e)
-  (cons (lang (Envn ,c empty)) e))
-
-; same as expn but with exp and ctx switched
-; expression has 1 hole
-; ctx has 1 closed expn
-(define-language EXPN2
-  #:grammar lang
-  #:expression expn #:size 4 #:where ctx-expn
-  #:context    expn #:size 4 #:where (lambda (v) (well-scopedn? (lang empty) v))
-  #:link link-ctxn2
-  #:evaluate (uncurry eval-expn))
-
 #;(begin
-  (displayln "Trying to find add1 gadget")
-  (display-gadget (find-gadget EXPN2 (lambda (v) #t) add1spec) displayln))
-; trying to find an exp that adds 1 to the context
+  (displayln "(2) Trying to find n+1 in EXPN1")
+  (display-gadget (find-gadget EXPN1 (lambda (v) #t) addn1spec) displayln))
 
 
-; Generating  n + m with a size two context
-(define-language EXPN3
-  #:grammar lang
-  #:expression expn #:size 4 #:where (lambda (v) (<= (scope-expn v) 2))
-  #:context envn #:size 5 #:where (lambda (c) (and (equal? (size-envn c) 2) (wf-envn? c)))
-  #:link cons
-  #:evaluate (uncurry eval-expn))
+; (3)
+; trying to synthesize gadget n + m in a size 2 context
+(define EXPN2
+  (refine-language EXPN                   
+                   #:expression-where (lambda (v) (<= (scope-expn v) 2))
+                   #:context-where (lambda (c) (equal? (size-envn c) 2))
+                   ))
+
 
 (define (addnmspec p b)
   (match p
@@ -347,111 +350,8 @@
             [m (eval-expn (lang empty) (lookup-envn 1 c))])
        (equal? b (+ n m)))]))
 
-(begin
-  (displayln "Trying to find addNM gadget")
-  (display-gadget (find-gadget EXPN3 (lambda (v) #t) addnmspec) displayln))
+#;(begin
+  (displayln "(3) Trying to find n+m in EXPN2")
+  (display-gadget (find-gadget EXPN2 (lambda (v) #t) addnmspec) displayln))
 
 
-#||||||||||||||||||||||||||||#
-#| Synthesis                |#
-#||||||||||||||||||||||||||||#
-
-
-; Find a source expression (expn) which fails to evaluate in the empty context
-#|
-(displayln "Building a source expression (Expn)")
-(define e* (lang expn 3))
-(define sol (time
-              (verify
-                (time (eval-expn (lang empty) e*)))))
-(define e (concretize e* sol))
-(displayln "Found a source expression (Expn) which fails to evaluate in the empty context")
-(displayln e)
-(displayln (scope-expn e))
-|#
-
-#|
-; Find an expn which fails to evaluate in any context of size up to 3
-(displayln "Building a source expression (Expn) and context (Envn)")
-(define e* (lang expn 3))
-(define c* (lang envn 5))
-(void (time (assert (wf-envn? c*))))
-(void (time (assert (<= 2 (size-envn c*)))))
-;(void (time (assert (well-scoped? c* e*))))
-(define sol (time
-              (verify
-               (time (eval-expn c* e*)))))
-(define c (concretize c* sol))
-(define e (concretize e* sol))
-(displayln "Found a source expression (Expn) which fails to evaluate a well-scoped context")
-(displayln c)
-(displayln e)
-li|#
-
-#|
-; Find a z* which evaluates to a result which no (bounded) expn evaluates to
-(displayln "Building source and target expressions.")
-(define n* (time (lang expn 4)))
-(define z* (time (lang expz 4)))
-
-(displayln "Restricting to closed expressions.")
-(void (time (eval-expz (lang empty) z*)))
-(void (time (eval-expn (lang empty) n*)))
-
-(displayln "Find a target expression exhibiting behaviors that no source expression have.")
-
-(define-values (v a) (with-asserts (time (assert (equal? (eval-expn (lang empty) n*) (eval-expz (lang empty) z*))))))
-(newline)
-
-(define sol
-    (synthesize #:forall n*
-                #:guarantee (assert ( !( apply && a)))))
-(define z (concretize z* sol))
-(displayln "Target expression:")
-(displayln z)
-(displayln "Evaluation of target expression:")
-(displayln (eval-expz (lang empty) z))
-|#
-
-#|
-; find an expression En and context Cz s.t. Cz[n-to-z En] != Cn[En] for Cn of bounded size
-(displayln "Creating a symbolic expression, restricting it to closed expression and compiling it")
-(define n* (time (lang expn 4)))
-(void (time (well-scopedn? (lang empty) n*)))
-(define z* (n-to-z n*))
-
-
-(displayln "Creating symbolic contexts (expn/expz with a single hole)")
-(define cn* (time (lang expn 4)))
-(void (time (ctx-expn cn*)))
-(define cz* (time (lang expz 4)))
-(void (time (ctx-expz cz*)))
-
-;(displayln "Restricting target context and expression to compatible ones")
-;(void (time (apply-ctxz cz* z*)))
-
-(displayln "Finding a target context and an expression s.t. no source context exhibit the same behaviors")
-(define-values (v a) (with-asserts (time (assert (equal? (apply-ctxn cn* n*) (apply-ctxz cz* z*))))))
-(newline)
-
-(define sol
-    (synthesize #:forall cn*
-                #:guarantee (assert ( !( apply && a)))))
-(define cz (concretize cz* sol))
-(define n (concretize n* sol))
-(define cn (concretize cn* sol))
-(define z (time (n-to-z n)))
-
-(displayln "Source Expression (Expn):")
-(displayln n)
-(displayln "Target Expression (Expz):")
-(displayln z)
-(displayln "Target Context:")
-(displayln cz)
-
-(displayln "Target Evaluation:")
-(displayln (apply-ctxz cz z))
-
-
-
-|#
