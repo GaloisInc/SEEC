@@ -130,8 +130,23 @@
 
 
 (define (is-constant-add f c args conf)
-  (let ([conf+ (behavior->config (interp-fmt-safe f args conf))])
-    (equal? (conf->acc conf+) (+ c (conf->acc conf)))))
+  (let* ([conf+ (behavior->config (interp-fmt-safe f args conf))]
+         [acc   (conf->acc conf)]
+         [acc+  (conf->acc conf+)]
+        )
+    (equal? acc+ (+ c acc))
+    ))
+
+; a refinement of is-constant-add where the result is the max of (acc+c) and (acc+length(c))
+(define (is-constant-add-max f c args conf)
+  (let* ([conf+ (behavior->config (interp-fmt-safe f args conf))]
+         [acc   (conf->acc conf)]
+         [acc+  (conf->acc conf+)]
+        )
+    (equal? acc+ (+ acc (max c (string-length (number->string c)))))
+    #;(equal? (conf->acc conf+) (+ c (conf->acc conf)))
+    ))
+
 
 
 (define (demo-add-constant)
@@ -206,16 +221,18 @@
 (define (find-add-argument)
 
   (current-bitwidth 32)
-  #;(define f (printf-lang fmt 4)) ; 4 seems to be the minimum this size can be,
-                                 ; but it times out/gets killed by my computer.
+  (define f-concrete (printf-lang (cons (% (0 $) (* 0) d) nil)))
+  #;(define f (printf-lang fmt 5))
   (define f (printf-lang (cons (% (0 $) (* 0) d) nil)))
+  #;(assert (equal? f f-concrete))
   (printf "Defined f: ")
   (displayln f)
   #;(assert (equal? f f-concrete))
   #;(displayln "Asserted equality of f and f-concrete")
 
-  #;(define acc0 (printf-lang 0))
-  (define acc0 (printf-lang integer 1))
+  (define-symbolic acc0-val integer?)
+  #;(define acc0-val 0)
+  (define acc0 (printf-lang ,(bonsai-integer acc0-val)))
   (define conf (printf-lang (,acc0 mnil)))
   (printf "Defined conf: ~a~n" conf)
 
@@ -227,26 +244,24 @@
   (printf "Defined args: ~a~n" args)
 
 
-  (define result (interp-fmt-safe f args conf))
-  (printf "Defined result: ~a~n" result)
-  (printf "(is-constant-add f x args conf): ~a~n"
-          (is-constant-add f x-val args conf))
+  #;(define result (interp-fmt-safe f args conf))
+  #;(printf "Defined result: ~a~n" result)
+  #;(printf "(is-constant-add f x args conf): ~a~n"
+          (is-constant-add-max f x-val args conf))
 
-
-  ; TODO: find out why adding acc0 and x-val to forall doesn't work for concrete-f.
-  ; specifically, do this by synthesizing (not (is-constant-add ...))
-  ; ... where x and acc0 are abstract, but not quantified over.
-  ; ... this yields acc0=0, x = 10... but this isn't a counterexample. I'm confused.
 
   (displayln "Searching for a format string that adds the value of x to the accumulator")
+  ; doesn't work when I quantify over x-val...
   (define sol (time (synthesize
-                     ; this works if I don't quantify over either of x-val or
-                     ; acc0, but as soon as I add either, it fails
-               #:forall '() #;(list acc0 x-val)
-               ; #:guarantee (assert (fmt-consistent-with-arglist? f args))
-               #:guarantee (assert (not (is-constant-add f (bonsai->number x) args conf)))
-               ; #:guarantee (assert #t)
+                     #:forall x-val #;(list acc0-val x-val)
+                     #:guarantee (assert (is-constant-add-max f x-val args conf))
                )))
+  ; use this query to find a counter-example
+  #;(define sol (time (optimize
+               #:minimize (list x-val)
+               #:guarantee (assert (not (is-constant-add-max f x-val args conf)))
+               )))
+
 
   (if (unsat? sol)
       (displayln "Failed to synthesize")
@@ -266,8 +281,12 @@
         (define conf+ (behavior->config result))
         (printf "result: (~a ~a)~n" t conf+)
 
-        (printf "(is-constant-add f x args conf): ~a~n"
-                (is-constant-add f-instance (bonsai->number x-instance) args-instance conf-instance))
+        (printf "(is-constant-add-max ~a ~a ~a ~a): ~a~n"
+                f-instance
+                x-instance
+                args-instance
+                conf-instance
+                (is-constant-add-max f-instance (bonsai->number x-instance) args-instance conf-instance))
         ))
   )
 

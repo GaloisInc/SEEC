@@ -77,7 +77,7 @@
   (parameter ::= (offset $))
   (width ::= NONE (* offset) natural)
   (offset ::= natural)
-  (fmt-type ::= #;s d n)
+  (fmt-type ::= s d n)
 
   (arglist ::= list<val>)
   (mem ::= mnil (mcons ident val mem))
@@ -92,6 +92,15 @@
   )
 
   #;(behavior ::= (string config))
+
+
+(define (ll-singleton x) (printf-lang (cons ,x nil)))
+(define (ll-cons x xs) (printf-lang (cons ,x ,xs)))
+
+(define (debug stmt)
+  #;(stmt)
+  (void)
+  )
 
 
 #||||||||||||||||#
@@ -189,13 +198,16 @@
 ; INPUT: an integer offset and an argument list args such that offset < length(args)
 ; OUTPUT: the value mapped to the offset
 (define (lookup-offset offset args)
-  (match args
+  #;(debug (thunk (printf "(lookup-offset ~a ~a)~n" offset args)))
+  (define res (match args
     [(printf-lang nil) (printf-lang ERR)]
     [(printf-lang (cons v:val args+:arglist))
      (if (<= offset 0)
          v
          (lookup-offset (- offset 1) args+))]
-    )
+    ))
+  #;(debug (thunk (printf "result: ~a~n" res)))
+  res
   )
 
 ; INPUT: a location identifier l and a memory value m with l in the domain of m
@@ -213,12 +225,17 @@
 ; INPUT: a configuration (acc,mem) and a number n
 ; OUTPUT: a new configuration (acc+n,mem)
 (define (config-add conf n)
-  #;(printf "(config-add ~a ~n)" conf n)
+  (debug (thunk (printf "(config-add ~a ~a)~n" conf n)))
   (let* ([acc   (conf->acc conf)]
          [m     (conf->mem conf)]
-         [acc+n (bonsai-integer (+ n acc))])
-    (printf-lang (,acc+n ,m))
+         [acc+n (bonsai-integer (+ acc n))])
+    ; avoid overflow
+    (begin
+      #;(assert (<= acc acc+n))
+      (printf-lang (,acc+n ,m))
+      )
     ))
+
 
 ; INPUT: a mem, a location, and a value
 ; OUTPUT: an updated memory with the location mapping to the new value
@@ -284,13 +301,13 @@
 ; If the constant is a string, give the length of the string
 ; If the constant is an integer, give the length of the corresponding string
 (define (constant-length c)
-  #;(printf "(constant-length ~a)~n" c)
+  #;(debug (thunk (printf "(constant-length ~a)~n" c)))
   (define res (match c
     [(printf-lang s:string) (string-length (bonsai-string-value s))]
     [(printf-lang n:integer) (string-length (number->string (bonsai->number n)))]
     [(printf-lang (pad-by n:natural)) (bonsai->number n)]
     ))
-  #;(printf "Computed constant-length~n")
+  #;(debug (thunk (printf "Computed constant-length: ~a~n" res)))
   res)
 
 
@@ -306,32 +323,52 @@
        )]
     ))
 
-; INPUT: a config OR behavior conf and constant c
+; INPUT: a config OR behavior conf-or-behav and constant c
 ; OUTPUT: a behavior consisting of the trace containing n and the upated configuration
-(define (print-constant conf c)
-  #;(printf "(print-constant ~a ~a)~n" conf c)
-  (define res (match conf
-    [(printf-lang (acc:integer m:mem))
+(define (print-constant conf-or-behav c)
+  (debug (thunk (printf "(print-constant ~a ~a)~n" conf-or-behav c)))
+  (define res (match conf-or-behav
+    [(printf-lang conf:config)
      (let* ([len-c (constant-length c)]
-            [acc+ (bonsai-integer (+ (bonsai->number acc) len-c))]
+            [conf+ (config-add conf len-c)]
             )
-       (printf-lang ((cons ,c nil) (,acc+ ,m))))]
-    [(printf-lang (t:trace (acc:integer m:mem)))
+       (printf-lang ((cons ,c nil) ,conf+)))]
+    [(printf-lang (t:trace conf:config))
      (let* ([len-c (constant-length c)]
-            [acc+ (bonsai-integer (+ (bonsai->number acc) len-c))]
+            [conf+ (config-add conf len-c)]
             )
-       (printf-lang ((cons ,c ,t) (,acc+ ,m))))]
+       (printf-lang ((cons ,c ,t) ,conf+)))]
     )
   )
-  #;(printf "computed print-constant: ~a~n" res)
+  (debug (thunk (printf "computed print-constant: ~a~n" res)))
   res
   )
+
+(define (trace? t)
+  (match t
+    [(printf-lang trace) #t]
+    [_ #f]
+    ))
+
+; Input: t is either a trace or ERR
+(define (print-trace conf t)
+  (debug (thunk (printf "(print-trace ~a ~a)~n" conf t)))
+  #;(debug (thunk (printf "    (trace? ~a): ~a~n" t (trace? t))))
+  (define res (match t
+    [(printf-lang ERR) (printf-lang ERR)]
+    [(printf-lang nil) conf]
+    [(printf-lang (cons c:constant t+:trace))
+     (print-constant (print-trace conf t+) c)]
+    [_ (raise-argument-error 'print-trace "trace?" t)]
+    ))
+  (debug (thunk (printf "result of print-trace: ~a~n" res)))
+  res)
 
 
 ; INPUT: a config conf and a location identifier l
 ; OUTPUT: an updated configuration that assigns l the value of the accumulator.
 (define (print-n-loc conf l)
-  #;(printf "(print-n-loc ~a): ~a~n" l)
+  (debug (thunk (printf "(print-n-loc ~a): ~a~n" l)))
   (let* ([acc (bonsai-integer (conf->acc conf))]
          [acc-val (printf-lang ,acc)]
          [new-mem (mem-update (conf->mem conf) l acc-val)]
@@ -349,7 +386,7 @@
 
 ; either return a behavior (trace config)
 ; or an ERR
-(define (interp-ftype-safe ftype param args conf)
+#;(define (interp-ftype-safe ftype param args conf)
   #;(printf "(interp-ftype-safe ~a ~a ~a ~a)~n" ftype param args conf)
   #;(printf "(lookup-offset ~a ~a)== ~a~n" (param->offset param) args (lookup-offset (param->offset param) args))
   (define res (match (cons ftype (lookup-offset (param->offset param) args))
@@ -358,6 +395,9 @@
     [(cons (printf-lang d) (printf-lang n:integer))
      (print-constant conf n)
      ]
+
+    [(cons (printf-lang s) (printf-lang s:string))
+     (print-constant conf s)]
     ; if the type = 'n', the correesponding argument should be a location
     ; The function `print-n-loc` is shared between safe and unsafe versions
     [(cons (printf-lang n) (printf-lang (LOC l:ident)))
@@ -370,10 +410,13 @@
   #;(printf "computed interp-ftype-safe: ~a~n" res)
   res)
 
+
+
+
 ; ensure the trace in the behavior b has width at least w, and if not, pad the
 ; beginning of the string by the appropriate number of spaces on the left.
 (define (pad-by-width w b)
-  #;(printf "(pad-by-width ~a ~a)~n" w b)
+  (debug (thunk (printf "(pad-by-width ~a ~a)~n" w b)))
   (define res
     (let* ([acc (conf->acc (behavior->config b))]
            [remainder (bonsai-integer (- w acc))]
@@ -382,54 +425,86 @@
         [(<= w acc) b]
         [else (print-constant b (printf-lang (pad-by ,remainder)))]
         )))
-
-  #;(define res (match b
-    [(printf-lang (t:trace conf:config))
-     (let ([acc (conf->acc conf)])
-       (cond
-         [(<= w acc) b]
-         [else (let* ([remainder (bonsai-integer (- w acc))])
-                 (print-constant b (printf-lang (pad-by ,remainder))))]
-         ))]
-    [_ (raise-argument-error 'pad-by-width
-                             "behavior?"
-                             b)]
-    ))
-  #;(printf "result of pad-by-width: ~a~n" res)
+  (debug (thunk (printf "result of pad-by-width: ~a~n" res)))
   res)
+
+; returns the contant to be printed, or ERR
+(define (fmt->constant ftype param args)
+  (debug (thunk (printf "(fmt->constant ~a ~a ~a)~n" ftype param args)))
+  (define res
+    (match (cons ftype (lookup-offset (param->offset param) args))
+    [(cons (printf-lang d) (printf-lang n:integer))
+     n]
+    [(cons (printf-lang s) (printf-lang s:string))
+     s]
+    [_ (printf-lang ERR)]
+    ))
+  (debug (thunk (printf "result of fmt->constant: ~a~n" res)))
+  res)
+
+; produce a trace whose length is equal to max(w,len(c))
+; do we need to avoid overflow?
+(define (pad-constant c w)
+  (debug (thunk (printf "(pad-constant ~a ~a)~n" c w)))
+  (define res (let* ([c-len (constant-length c)]
+         )
+    (cond
+      [(<= w c-len) (ll-singleton c)]
+      [else         (ll-cons (printf-lang (pad-by ,(bonsai-integer (- w c-len)))) (ll-singleton c))]
+      )))
+  (debug (thunk (printf "result of pad-constant: ~a~n" res)))
+  res)
+
+     
 
 ; INPUT: a format string, an argument list, and a configuration
 ; OUTPUT: an outputted string and a configuration OR ERR
 (define (interp-fmt-elt-safe f args conf)
-  #;(printf "(interp-fmt-elt-safe ~a ~a ~a)~n" (bonsai-pretty f) args conf)
-  #;(displayln f)
+  (debug (thunk (printf "(interp-fmt-elt-safe ~a ~a ~a)~n" f args conf)))
   (define res (match f
     [(printf-lang s:string)
      (print-constant conf s)]
 
-    [(printf-lang (% p:parameter NONE ftype:fmt-type))
-     (interp-ftype-safe ftype p args conf)]
-    [(printf-lang (% p:parameter w:natural ftype:fmt-type))
-     (pad-by-width (bonsai->number w) (interp-ftype-safe ftype p args conf))]
-    [(printf-lang (% p:parameter (* o:offset) ftype:fmt-type))
-     (match (lookup-offset (bonsai->number o) args)
-       [(printf-lang w:integer)
-        (pad-by-width (bonsai->number w) (interp-ftype-safe ftype p args conf))]
-       #;[_ (raise-arguments-error 'interp-fmt-elt-safe
-                                 "Offset does not map to a number in the arglist"
-                                 "offset" (bonsai->number o)
-                                 "arglist" args)]
+    ; the width parameter doesn't make a difference for n formats
+    [(printf-lang (% p:parameter width n))
+     (match (lookup-offset (param->offset p) args)
+       [(printf-lang (LOC l:ident))
+        (printf-lang (nil ,(print-n-loc conf l)))
+        ]
        [_ (printf-lang ERR)]
        )]
 
+    ; otherwise, for the 's' and 'd' format types:
+    [(printf-lang (% p:parameter NONE ftype:fmt-type))
+     (print-constant conf (fmt->constant ftype p args))]
+
+    [(printf-lang (% p:parameter w:natural ftype:fmt-type))
+     (let* ([c (fmt->constant ftype p args)]
+            [t (pad-constant c (bonsai->number w))]
+            )
+       (print-trace conf t))
+     ]
+
+    [(printf-lang (% p:parameter (* o:offset) ftype:fmt-type))
+     (match (lookup-offset (bonsai->number o) args)
+       [(printf-lang w:integer)
+        (let* ([c (fmt->constant ftype p args)]
+               [t (pad-constant c (bonsai->number w))]
+               )
+          (print-trace conf t))]
+       [_ (printf-lang ERR)]
+       )
+     ]
+
     [_ (raise-argument-error 'interp-fmt-elt-safe "(printf-lang fmt-elt)" f)]
     ))
-  #;(printf "done with interp-fmt-elt-safe: ~a~n" res)
+    
+  (debug (thunk (printf "done with interp-fmt-elt-safe: ~a~n" res)))
   res)
 
 
 (define (interp-fmt-safe f args conf)
-  #;(printf "(interp-fmt-safe ~a ~a ~a)~n" f args conf)
+  (debug (thunk (printf "(interp-fmt-safe ~a ~a ~a)~n" f args conf)))
   (define res (match f
     [(printf-lang nil) (printf-lang (nil ,conf))]
 
@@ -463,7 +538,7 @@
 
     [_ (raise-argument-error 'interp-fmt-safe "(printf-lang fmt)" f)]
     ))
-  #;(printf "done~n")
+  (debug (thunk (printf "result of interp-fmt-safe: ~a~n" res)))
   res
   )
 
