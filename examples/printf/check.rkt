@@ -242,9 +242,9 @@
 
   (current-bitwidth 5)
   (define f-concrete (printf-lang (cons (% (0 $) (* 0) d) nil)))
-  (define f (printf-lang fmt 5))
-  #;(define f f-concrete)
-  (assert (equal? f f-concrete))
+  #;(define f (printf-lang fmt 5))
+  (define f f-concrete)
+  #;(assert (equal? f f-concrete))
 
   (define-symbolic* acc0-val integer?)
   #;(define acc0-val 0)
