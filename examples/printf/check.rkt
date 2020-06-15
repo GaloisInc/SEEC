@@ -139,11 +139,14 @@
 
 ; a refinement of is-constant-add where the result is the max of (acc+c) and (acc+length(c))
 (define (is-constant-add-max f c args conf)
-  (let* ([conf+ (behavior->config (interp-fmt-safe f args conf))]
+  #;(printf "(is-constant-add-max ~a ~a ~a ~a)~n" f c args conf)
+  (let* ([b+ (interp-fmt-safe f args conf)]
+         [conf+ (behavior->config b+)]
          [acc   (conf->acc conf)]
          [acc+  (conf->acc conf+)]
+         [c-length (string-length (number->string c))]
         )
-    (equal? acc+ (+ acc (max c (string-length (number->string c)))))
+    (equal? acc+ (+ acc (max c c-length)))
     #;(equal? (conf->acc conf+) (+ c (conf->acc conf)))
     ))
 
@@ -218,31 +221,51 @@
         ))
   )
 
+(define (max-int)
+  ; subtract exponent by 1 because of signed integers
+  (- (expt 2 (- (current-bitwidth) 1)) 1)
+  )
+(define (min-int)
+  (* -1 (max-int)))
+
+(define (test-quantifier)
+  (current-bitwidth 5)
+  (define-symbolic x integer?)
+  (define sol (synthesize
+               #:forall x
+               #:guarantee (<= (min-int) x (max-int))))
+  sol
+  )
+
+
 (define (find-add-argument)
 
-  (current-bitwidth 32)
+  (current-bitwidth 5)
   (define f-concrete (printf-lang (cons (% (0 $) (* 0) d) nil)))
   #;(define f (printf-lang fmt 5))
-  (define f (printf-lang (cons (% (0 $) (* 0) d) nil)))
+  (define f f-concrete)
   #;(assert (equal? f f-concrete))
-  (printf "Defined f: ")
-  (displayln f)
-  #;(assert (equal? f f-concrete))
-  #;(displayln "Asserted equality of f and f-concrete")
 
-  (define-symbolic acc0-val integer?)
+  (define-symbolic* acc0-val integer?)
   #;(define acc0-val 0)
   (define acc0 (printf-lang ,(bonsai-integer acc0-val)))
   (define conf (printf-lang (,acc0 mnil)))
-  (printf "Defined conf: ~a~n" conf)
 
+
+  ;; NOTE: synthesis succeeds if x is defined to be the concrete value 16, but
+  ;; not if we assert x = 16 and add a forall quantifier over x. Maybe add the
+  ;; assertions to the query instead of the context?
 
   (define-symbolic x-val integer?)
-  #;(define x-val 214787040)
+  (printf "min-int: ~a ~n max-int: ~a~n" (min-int) (max-int))
+  #;(assert (<= -15 x-val 15))
+  #;(assert (= x-val 16))
+  #;(assert (<= (min-int) x-val (max-int)))
+  #;(assert (<= -10000 x-val))
+  #;(define x-val 16)
+  #;(define x-val 50)
   (define x (printf-lang ,(bonsai-integer x-val)))
   (define args (printf-lang (cons ,x nil)))
-  (printf "Defined args: ~a~n" args)
-
 
   #;(define result (interp-fmt-safe f args conf))
   #;(printf "Defined result: ~a~n" result)
@@ -253,7 +276,9 @@
   (displayln "Searching for a format string that adds the value of x to the accumulator")
   ; doesn't work when I quantify over x-val...
   (define sol (time (synthesize
-                     #:forall x-val #;(list acc0-val x-val)
+                     #:forall (list acc0-val x-val)
+                     #:assume (assert (<= (min-int) x-val (max-int)))
+;                     #:assume (assert (= x-val 16))
                      #:guarantee (assert (is-constant-add-max f x-val args conf))
                )))
   ; use this query to find a counter-example
@@ -269,10 +294,10 @@
         (displayln "Synthesis succeeded.")
         (define f-instance (concretize f sol))
         (printf "f: ~a~n" f-instance)
-        (define acc0-instance (bonsai-integer 0) #;(concretize acc0 sol))
+        (define acc0-instance #;(bonsai-integer 0) (concretize acc0 sol))
         (printf "acc0 instance: ~a~n" acc0-instance)
         (define conf-instance (printf-lang (,acc0-instance mnil)))
-        (define x-instance #;(bonsai-integer 5) (concretize x sol))
+        (define x-instance #;(bonsai-integer -1) (concretize x sol))
         (printf "x instance: ~a~n" x-instance)
         (define args-instance (printf-lang (cons ,x-instance nil)))
 
