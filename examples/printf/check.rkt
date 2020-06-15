@@ -242,8 +242,8 @@
 
   (current-bitwidth 5)
   (define f-concrete (printf-lang (cons (% (0 $) (* 0) d) nil)))
-  #;(define f (printf-lang fmt 5))
-  (define f f-concrete)
+  (define f (printf-lang fmt 5))
+  #;(define f f-concrete)
   #;(assert (equal? f f-concrete))
 
   (define-symbolic* acc0-val integer?)
@@ -258,12 +258,6 @@
 
   (define-symbolic x-val integer?)
   (printf "min-int: ~a ~n max-int: ~a~n" (min-int) (max-int))
-  #;(assert (<= -15 x-val 15))
-  #;(assert (= x-val 16))
-  #;(assert (<= (min-int) x-val (max-int)))
-  #;(assert (<= -10000 x-val))
-  #;(define x-val 16)
-  #;(define x-val 50)
   (define x (printf-lang ,(bonsai-integer x-val)))
   (define args (printf-lang (cons ,x nil)))
 
@@ -278,7 +272,6 @@
   (define sol (time (synthesize
                      #:forall (list acc0-val x-val)
                      #:assume (assert (<= (min-int) x-val (max-int)))
-;                     #:assume (assert (= x-val 16))
                      #:guarantee (assert (is-constant-add-max f x-val args conf))
                )))
   ; use this query to find a counter-example
