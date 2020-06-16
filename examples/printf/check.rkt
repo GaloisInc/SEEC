@@ -238,9 +238,9 @@
   )
 
 
-(define (find-add-argument)
+(define (find-add-argument-max)
 
-  (current-bitwidth 5)
+  (current-bitwidth 16)
   (define f-concrete (printf-lang (cons (% (0 $) (* 0) d) nil)))
   (define f (printf-lang fmt 5))
   #;(define f f-concrete)
@@ -308,6 +308,87 @@
         ))
   )
 
+(define (find-add-argument)
+
+  (current-bitwidth 5)
+  (define f-concrete (printf-lang (cons (% (0 $) (* 1) s) nil)))
+  (define f (printf-lang fmt 5))
+  #;(define f f-concrete)
+  #;(assert (equal? f f-concrete))
+
+  (define-symbolic* acc0-val integer?)
+  #;(define acc0-val 0)
+  (define acc0 (printf-lang ,(bonsai-integer acc0-val)))
+  (define conf (printf-lang (,acc0 mnil)))
+
+
+  ; x is the amount to add to the accumulator
+  (define-symbolic x-val integer?)
+  (assert (>= x-val 0))
+  #;(define x-val 10)
+  (define x (printf-lang ,(bonsai-integer x-val)))
+
+
+  (define args+ (printf-lang arglist 2))
+  (define args (ll-cons x args+))
+
+  ; NOTE: if I define a completely symbolic arglist (e.g. below) I am unable to
+  ; synthesize f, even if I assert (args = args-concrete). Why???
+
+  #;(define args-concrete (ll-cons (printf-lang "") (ll-singleton x)))
+  #;(define args (printf-lang arglist 3))
+  #;(assert (equal? args args-concrete))
+  #;(define args args-concrete)
+
+  (define result (interp-fmt-safe f args conf))
+  (printf "Defined result: ~a~n" result)
+  (printf "(is-constant-add f x args conf): ~a~n"
+          (is-constant-add f x-val args conf))
+
+
+  (displayln "Searching for a format string that adds the value of x to the accumulator")
+  (define sol (time (synthesize
+                     #:forall (list acc0-val x-val)
+;                     #:assume (assert (<= (min-int) x-val (max-int)))
+;                     #:assume (= x-val 0)
+                     #:guarantee (assert (is-constant-add f x-val args conf))
+               )))
+  ; use this query to find a counter-example
+  #;(define sol (time (optimize
+               #:minimize (list x-val)
+               #:guarantee (assert (not (is-constant-add f x-val args conf)))
+               )))
+
+
+  (if (unsat? sol)
+      (displayln "Failed to synthesize")
+      (begin
+        (displayln "Synthesis succeeded.")
+        (define f-instance (concretize f sol))
+        (printf "f: ~a~n" f-instance)
+        (define acc0-instance #;(bonsai-integer 0) (concretize acc0 sol))
+        (printf "acc0 instance: ~a~n" acc0-instance)
+        (define conf-instance (printf-lang (,acc0-instance mnil)))
+        (define x-instance #;(bonsai-integer -1) (concretize x sol))
+        (printf "x instance: ~a~n" x-instance)
+        #;(define args+-instance (concretize args+ sol))
+        #;(define args-instance (printf-lang (cons ,x-instance ,args+-instance)))
+        (define args-instance (concretize args sol))
+        (printf "args instance: ~a~n" args-instance)
+
+        (define result (interp-fmt-safe f-instance args-instance conf-instance))
+        (define t (behavior->trace result))
+        (define conf+ (behavior->config result))
+        (printf "result: (~a ~a)~n" t conf+)
+
+        (printf "(is-constant-add ~a ~a ~a ~a): ~a~n"
+                f-instance
+                x-instance
+                args-instance
+                conf-instance
+                (is-constant-add f-instance (bonsai->number x-instance) args-instance conf-instance))
+        ))
+  )
 
 
 

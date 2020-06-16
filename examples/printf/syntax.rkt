@@ -34,6 +34,9 @@
          mem?
          conf?
          fmt-consistent-with-arglist?
+
+         ll-singleton
+         ll-cons
          )
 
 ; We aim to eventually support all or most of the syntax for printf formats:
@@ -81,7 +84,7 @@
 
   (arglist ::= list<val>)
   (mem ::= mnil (mcons ident val mem))
-  (val ::= (LOC ident) integer ERR #;(DEREF val)) 
+  (val ::= (LOC ident) integer string ERR #;(DEREF val))
   (ident ::= integer)
   (trace ::= list<constant>)
   (constant ::= string integer (pad-by natural))
@@ -352,7 +355,7 @@
 
 ; Input: t is either a trace or ERR
 (define (print-trace conf t)
-  (debug (thunk (printf "(print-trace ~a ~a)~n" conf t)))
+  #;(debug (thunk (printf "(print-trace ~a ~a)~n" conf t)))
   #;(debug (thunk (printf "    (trace? ~a): ~a~n" t (trace? t))))
   (define res (match t
     [(printf-lang ERR) (printf-lang ERR)]
@@ -361,7 +364,7 @@
      (print-constant (print-trace conf t+) c)]
     [_ (raise-argument-error 'print-trace "trace?" t)]
     ))
-  (debug (thunk (printf "result of print-trace: ~a~n" res)))
+  #;(debug (thunk (printf "result of print-trace: ~a~n" res)))
   res)
 
 
