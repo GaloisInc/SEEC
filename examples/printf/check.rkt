@@ -330,15 +330,17 @@
 
 
   ; x is the amount to add to the accumulator
-  (define-symbolic x-val integer?)
+  #;(define-symbolic x-val integer?)
   #;(assert (>= x-val 0))
   #;(define x-val 10)
-  (define x (printf-lang ,(bonsai-integer x-val)))
+  #;(define x (printf-lang ,(bonsai-integer x-val)))
 
 
-  (define args+ (printf-lang arglist 2))
-  (define args (ll-cons x args+))
-  #;(define args (printf-lang arglist 3))
+  #;(define args+ (printf-lang arglist 2))
+  #;(define args (ll-cons x args+))
+  (define args (printf-lang arglist 4))
+  (define x-val (match args
+                  [(printf-lang (cons x:integer args+:arglist)) (bonsai->number x)]))
 
   ; NOTE: if I define a completely symbolic arglist (e.g. below) I am unable to
   ; synthesize f, even if I assert (args = args-concrete). Why???
@@ -357,8 +359,6 @@
   (displayln "Searching for a format string that adds the value of x to the accumulator")
   (define sol (time (synthesize
                      #:forall (list acc0-val x-val)
-;                     #:assume (assert (<= (min-int) x-val (max-int)))
-;                     #:assume (= x-val 0)
                      #:guarantee (assert (is-constant-add-positive f x-val args conf))
                )))
   ; use this query to find a counter-example
@@ -377,11 +377,14 @@
         (define acc0-instance #;(bonsai-integer 0) (concretize acc0 sol))
         (printf "acc0 instance: ~a~n" acc0-instance)
         (define conf-instance (printf-lang (,acc0-instance mnil)))
-        (define x-instance #;(bonsai-integer -1) (concretize x sol))
-        (printf "x instance: ~a~n" x-instance)
+        (define args-instance (concretize args sol))
+        (define x-instance (match args-instance
+                  [(printf-lang (cons x:integer arglist)) (bonsai->number x)]))
+        #;(define x-instance #;(bonsai-integer -1) (concretize x-val sol))
+        #;(printf "x instance: ~a~n" x-instance)
         #;(define args+-instance (concretize args+ sol))
         #;(define args-instance (printf-lang (cons ,x-instance ,args+-instance)))
-        (define args-instance (concretize args sol))
+        #;(define args-instance (concretize args sol))
         (printf "args instance: ~a~n" args-instance)
 
         (define result (interp-fmt-safe f-instance args-instance conf-instance))

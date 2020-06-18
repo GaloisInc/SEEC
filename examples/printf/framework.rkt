@@ -157,12 +157,18 @@
     (equal? acc+ (+ (max c 0) acc))
     ))
 
-(define (is-constant-add-positive-spec c prog beh)
+(define (is-constant-add-positive-spec prog beh)
   (match (cons beh prog)
-    [(cons (printf-lang (t:trace (acc+:integer m+:mem)))
-           (cons (printf-lang (args:arglist (acc:integer m:mem)))
+    [(cons (printf-lang (t:trace conf+:config))
+                 ; assume that the arglist has the form (cons x args+),
+                 ; where x is the value being added to the accumulator
+           (cons (printf-lang ((cons x:integer args+:arglist) conf:config))
                  f))
-     (equal? (bonsai->number acc+) (+ (max c 0) (bonsai->number acc)))
+     (let ([acc+ (conf->acc conf+)]
+           [acc  (conf->acc conf)]
+           )
+         
+     (equal? acc+ (+ (max (bonsai->number x) 0) acc)))
      ]
     ))
      
