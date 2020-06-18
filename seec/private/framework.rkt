@@ -399,14 +399,20 @@ Specification:
              (failure "Failed to synthesize a gadget")
              (solution (list (language-witness v1 c2 p2 b2)) sol)))]))
 
-(define (display-gadget solution out)
-  (let* ([vars (concretize-witness solution)]
-         [lang-vars (first vars)])
-    (out (format
+(define (display-gadget sol out)
+  (cond
+    [(failure? sol) (out sol)]
+    [(solution? sol)
+
+     (let* ([vars (concretize-witness sol)]
+            [lang-vars (first vars)])
+       (out (format
           "Expression ~a~n is a gadget for the provided specification, as witnessed by behavior ~a~n in context ~a~n"
           (language-witness-expression lang-vars)
           (language-witness-behavior lang-vars)
-          (language-witness-context lang-vars)))))
+          (language-witness-context lang-vars)))
+       )]
+    ))
 
 (define (display-list list)
   (for-each displayln list)

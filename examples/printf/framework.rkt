@@ -6,6 +6,8 @@
                   raise-argument-error
                   raise-arguments-error))
 
+(current-bitwidth 5)
+
 (define (spec-interpret p)
   (match p
     [(cons (printf-lang (args:arglist conf:config)) f)
@@ -104,7 +106,7 @@
   )
 
 ;; find-weird-component
-(begin
+#;(begin
   (displayln "Trying to find a format string with weird behavior")
   (define witness (time (find-weird-component spec-to-impl)))
   (display-weird-component witness displayln)
@@ -135,6 +137,7 @@
   (let ([conf+ (behavior->config (interp-fmt-safe f args conf))])
     (equal? (conf->acc conf+) (+ c (conf->acc conf)))))
 
+; TODO: fix: this function doesn't currently actually use beh and instead re-calls intepr-fmt-safe
 (define (is-constant-add-spec prog beh)
     (match prog
     [(cons ctx f)
@@ -142,6 +145,35 @@
        [(printf-lang (args:arglist conf:config))
         (is-constant-add f 1 args conf)])]))
 
-(begin
-  (displayln "Trying to find-add-constant using the framework")
+#;(begin
+  (displayln "Trying to find a format string that increments the accumulator by 1")
   (display-gadget (find-gadget printf-spec fmt-consistent-with-arglist?-uncurry is-constant-add-spec) displayln))
+
+(define (is-constant-add-positive f c args conf)
+  (let* ([conf+ (behavior->config (interp-fmt-safe f args conf))]
+         [acc   (conf->acc conf)]
+         [acc+  (conf->acc conf+)]
+        )
+    (equal? acc+ (+ (max c 0) acc))
+    ))
+
+(define (is-constant-add-positive-spec c prog beh)
+  (match (cons beh prog)
+    [(cons (printf-lang (t:trace (acc+:integer m+:mem)))
+           (cons (printf-lang (args:arglist (acc:integer m:mem)))
+                 f))
+     (equal? (bonsai->number acc+) (+ (max c 0) (bonsai->number acc)))
+     ]
+    ))
+     
+
+
+(begin
+  (displayln "Trying to find a format string that adds the value of a positive
+number x to the accumulator")
+  (define-symbolic x integer?)
+  (define sol (find-gadget printf-spec
+                               fmt-consistent-with-arglist?-uncurry
+                               (is-constant-add-positive-spec x)))
+  (display-gadget sol displayln)
+  )

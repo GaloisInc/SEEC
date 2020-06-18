@@ -136,6 +136,14 @@
         )
     (equal? acc+ (+ c acc))
     ))
+(define (is-constant-add-positive f c args conf)
+  (let* ([conf+ (behavior->config (interp-fmt-safe f args conf))]
+         [acc   (conf->acc conf)]
+         [acc+  (conf->acc conf+)]
+        )
+    (equal? acc+ (+ (max c 0) acc))
+    ))
+
 
 ; a refinement of is-constant-add where the result is the max of (acc+c) and (acc+length(c))
 (define (is-constant-add-max f c args conf)
@@ -200,7 +208,7 @@
   (define sol (synthesize
                #:forall acc0
                #:assume (assert (fmt-consistent-with-arglist? f args))
-               #:guarantee (assert (is-constant-add f 1 args conf))))
+               #:guarantee (assert (is-constant-add-positive f 1 args conf))))
   (displayln "")
   (if (unsat? sol)
       (displayln "Failed to synthesize")
@@ -323,13 +331,14 @@
 
   ; x is the amount to add to the accumulator
   (define-symbolic x-val integer?)
-  (assert (>= x-val 0))
+  #;(assert (>= x-val 0))
   #;(define x-val 10)
   (define x (printf-lang ,(bonsai-integer x-val)))
 
 
   (define args+ (printf-lang arglist 2))
   (define args (ll-cons x args+))
+  #;(define args (printf-lang arglist 3))
 
   ; NOTE: if I define a completely symbolic arglist (e.g. below) I am unable to
   ; synthesize f, even if I assert (args = args-concrete). Why???
@@ -341,8 +350,8 @@
 
   (define result (interp-fmt-safe f args conf))
   (printf "Defined result: ~a~n" result)
-  (printf "(is-constant-add f x args conf): ~a~n"
-          (is-constant-add f x-val args conf))
+  (printf "(is-constant-add-positive f x args conf): ~a~n"
+          (is-constant-add-positive f x-val args conf))
 
 
   (displayln "Searching for a format string that adds the value of x to the accumulator")
@@ -350,12 +359,12 @@
                      #:forall (list acc0-val x-val)
 ;                     #:assume (assert (<= (min-int) x-val (max-int)))
 ;                     #:assume (= x-val 0)
-                     #:guarantee (assert (is-constant-add f x-val args conf))
+                     #:guarantee (assert (is-constant-add-positive f x-val args conf))
                )))
   ; use this query to find a counter-example
   #;(define sol (time (optimize
                #:minimize (list x-val)
-               #:guarantee (assert (not (is-constant-add f x-val args conf)))
+               #:guarantee (assert (not (is-constant-add-positive f x-val args conf)))
                )))
 
 
@@ -380,12 +389,12 @@
         (define conf+ (behavior->config result))
         (printf "result: (~a ~a)~n" t conf+)
 
-        (printf "(is-constant-add ~a ~a ~a ~a): ~a~n"
+        (printf "(is-constant-add-positive ~a ~a ~a ~a): ~a~n"
                 f-instance
                 x-instance
                 args-instance
                 conf-instance
-                (is-constant-add f-instance (bonsai->number x-instance) args-instance conf-instance))
+                (is-constant-add-positive f-instance (bonsai->number x-instance) args-instance conf-instance))
         ))
   )
 
@@ -403,4 +412,5 @@
 ;; (displayln "")
 ;; (find-add-constant)
 ;; (displayln "")
-(find-add-argument-max)
+;; (find-add-argument-max)
+(find-add-argument)
