@@ -9,6 +9,7 @@
                   [string-append racket/string-append]
                   ))
 (require (only-in racket/base
+                  raise-user-error
                   raise-argument-error
                   raise-arguments-error))
 (require (only-in racket/base
@@ -28,12 +29,13 @@
          new-symbolic-string
          new-symbolic-string*
          string-length
-         number->string+
          number->string
          digit->char
          string-append
          string
          max-str-len
+         min-int
+         max-int
 
          #;(rename-out [bv-max-width string/bv-max-width])
          )
@@ -130,53 +132,94 @@
   (+ n 48)
   )
 
-(define (number->string+ x fuel)
-  (cond
-    [(< fuel 0)  (raise-argument-error 'number->string+ "ran out of fuel" fuel)]
-    [(negative? x)
-     (let* ([minus-x (* -1 x)]
-            ; replace minus-x by concrete max-int+1 if x was min-int
-            [pos-minus-x (if (negative? minus-x) (expt 2 (current-bitwidth)) minus-x)])
 
-           (string-append (string "-") (number->string+ pos-minus-x (- fuel 1))))]
+(define (max-int)
+  (cond
+    [(equal? (current-bitwidth) #f)
+     (raise-user-error "no current bitwidth set when calling max-int")]
+    [else
+     ; subtract exponent by 1 because of signed integers
+     (- (expt 2 (current-bitwidth)) 1)
+     ]
+  ))
+(define (min-int)
+  (cond
+    [(equal? (current-bitwidth) #f)
+     (raise-user-error "no current bitwidth set when calling min-int")]
+    [else
+     (* -1 (+ (max-int) 1))
+     ]
+  ))
+
+(define (nat->string+ x fuel)
+  (define res (cond
+    [(< fuel 0)    (raise-argument-error 'nat->string+ "ran out of fuel" fuel)]
+    [(negative? x) (raise-argument-error 'nat->string+ "natural?" x)]
 
     [(<= 0 x 9)    (char->string (digit->char x))]
     [(>= x 10)     (let* ([q (quotient x 10)]
                           [r (remainder x 10)]
-                          [q-str (number->string+ q (- fuel 1))]
+                          [q-str (nat->string+ q (- fuel 1))]
                           [r-str (char->string (digit->char r))]
                           )
                      (string-append q-str r-str))]
     ))
+  res)
 
 (define (max-str-len)
-  (let ([max-int+1 (expt 2 (current-bitwidth))])
-    ; unsafe/log is only safe when both arguments are concrete
-    (ceiling (unsafe/log max-int+1 10))))
+  (let* ([max-int+1 (expt 2 (current-bitwidth))]
+         ; unsafe/log is only safe when both arguments are concrete
+         [pos-str-len (ceiling (unsafe/log max-int+1 10))]
+         )
+    pos-str-len))
 
 (define (number->string n)
-  (number->string+ n (max-str-len))
-  )
+  (cond
 
-#;(current-bitwidth 32)
+    [(negative? n)
+     (let* ([minus-x (* -1 n)]
+            ; replace minus-x by concrete max-int+1 if x was min-int
+            [pos-minus-x (if (negative? minus-x) (expt 2 (current-bitwidth)) minus-x)])
 
-#;(print-string (number->string 1000000000))
+           (string-append (string "-") (nat->string+ pos-minus-x (max-str-len))))]
 
-; testing number->string
-#|
-(define-symbolic* x integer?)
-(define s (number->string x))
-#;(print-string s)
-#;(render-value/window s)
-#;(define len (string-length s))
-#;(render-value/window len)
-#;(assert (equal? x 10000000000000000)) ; note: this will just truncate the result
-(assert (equal? (string-length s) 11)) ; can go up to 11
-(define sol (synthesize #:forall '()
-                        #:guarantee (assert #t)
-                        ))
-sol
-(define x-val (evaluate x (complete-solution sol (symbolics x))))
-(print-string (number->string x-val))
-(string-length (number->string x-val))
-|#
+
+    [else (nat->string+ n (max-str-len))]
+  ))
+
+
+
+(define (test-number->string)
+  (current-bitwidth 64)
+  (printf "min-int: ~a~n" (min-int))
+  (printf "max-int: ~a~n" (max-int))
+  (define-symbolic x integer?)
+  (assert (equal? x (min-int)))
+  (define-symbolic x-len integer?)
+  (define s (number->string x))
+  (printf "string: ~a~n" s)
+  #;(render-value/window s)
+  (define s-len (string-length s))
+  (printf "string-length: ~a~n" s-len)
+  #;(render-value/window s-len)
+
+  (define sol (synthesize
+               #:forall '()
+               #:guarantee (assert (equal? s-len x-len))
+               ))
+  (if (unsat? sol)
+      (displayln "Synthesis failed")
+      (begin
+        (displayln "Synthesis succeeded")
+        (define complete-sol (complete-solution sol (symbolics x)))
+        (define x-instance (evaluate x complete-sol))
+        (define s-instance (evaluate s complete-sol))
+        (define x-len-instance (evaluate x-len complete-sol))
+        (printf "x: ~a~n" x-instance)
+        (printf "s: ~a~n" s-instance)
+        (printf "string-length: ~a~n" (evaluate (string-length s) complete-sol))
+        (printf "x-len: ~a~n" x-len-instance)
+        (printf "did synthesis succeed? ~a~n" (equal? (string-length s-instance) x-len-instance))
+        ))
+)
+#;(test-number->string)
