@@ -135,8 +135,11 @@
     [(< fuel 0)  (raise-argument-error 'number->string+ "ran out of fuel" fuel)]
     [(negative? x)
      (let* ([minus-x (* -1 x)]
-           [pos-minus-x (if (negative? minus-x) (expt 2 (current-bitwidth)) minus-x)]) ; replace minus-x by concrete max-int+1 if x was min-int
+            ; replace minus-x by concrete max-int+1 if x was min-int
+            [pos-minus-x (if (negative? minus-x) (expt 2 (current-bitwidth)) minus-x)])
+
            (string-append (string "-") (number->string+ pos-minus-x (- fuel 1))))]
+
     [(<= 0 x 9)    (char->string (digit->char x))]
     [(>= x 10)     (let* ([q (quotient x 10)]
                           [r (remainder x 10)]
@@ -152,7 +155,7 @@
     (ceiling (unsafe/log max-int+1 10))))
 
 (define (number->string n)
-  (number->string+ n 10);(max-str-len))
+  (number->string+ n (max-str-len))
   )
 
 #;(current-bitwidth 32)

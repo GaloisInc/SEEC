@@ -271,7 +271,6 @@
   ; doesn't work when I quantify over x-val...
   (define sol (time (synthesize
                      #:forall (list acc0-val x-val)
-                     #:assume (assert (<= (min-int) x-val (max-int)))
                      #:guarantee (assert (is-constant-add-max f x-val args conf))
                )))
   ; use this query to find a counter-example
