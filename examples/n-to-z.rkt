@@ -307,9 +307,54 @@
 
 #;(begin
     (displayln "(1a) Trying to find a weird component in n1-to-z1 compiler")
-  (display-weird-component (time (find-weird-component N1-TO-Z1)) displayln)
+  (display-weird-component (time (make-query-weird-component N1-TO-Z1)) displayln)
   (displayln "(1) Trying to find a weird component in n-to-z compiler")
-  (display-weird-component (time (find-weird-component N-TO-Z)) displayln))
+  (display-weird-component (time (make-query-weird-component N-TO-Z)) displayln))
+
+; (1b) same as 1 but with applicative context
+(define (link-ctxn c e)
+  (cons (lang (Envn ,e empty)) c))
+
+(define (link-ctxz c e)
+  (cons (lang (Envz ,e empty)) c))
+
+
+(define-language CEXPN
+  #:grammar lang
+  #:expression expn #:size 4 #:where (lambda (v) (well-scopedn? (lang empty) v))
+  #:context    expn #:size 4 #:where ctx-expn
+  #:link link-ctxn
+  #:evaluate (uncurry eval-expn))
+
+
+
+(define-language CEXPZ
+  #:grammar lang
+  #:expression expz #:size 4 #:where (lambda (v) (well-scopedz? (lang empty) v))
+  #:context    expz #:size 4 #:where ctx-expz
+  #:link link-ctxz
+  #:evaluate (uncurry eval-expz))
+
+
+(define-compiler CN-TO-CZ
+  #:source CEXPN
+  #:target CEXPZ
+  #:behavior-relation equal?
+  #:context-relation (lambda (c1 c2) #t)
+  #:compile n-to-z)
+
+
+(begin
+  (displayln "Trying make-query-changed-component on N-TO-Z")
+  (let* ([gen (time (make-query-weird-component CN-TO-CZ))]
+         [lsol1 (run-query #:count 1 gen)]
+         [lsol2 (run-query #:count 2 gen)]
+         [lsol (append lsol1 lsol2)])
+    (map (lambda (w)
+           (begin
+             (displayln "-----------------------------")
+             (display-weird-component w displayln)))
+         lsol)))
 
 
 
@@ -331,7 +376,7 @@
 
 #;(begin
   (displayln "(2) Trying to find n+1 in EXPN1")
-  (display-gadget (find-gadget EXPN1 (lambda (v) #t) addn1spec) displayln))
+  (display-gadget (make-query-gadget EXPN1 (lambda (v) #t) addn1spec) displayln))
 
 
 ; (3)
@@ -352,6 +397,6 @@
 
 #;(begin
   (displayln "(3) Trying to find n+m in EXPN2")
-  (display-gadget (find-gadget EXPN2 (lambda (v) #t) addnmspec) displayln))
+  (display-gadget (make-query-gadget EXPN2 (lambda (v) #t) addnmspec) displayln))
 
 
