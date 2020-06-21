@@ -66,6 +66,7 @@
 (define (empty-state s)
   (linked-list (null null empty)))
 
+
 ; Replace the ith cell of hp with c, returns the modified hp and i.*next
 (define (overwrite-heap i c hp)
   (match hp
