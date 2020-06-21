@@ -103,16 +103,16 @@
   #:compile (λ (x) x)
   )
 
-;; find-weird-component
+;; make-query-weird-component
 (begin
   (displayln "Trying to find a format string with weird behavior")
-  (define witness (time (find-weird-component spec-to-impl)))
-  (display-weird-component witness displayln)
-  )
+  (let* ([gen (make-query-weird-component spec-to-impl)]
+         [witness (time (gen))])
+    (display-weird-component witness displayln)))
 
 
 
-;find-exploit-gadget
+;make-query-exploit-gadget
 (define (valid-conf prog)
   (match prog
     [(cons ctx f)     
@@ -143,5 +143,7 @@
         (is-constant-add f 1 args conf)])]))
 
 (begin
-  (displayln "Trying to find-add-constant using the framework")
-  (display-gadget (find-gadget printf-spec fmt-consistent-with-arglist?-uncurry is-constant-add-spec) displayln))
+  (displayln "Trying to make-query-add-constant using the framework")
+  (let* ([gen (make-query-gadget printf-spec fmt-consistent-with-arglist?-uncurry is-constant-add-spec)]
+         [witness (gen)])
+    (display-gadget witness displayln)));;

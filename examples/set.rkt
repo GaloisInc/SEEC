@@ -227,13 +227,17 @@
 
 (begin
   (displayln "Trying to find a trace with weird behavior under buggy compilation")
-  (display-weird-component (time (find-weird-component abstract-to-buggyconcrete))))
+  (let* ([trace (set-api interaction 4)]
+         [gen (make-query-weird-computation abstract-to-buggyconcrete trace)]
+         [witness (gen)])
+    (display-weird-component witness displayln)))
 
 (begin
   (displayln "Trying to find a trace with different behavior under compilation")
-  (define trace (set-api interaction 6))
-  (define witness (find-changed-behavior abstract-to-concrete trace))
-  (display-changed-behavior witness))
+  (let* ([trace (set-api interaction 4)]
+         [gen (make-query-changed-behavior abstract-to-concrete trace)]
+         [witness (gen)])
+    (display-changed-behavior witness displayln)))
 
 
 
