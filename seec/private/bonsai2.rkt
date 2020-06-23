@@ -25,7 +25,9 @@
          nondet!
          capture-nondeterminism
          concretize
+         concretize+
          instantiate
+         expand-solution
          ; utilities
          andmap-indexed
          ; linked lists
@@ -318,6 +320,11 @@
     (if (unsat? sol)
         sol
         (concretize v sol))))
+
+(define (expand-solution sol expr-list)
+  (complete-solution sol (flatten (map symbolics expr-list))))
+(define (concretize+ v sol)
+  (evaluate v sol))
 
 ;;;;;;;;;;;;;;;;;;
 ;; Linked lists ;;

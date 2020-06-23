@@ -58,7 +58,9 @@
          capture-nondeterminism
 
          concretize
+         concretize+
          instantiate
+         expand-solution
 
          match
          match-let*

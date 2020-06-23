@@ -1,7 +1,8 @@
 #lang seec
 (require (file "syntax.rkt"))
 (require (only-in seec/private/bonsai2
-                  bonsai-pretty))
+                  bonsai-pretty
+                  ))
 
 (define (test-lookup-offset)
   (displayln "Testing lookup-offset...")
@@ -325,40 +326,64 @@
 
   (define-symbolic* acc0-val integer?)
   #;(define acc0-val 0)
-  (define acc0 (printf-lang ,(bonsai-integer acc0-val)))
-  (define conf (printf-lang (,acc0 mnil)))
+  #;(define acc0 (bonsai-integer acc0-val))
+  (define conf (printf-lang config 2))
+  (define acc0 (match conf 
+                 [(printf-lang (acc:integer mem)) acc]))
+  #;(define acc0 (printf-lang integer 1))
+  (assert (equal? acc0-val (match acc0
+                             [(printf-lang x:integer) (bonsai->number x)])))
+  #;(assert (equal? acc0-val (bonsai->number acc0)))
+  #;(define acc0-val (match acc0
+                     [(printf-lang x:integer) (bonsai->number x)]))
+  #;(printf "acc0: ~a [~a]~n" acc0 (symbolics acc0))
+  #;(define conf (printf-lang (,acc0 mnil)))
 
+
+  ; this will terminate because it is structurally decreasing on the length of
+  ; args, which is finite
+  (define (args-contains-x args x)
+    (match args
+      [(printf-lang nil) #f]
+      [(printf-lang (cons y:any args+:arglist))
+       (or (and (bonsai-integer? y)
+                (equal? x (bonsai->number y)))
+           (args-contains-x args+ x))]
+      ))
 
   ; x is the amount to add to the accumulator
-  #;(define-symbolic x-val integer?)
-  #;(assert (>= x-val 0))
-  #;(define x-val 10)
+  (define-symbolic x-val integer?)
   #;(define x (printf-lang ,(bonsai-integer x-val)))
-
-
-  #;(define args+ (printf-lang arglist 2))
-  #;(define args (ll-cons x args+))
-  (define args (printf-lang arglist 4))
-  (define x-val (match args
-                  [(printf-lang (cons x:integer args+:arglist)) (bonsai->number x)]))
-
-  ; NOTE: if I define a completely symbolic arglist (e.g. below) I am unable to
-  ; synthesize f, even if I assert (args = args-concrete). Why???
-
-  #;(define args-concrete (ll-cons (printf-lang "") (ll-singleton x)))
-  #;(define args (printf-lang arglist 3))
-  #;(assert (equal? args args-concrete))
+  #;(define x (printf-lang integer 1))
+  #;(assert (equal? x-val (bonsai->number x)))
+  #;(define args-concrete (ll-cons x (ll-singleton (printf-lang "") )))
   #;(define args args-concrete)
 
+  (define args (printf-lang arglist 3))
+  (define args+ (printf-lang arglist 2))
+  (assert (equal? args (ll-cons (bonsai-integer x-val) args+)))
+  #;(match args
+            [(printf-lang (cons v:val arglist))
+             (assert (equal? (bonsai-integer x-val) v))]
+            [(printf-lang nil) (assert #f)]
+            )
+
+  #;(assert (equal? args args-concrete))
+  #;(assert (match args
+            [(printf-lang (cons y:integer (cons s:string nil)))
+             (and (equal? x-val (bonsai->number y)))]
+            ))
+
+
   (define result (interp-fmt-safe f args conf))
-  (printf "Defined result: ~a~n" result)
-  (printf "(is-constant-add-positive f x args conf): ~a~n"
+  #;(printf "Defined result: ~a~n" result)
+  #;(printf "(is-constant-add-positive f x args conf): ~a~n"
           (is-constant-add-positive f x-val args conf))
 
 
   (displayln "Searching for a format string that adds the value of x to the accumulator")
   (define sol (time (synthesize
-                     #:forall (list acc0-val x-val)
+                     #:forall (list acc0-val x-val) #;(append (symbolics acc0) (symbolics x))
                      #:guarantee (assert (is-constant-add-positive f x-val args conf))
                )))
   ; use this query to find a counter-example
@@ -372,16 +397,27 @@
       (displayln "Failed to synthesize")
       (begin
         (displayln "Synthesis succeeded.")
-        (define f-instance (concretize f sol))
-        (printf "f: ~a~n" f-instance)
-        (define acc0-instance #;(bonsai-integer 0) (concretize acc0 sol))
+        #;(define results (complete-solution sol (append (symbolics f)
+                                                       (symbolics args)
+                                                       (symbolics conf))))
+        (define sol+ (expand-solution sol (list x-val acc0-val)))
+        #;(define sol+ (complete-solution (complete-solution sol (symbolics x-val)) (symbolics acc0)))
+        (printf "sol+: ~a~n" (sat? sol+))
+                                              
+        (define acc0-instance #;(bonsai-integer 0)
+          (concretize+ acc0 sol+)
+          #;(rosette/evaluate acc0 sol+))
         (printf "acc0 instance: ~a~n" acc0-instance)
+
+        (define f-instance (concretize+ f sol+) #;(rosette/evaluate f sol+))
+        (printf "f: ~a~n" f-instance)
+        
         (define conf-instance (printf-lang (,acc0-instance mnil)))
-        (define args-instance (concretize args sol))
+        (define args-instance (concretize+ args sol+) #;(rosette/evaluate args sol+))
         (define x-instance (match args-instance
                   [(printf-lang (cons x:integer arglist)) (bonsai->number x)]))
-        #;(define x-instance #;(bonsai-integer -1) (concretize x-val sol))
-        #;(printf "x instance: ~a~n" x-instance)
+
+        (printf "x instance: ~a~n" x-instance)
         #;(define args+-instance (concretize args+ sol))
         #;(define args-instance (printf-lang (cons ,x-instance ,args+-instance)))
         #;(define args-instance (concretize args sol))
@@ -397,8 +433,10 @@
                 x-instance
                 args-instance
                 conf-instance
-                (is-constant-add-positive f-instance (bonsai->number x-instance) args-instance conf-instance))
+                (is-constant-add-positive f-instance x-instance args-instance conf-instance))
         ))
+
+
   )
 
 
