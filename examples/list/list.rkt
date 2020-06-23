@@ -1,4 +1,14 @@
 #lang seec
+(require (only-in racket/base
+                  raise-argument-error
+                  raise-arguments-error))
+
+
+(define (bonsai->number n)
+  (match n
+    [(bonsai-integer i) i]
+    [_ (raise-argument-error 'bonsai->number "bonsai-integer?" n)]
+    ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Define a language of API calls for a list datatype
@@ -10,6 +20,13 @@
   (vallist ::= (value vallist) empty)
   (method ::=  (cons value) nil)
   (interaction ::= (method interaction) empty))
+
+
+(define (length-list l)
+  (match l
+    [(list-api empty) 0]
+    [(list-api (v:value l-tl:vallist))
+     (+ (length-list l-tl) 1)]))
 
 (define (abstract-cons n l)
   (list-api (,n ,l)))
@@ -53,10 +70,14 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Define a linked-list datatype that will implement the list API
+;
+; begin
+;    
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define-grammar linked-list
   (value ::= integer)
-  (pointer ::= natural null) ; pointer is distance from end (top) of heap
+  (valopt ::= (some value) none)
+  (pointer ::= natural null) ; pointer is distance from begining of heap
   (cell ::= (value pointer))
   (heap ::= (cell heap) empty)
   (state ::= (pointer pointer heap)) ; (1) head of the list (2) head of the free-list (3) heap
@@ -66,7 +87,35 @@
 (define (empty-state s)
   (linked-list (null null empty)))
 
+; Accessors for linked-list
+(define (cell-value c)
+  (match c
+    [(linked-list (v:value _:pointer))
+     (linked-list ,v)]))
 
+(define (cell-pointer c)
+  (match c
+    [(linked-list (_:value p:pointer))
+     (linked-list ,p)]))
+
+
+(define (state-head s)
+  (match s
+    [(linked-list (hd:pointer fp:pointer hp:heap))
+     (linked-list ,hd)]))
+  
+(define (state-heap s)
+  (match s
+    [(linked-list (hd:pointer fp:pointer hp:heap))
+     (linked-list ,hp)]))
+
+
+(define (destruct-state s)
+  (match s
+    [(linked-list (hd:pointer fp:pointer hp:heap))
+     (list (linked-list ,hd) (linked-list ,fp) (linked-list ,hp))]))
+
+  
 ; Replace the ith cell of hp with c, returns the modified hp and i.*next
 (define (overwrite-heap i c hp)
   (match hp
@@ -78,23 +127,6 @@
          (let*-values ([(cons new-hp new-fp) (overwrite-heap (- i 1) c tl-hp)])
            (cons (linked-list (,hd-c ,new-hp)) new-fp)))]))
 
-
-    
-; push v in front of the list
-(define (cons-state v s)
-  (match s
-  [(linked-list (hd:pointer fp:pointer hp:heap))
-   (match fp
-     [(linked-list null) ; empty free-list, allocated new cell on top of hp
-      (let* ([heap-size (length-heap hp)]
-             [new-cell (linked-list (,v ,hd))]
-             [new-heap (linked-list (,new-cell ,hp))])
-        (linked-list (,heap-size null ,new-heap)))]
-     [(linked-list i:integer); free-list is non-empty, use the head of the free-list.
-      (let ([new-cell (linked-list (,v ,hd))])
-            (let*-values ([(new-hp new-fp) (overwrite-heap i new-cell hp)])
-              (linked-list (,i ,new-fp ,new-hp))))])]))
-
 (define (length-heap h)
   (match h
     [(linked-list empty)
@@ -102,35 +134,91 @@
     [(linked-list (c:cell h-tl:heap))
      (+ (length-heap h-tl) 1)]))
 
-(define (destruct-heap s)
+    
+; push v on top of heap (at the end of the list)
+(define (snoc-heap c h)
+  (match h
+  [(linked-list empty)
+   (linked-list (,c empty))]
+  [(linked-list (hd-c:cell tl-hp:heap))
+   (linked-list (,hd-c ,(snoc-heap c tl-hp)))]))
+    
+
+(define (cons-state v s)
   (match s
-    [(linked-list (hd:pointer fp:pointer hp:heap))
-     (list (linked-list ,hd) (linked-list ,fp) (linked-list ,hp))]))
+  [(linked-list (hd:pointer fp:pointer hp:heap))
+   (match fp
+     [(linked-list null) ; empty free-list, allocated new cell on top of hp
+      (let* ([heap-size (length-heap hp)]
+             [new-cell (linked-list (,v ,hd))]
+             [new-heap (snoc-heap new-cell hp)])
+        (linked-list (,heap-size null ,new-heap)))]
+     [(linked-list i:integer); free-list is non-empty, use the head of the free-list.
+      (let ([new-cell (linked-list (,v ,hd))])
+            (let*-values ([(new-hp new-fp) (overwrite-heap i new-cell hp)])
+              (linked-list (,i ,new-fp ,new-hp))))])]))
 
 
+
+; return the nth element in the heap
+(define (lookup-heap n hp)
+  (match hp
+    [(linked-list (hd-c:cell tl-hp:heap))          
+     (if (equal? n 0)         
+           (linked-list ,hd-c)
+           (lookup-heap (- n 1) tl-hp))]))
+
+
+; lookup the nth element of a list headed at hd in hp
+(define (lookup-ll-inner n hd hp)
+  (if (< n 0)
+      (linked-list none)
+      (let* ([c (lookup-heap hd hp)])
+        (if (equal? n 0)
+            (linked-list (some ,(cell-value c)))
+            (match (cell-pointer c)
+              [(linked-list null)
+               (linked-list none)]
+              [(linked-list ptr:natural) 
+               (lookup-ll-inner (- n 1) (bonsai->number ptr) hp)])))))
+
+(define (lookup-ll n s)
+  (match s    
+    [(linked-list (hd:pointer _:pointer hp:heap))
+     (match hd
+       [(linked-list null)
+        (linked-list none)]
+       [(linked-list hd:natural)
+       (lookup-ll-inner n (bonsai->number hd) hp)])]))
+
+
+
+#|
 (define (interpret-interaction-ll ints s)
   (match ints
     [(linked-list empty) s]
     [(linked-list (m:method intss:interaction))
-     (let-values ([(hd hp) (destruct-heap s)])
+     (let-values ([(hd fp hp) (destruct-heap s)])
        (match m
          [(linked-list nil)                     
           (interpret-interaction-ll intss (linked-list (null ,hp)))]
          [(linked-list (cons n:value))
           (let* ([updated-hp (linked-list ((,n ,hd) ,hp))]) ; TODO: hd + 1 here
             (interpret-interaction-ll intss (linked-list (0 ,updated-hp))))]))]))
+|#
 
 
-
-(define (list-to-ll-inner l)
+; inner function for list-to-ll, produces a heap representing the ith -> end elements of the list
+(define (list-to-ll-inner i l)
   (begin
     (displayln l)
     (match l
       [(list-api (hd:value empty))
        (linked-list ((,hd null) empty))]
       [(list-api (hd:value tl:vallist))
-       (let ([h (list-to-ll-inner tl)]
-           [c (linked-list (,hd 1))])
+       (let* ([ii (+ i 1)]
+              [h (list-to-ll-inner ii tl)]
+              [c (linked-list (,hd ,ii))])
          (linked-list (,c ,h)))])))
 
 
@@ -139,87 +227,30 @@
     [(list-api empty)
      (linked-list (null null empty))]
     [ _
-      (let ([h (list-to-ll-inner l)])
+      (let ([h (list-to-ll-inner 0 l)])
         (linked-list (0 null ,h)))]))
 
      
 ; Test for linked-list
 (define abc-ll (list-to-ll abc))
 (define b1-ll (linked-list ((cons 4) ((cons 1) empty))))
+(define empty-ll (list-to-ll abstract-nil))
+(define abc-heap (linked-list ((1 1) ((2 2) ((3 null) empty)))))
+(define abc-state (linked-list (0 null ,abc-heap)))
+(define heap-ll (linked-list ((1 null) empty)))
 
-
+(displayln empty-ll)
+(displayln (state-heap empty-ll))
+(displayln (length-heap heap-ll))
 (displayln abc-ll)
-(displayln (list-to-ll abstract-nil))
+(displayln abc-state)
+(displayln (length-heap abc-heap))
+(displayln (state-heap abc-state))
+(displayln (lookup-ll 1 abc-state))
+(displayln (lookup-ll 2 abc-state))
+
+;(displayln (length-heap (state-heap abc-ll)))
+;(displayln (lookup-ll 1 abc-ll))
 ;(displayln (interpret-interaction-ll b1-ll abc-ll))
 
 
-
-  #|
-  n = 0 -> look at head cell, return (value :: m)
-  where m is: if pointer = null, nil
-              if pointer = p: ll-to-list-n p revheap heap
-  n = S m -> place head-cell on rev-heap
-    |#
-
-#;(define (ll-to-list-n n revheap heap)
-  (begin
-    (if (negative? n)
-        (assert (< n (length revheap)))
-        (assert (<= n (length heap))))
-    (list-api empty)))  
-
-
-#;(define (ll-to-list s)
-  (match s
-    [(n:integer h:heap)
-     (ll-to-list-n n empty h)]
-    [(null h:heap)
-     (list-api empty)]))
-
-
-
-#| 
-(define-grammar linked-list
-  (value ::= integer) 
-  (pointer ::= natural null)
-  (cell ::= (value pointer)) ; cell is a link (value, pointer)
-  (heap ::= list<cell>)
-  (state ::= (natural natural heap)) ; state is (1) head of the list (2) head of free-list  (3) heap
-  (method ::= (cons value) nil)
-  (interaction ::= (method interaction) empty))
-
-
-; insert head2 at the end of head1
-;
-(define (linked-append head1 head2 hp)
-  (match head1
-    [(list-api null)
-     (cons head2 hp)
-     ]
-    [(list-api natural)
-     
-     
-     ]
- 
-    
-
-; Reset the state to represent an empty list
-(define (linked-nil s)
-  (match s
-    [(list-api (head:natural free:natural hp:heap))
-     (let ([mod-heap (linked-append heap free hp)])
-       (list-api (null head mod-heap)))]))
-
-(define (interpret-interaction-ll ints s)
-  (match ints
-    [(list-api empty) l]
-    [(list-api (m:method intss:interaction))
-     (match m
-       [(list-api nil)
-        (interpret-interaction intss (linked-nil s))] 
-       [(list-api (cons n:value))
-        (interpret-interaction intss (linked-cons n s))])]))
-
-
-
-|#
