@@ -307,19 +307,132 @@
         (define conf+ (behavior->config result))
         (printf "result: (~a ~a)~n" t conf+)
 
-        (printf "(is-constant-add-max ~a ~a ~a ~a): ~a~n"
+        (printf "(is-constant-add-positive ~a ~a ~a ~a): ~a~n"
                 f-instance
                 x-instance
                 args-instance
                 conf-instance
-                (is-constant-add-max f-instance (bonsai->number x-instance) args-instance conf-instance))
+                (is-constant-add-positive f-instance (bonsai->number x-instance) args-instance conf-instance))
         ))
   )
 
+
+(define (verify-add-argument f)
+
+  (define-symbolic* acc0-val integer?)
+  (define conf (printf-lang config 2))
+  (define acc0 (match conf
+                 [(printf-lang (acc:integer mem)) acc]))
+
+  (define (conf-constraint acc0-val conf)
+    (match conf
+      [(printf-lang (acc:integer mem)) (equal? (bonsai-integer acc0-val) acc)]))
+  
+  (define-symbolic* x-val integer?)
+  (define args (printf-lang arglist 3))
+  #;(define args+ (printf-lang arglist 2))
+  (define (args-constraint x-val args #;args+)
+    #;(equal? args (ll-cons (bonsai-integer x-val) args+))
+    (match args
+      [(printf-lang (cons x:val arglist))
+       (equal? x (bonsai-integer x-val))])
+    )
+
+  (define (synthesis-goal) (and
+                                (is-constant-add-positive f x-val args conf)
+                                (equal? f (printf-lang (cons (% (1 $) (* 0) s) nil)))
+                                )
+                               )
+  (assert (conf-constraint acc0-val conf))
+  (assert (args-constraint x-val args #;args+))
+
+  (define sol (time (synthesize
+                     #:forall (list acc0-val x-val)
+;                     #:assume (assert (and (conf-constraint acc0-val conf)
+;                                           (args-constraint x-val args args+)))
+                     #:guarantee (assert (synthesis-goal))
+               )))
+
+  sol
+  )
+
+(define (debug-add-argument f)
+
+  (define-symbolic* acc0-val integer?)
+  (define conf (printf-lang (,(bonsai-integer acc0-val) mnil)))
+  (define acc0 (match conf
+                 [(printf-lang (acc:integer mem)) acc]))
+
+  (define (conf-constraint acc0-val conf)
+    (match conf
+      [(printf-lang (acc:integer mem)) (equal? (bonsai-integer acc0-val) acc)]))
+
+  (define-symbolic* x-val integer?)
+  (define args+ (ll-singleton (printf-lang "")))
+  (define args (ll-cons (bonsai-integer x-val) args+))
+
+  (define (args-constraint x-val args args+)
+    (equal? args (ll-cons (bonsai-integer x-val) args+)))
+
+
+  (define sol (time (optimize
+               #:minimize (list x-val)
+               #:guarantee (assert (not (is-constant-add-positive f x-val args conf)))
+               )))
+
+  (if (unsat? sol)
+      (displayln "No counterexample found")
+      (begin 
+        (define f-result (concretize f sol))
+        (printf "f: ")
+        (displayln f-result)
+
+        (define sol+ (expand-solution sol (list x-val acc0-val)))
+        (define x-concrete (concretize+ x-val sol+))
+        (printf "x-val: ~a~n" x-concrete)
+        (define acc0-concrete (concretize+ acc0-val sol+))
+        (printf "acc-val: ~a~n" acc0-concrete)
+        (define conf-concrete (concretize+ conf sol+))
+        (printf "conf: ~a~n" conf-concrete)
+        #;(conf-constraint acc0-concrete conf-concrete)
+        (define args-concrete (concretize+ args sol+))
+        (printf "args-concrete: ~a~n" args-concrete)
+        (define args+-concrete (concretize+ args+ sol+))
+        (printf "args+-concrete: ~a~n" args+-concrete)
+        #;(args-constraint x-concrete args-concrete args+-concrete)
+        #;(is-constant-add-positive f-result
+                       0
+                       (ll-cons (bonsai-integer 0) (ll-singleton (printf-lang "")))
+                       (printf-lang (6 mnil))
+                       )
+  ))
+
+
+  )
+
 (define (find-add-argument)
+  (current-bitwidth 5)
+  (define f-concrete (printf-lang (cons (% (1 $) (* 0) s) nil)))
+  (define f-bad (printf-lang (cons (% (1 $) 13 d) nil)))
+  (define f-symbolic (printf-lang fmt 5))
+
+  (define sol (verify-add-argument f-symbolic))
+  (if (unsat? sol)
+      (printf "Failed to synthesize~n")
+      (begin
+        (define f-synthesized (concretize f-symbolic sol))
+        (define f-sol (verify-add-argument f-synthesized))
+        (if (unsat? sol)
+            (printf "Synthesized bogus result: ~a~n" f-synthesized)
+            (printf "Synthesis succeeded: ~a~n" f-synthesized)
+            )
+        ))
+  )
+
+#;(define (find-add-argument)
 
   (current-bitwidth 5)
-  (define f-concrete (printf-lang (cons (% (0 $) (* 1) s) nil)))
+  (define f-concrete (printf-lang (cons (% (1 $) (* 0) s) nil)))
   (define f (printf-lang fmt 5))
   #;(define f f-concrete)
   #;(assert (equal? f f-concrete))
@@ -328,7 +441,7 @@
   #;(define acc0-val 0)
   #;(define acc0 (bonsai-integer acc0-val))
   (define conf (printf-lang config 2))
-  (define acc0 (match conf 
+  (define acc0 (match conf
                  [(printf-lang (acc:integer mem)) acc]))
   #;(define acc0 (printf-lang integer 1))
   (assert (equal? acc0-val (match acc0
@@ -338,18 +451,6 @@
                      [(printf-lang x:integer) (bonsai->number x)]))
   #;(printf "acc0: ~a [~a]~n" acc0 (symbolics acc0))
   #;(define conf (printf-lang (,acc0 mnil)))
-
-
-  ; this will terminate because it is structurally decreasing on the length of
-  ; args, which is finite
-  (define (args-contains-x args x)
-    (match args
-      [(printf-lang nil) #f]
-      [(printf-lang (cons y:any args+:arglist))
-       (or (and (bonsai-integer? y)
-                (equal? x (bonsai->number y)))
-           (args-contains-x args+ x))]
-      ))
 
   ; x is the amount to add to the accumulator
   (define-symbolic x-val integer?)
@@ -376,6 +477,7 @@
 
   ; NOTE: the function `interp-fmt-safe` must be called before the call to
   ; synthesize or else will get bogus answer... WHY????
+  #;(assert (fmt-consistent-with-arglist? f args))
   (define result (interp-fmt-safe f args conf))
 
   #;(printf "Defined result: ~a~n" result)
