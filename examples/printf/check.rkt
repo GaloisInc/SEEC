@@ -330,26 +330,25 @@
   
   (define-symbolic* x-val integer?)
   (define args (printf-lang arglist 3))
-  #;(define args+ (printf-lang arglist 2))
-  (define (args-constraint x-val args #;args+)
-    #;(equal? args (ll-cons (bonsai-integer x-val) args+))
-    (match args
+  (define args+ (printf-lang arglist 2))
+  (define (args-constraint x-val args args+)
+    (equal? args (ll-cons (bonsai-integer x-val) args+))
+    #;(match args
       [(printf-lang (cons x:val arglist))
        (equal? x (bonsai-integer x-val))])
     )
 
   (define (synthesis-goal) (and
                                 (is-constant-add-positive f x-val args conf)
-                                (equal? f (printf-lang (cons (% (1 $) (* 0) s) nil)))
                                 )
                                )
   (assert (conf-constraint acc0-val conf))
-  (assert (args-constraint x-val args #;args+))
+  (assert (args-constraint x-val args args+))
+  (define res (interp-fmt-safe f args conf))
 
   (define sol (time (synthesize
                      #:forall (list acc0-val x-val)
-;                     #:assume (assert (and (conf-constraint acc0-val conf)
-;                                           (args-constraint x-val args args+)))
+
                      #:guarantee (assert (synthesis-goal))
                )))
 
