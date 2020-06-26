@@ -707,7 +707,7 @@
     [(printf-lang natural) #t]
     [(printf-lang (* o:offset))
      (and (< (bonsai->number o) (bonsai-ll-length args))
-          (constant-int? (lookup-offset o args)))]
+          (constant-int? (lookup-offset (bonsai->number o) args)))]
     ))
 
 
