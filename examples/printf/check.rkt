@@ -374,8 +374,10 @@
              (and (equal? x-val (bonsai->number y)))]
             ))
 
-
+  ; NOTE: the function `interp-fmt-safe` must be called before the call to
+  ; synthesize or else will get bogus answer... WHY????
   (define result (interp-fmt-safe f args conf))
+
   #;(printf "Defined result: ~a~n" result)
   #;(printf "(is-constant-add-positive f x args conf): ~a~n"
           (is-constant-add-positive f x-val args conf))
@@ -402,7 +404,6 @@
                                                        (symbolics conf))))
         (define sol+ (expand-solution sol (list x-val acc0-val)))
         #;(define sol+ (complete-solution (complete-solution sol (symbolics x-val)) (symbolics acc0)))
-        (printf "sol+: ~a~n" (sat? sol+))
                                               
         (define acc0-instance #;(bonsai-integer 0)
           (concretize+ acc0 sol+)
@@ -455,3 +456,32 @@
 ;; (displayln "")
 ;; (find-add-argument-max)
 (find-add-argument)
+
+
+(define (test-assertions)
+  (current-bitwidth 5)
+
+  (define-symbolic x-val integer?)
+  (define args (printf-lang arglist 3))
+  #;(displayln (bonsai-null? args))
+  (define b (match args
+      [(printf-lang (cons x:integer arglist)) 
+       (equal? x-val (bonsai->number x))]
+      [_ #f]
+      ))
+  (printf "b: ~a~n" b)
+  (assert b)
+
+  (define sol (synthesize
+   #:forall (list x-val)
+   #:guarantee #t
+   ))
+  (if (unsat? sol)
+      (printf "sol is unsat~n")
+      (begin
+        (printf "sol is sat")
+        (printf "args: ~a~n" (concretize args sol))
+        ))
+
+  )
+#;(test-assertions)
