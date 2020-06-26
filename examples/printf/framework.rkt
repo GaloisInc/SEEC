@@ -174,12 +174,43 @@
      
 
 
-(begin
+#;(define (is-constant-add-link x-val ctx f)
+  (define args (match ctx
+                 [(printf-lang (args:arglist config)) args]
+                 ))
+  (define args+ (printf-lang arglist 3))
+  (assert (equal? args (ll-cons (bonsai-integer x-val) args+)))
+  (cons ctx f)
+  )
+
+
+
+(define (context-is-x config-size arg-size x-val)
+  (λ (ctx)
+    (match ctx
+      [(printf-lang (args:arglist conf:config))
+       (let ([c* (printf-lang config config-size)]
+             [a+ (printf-lang arglist (- arg-size 1))]
+             )
+         (and (equal? conf c*)
+              (equal? args (ll-cons (bonsai-integer x-val) a+))
+              ))])))
+      
+(begin 
+  (define-symbolic x-val integer?)
+  (define-language printf-is-constant-add
+    #:grammar printf-lang
+    #:expression fmt #:size 4
+    #:context context #:size 5 #:where (context-is-x 5 2 x-val)
+    #:link cons
+    #:evaluate spec-interpret
+    )
+
   (displayln "Trying to find a format string that adds the value of a positive
 number x to the accumulator")
-  (define-symbolic x integer?)
-  (define sol (find-gadget printf-spec
+  
+  (define sol (find-gadget printf-is-constant-add
                                fmt-consistent-with-arglist?-uncurry
-                               (is-constant-add-positive-spec x)))
+                               (is-constant-add-positive-spec x-val)))
   (display-gadget sol displayln)
   )
