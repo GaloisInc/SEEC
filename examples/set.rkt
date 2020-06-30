@@ -9,10 +9,11 @@
 
 (define-grammar set-api
   (value       ::= integer boolean)
-  (vallist        ::= empty (value vallist))
+  (vallist     ::= list<value>) ; empty (value vallist))
   (method      ::= (insert integer) (remove integer) (member? integer) select)
-  (interaction ::= empty (method interaction))
-  (context     ::= empty ((insert integer) context) ((remove integer) context)))
+  (interaction ::= list<method>) ; empty (method interaction))
+;  (context     ::= empty ((insert integer) context) ((remove integer) context))
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Define an abstract semantics of operations on sets
@@ -27,61 +28,60 @@
 ; Convenience functions for manipulating lists
 (define (head s)
   (match s
-    [(set-api empty)
-     (assert #f)]
-    [(set-api (v:value vallist))
-     v]))
+    [(set-api nil) (assert #f)]
+    [(set-api (cons x:any any)) x]))
 
 (define (tail s)
   (match s
-    [(set-api empty)
-     (assert #f)]
-    [(set-api (value rest:vallist))
-     rest]))
+    [(set-api nil) (assert #f)]
+    [(set-api (cons any rest:any)) rest]))
 
 (define (abstract-insert s v)
   (set-api (,v ,(abstract-remove s v))))
 
 (define (abstract-remove s v)
   (match s
-    [(set-api empty) (set-api empty)]
-    [(set-api (x:value r:vallist))
+    [(set-api nil) (set-api nil)]
+    [(set-api (cons x:value r:vallist))
      (let ([new-tail (abstract-remove r v)])
        (if (equal? x v)
            new-tail
-           (set-api (,x ,new-tail))))]))
+           (set-api (cons ,x ,new-tail))))]))
 
 (define (abstract-member? s v)
   (match s
-    [(set-api empty) (set-api #f)]
-    [(set-api (x:value r:vallist))
+    [(set-api nil) (set-api #f)]
+    [(set-api (cons x:value r:vallist))
      (if (equal? x v)
          (set-api #t)
          (abstract-member? r v))]))
 
 (define (abstract-select s)
   (match s
-    [(set-api empty) (set-api #f)]
+    [(set-api nil)      (set-api #f)]
     [(set-api vallist)  (abstract-select-nondet s)]))
 
 ; The (nondet!) construct introduces a non-deterministic choice
 (define (abstract-select-nondet s)
   (match s
-    [(set-api (x:value empty)) x]
-    [(set-api (x:value r:vallist))
+    [(set-api (cons x:value nil)) x]
+    [(set-api (cons x:value r:vallist))
      (if (nondet!) x (abstract-select-nondet r))]))
 
+; Input: an interaction and a state (vallist)
+; Output: the state (vallist) obtained by executing the interaction on the input
+; state
 (define (abstract-interpret interaction state)
   (match interaction
-    [(set-api empty) (set-api empty)]
-    [(set-api ((insert v:value) r:interaction))
+    [(set-api nil) (set-api nil)]
+    [(set-api (cons (insert v:value) r:interaction))
      (abstract-interpret r (abstract-insert state v))]
-    [(set-api ((remove v:value) r:interaction))
+    [(set-api (cons (remove v:value) r:interaction))
      (abstract-interpret r (abstract-remove state v))]
-    [(set-api ((member? v:value) r:interaction))
-     (set-api (,(abstract-member? state v) ,(abstract-interpret r state)))]
-    [(set-api (select r:interaction))
-     (set-api (,(abstract-select state) ,(abstract-interpret r state)))]))
+    [(set-api (cons (member? v:value) r:interaction))
+     (set-api (cons ,(abstract-member? state v) ,(abstract-interpret r state)))]
+    [(set-api (cons select r:interaction))
+     (set-api (cons ,(abstract-select state) ,(abstract-interpret r state)))]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -102,61 +102,61 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (concrete-insert s v)
-  (set-api (,v ,s)))
+  (set-api (cons ,v ,s)))
 
 (define (concrete-remove s v)
   (match s
-    [(set-api empty) (set-api empty)]
-    [(set-api (x:value r:vallist))
+    [(set-api nil) (set-api nil)]
+    [(set-api (cons x:value r:vallist))
      (let ([new-tail (concrete-remove r v)])
        (if (equal? x v)
            new-tail
-           (set-api (,x ,new-tail))))]))
+           (set-api (cons ,x ,new-tail))))]))
 
 (define (buggy-concrete-remove s v)
   (match s
-    [(set-api empty) (set-api empty)]
-    [(set-api (x:value r:vallist))
+    [(set-api nil) (set-api nil)]
+    [(set-api (cons x:value r:vallist))
      (if (equal? x v)
          r
-         (set-api (,x ,(buggy-concrete-remove r v))))]))
+         (set-api (cons ,x ,(buggy-concrete-remove r v))))]))
 
 (define (concrete-member? s v)
   (match s
-    [(set-api empty) (set-api #f)]
-    [(set-api (x:value r:vallist))
+    [(set-api nil) (set-api #f)]
+    [(set-api (cons x:value r:vallist))
      (if (equal? x v)
          (set-api #t)
          (concrete-member? r v))]))
 
 (define (concrete-select s)
   (match s
-    [(set-api empty) (set-api #f)]
-    [(set-api (x:value vallist)) x]))
+    [(set-api nil) (set-api #f)]
+    [(set-api (cons x:value vallist)) x]))
 
 (define (concrete-interpret interaction state)
   (match interaction
-    [(set-api empty) (set-api empty)]
-    [(set-api ((insert v:value) r:interaction))
+    [(set-api nil) (set-api nil)]
+    [(set-api (cons (insert v:value) r:interaction))
      (concrete-interpret r (concrete-insert state v))]
-    [(set-api ((remove v:value) r:interaction))
+    [(set-api (cons (remove v:value) r:interaction))
      (concrete-interpret r (concrete-remove state v))]
-    [(set-api ((member? v:value) r:interaction))
-     (set-api (,(concrete-member? state v) ,(concrete-interpret r state)))]
-    [(set-api (select r:interaction))
-     (set-api (,(concrete-select state) ,(concrete-interpret r state)))]))
+    [(set-api (cons (member? v:value) r:interaction))
+     (set-api (cons ,(concrete-member? state v) ,(concrete-interpret r state)))]
+    [(set-api (cons select r:interaction))
+     (set-api (cons ,(concrete-select state) ,(concrete-interpret r state)))]))
 
 (define (buggy-concrete-interpret interaction state)
   (match interaction
-    [(set-api empty) (set-api empty)]
-    [(set-api ((insert v:value) r:interaction))
+    [(set-api nil) (set-api nil)]
+    [(set-api (cons (insert v:value) r:interaction))
      (buggy-concrete-interpret r (concrete-insert state v))]
-    [(set-api ((remove v:value) r:interaction))
+    [(set-api (cons (remove v:value) r:interaction))
      (buggy-concrete-interpret r (buggy-concrete-remove state v))]
-    [(set-api ((member? v:value) r:interaction))
-     (set-api (,(concrete-member? state v) ,(buggy-concrete-interpret r state)))]
-    [(set-api (select r:interaction))
-     (set-api (,(concrete-select state) ,(buggy-concrete-interpret r state)))]))
+    [(set-api (cons (member? v:value) r:interaction))
+     (set-api (cons ,(concrete-member? state v) ,(buggy-concrete-interpret r state)))]
+    [(set-api (cons select r:interaction))
+     (set-api (cons ,(concrete-select state) ,(buggy-concrete-interpret r state)))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Helper function for constraining the synthesis search problem
@@ -164,8 +164,8 @@
 
 (define (valid-set? xs)
   (match xs
-    [(set-api empty) #t]
-    [(set-api (x:integer r:vallist))
+    [(set-api nil) #t]
+    [(set-api (cons x:integer r:vallist))
      (match (concrete-member? r x)
        [(set-api #f) (valid-set? r)]
        [(set-api #t) #f])]
@@ -239,6 +239,12 @@
          [witness (gen)])
     (display-changed-behavior witness displayln)))
 
+(begin
+  (displayln "Trying to find a trace with weird behavior under correct compilation")
+  (let* ([trace (set-api interaction 4)]
+         [gen (make-query-weird-computation abstract-to-concrete trace)]
+         [witness (gen)])
+    (display-weird-component witness displayln)))
 
 
 

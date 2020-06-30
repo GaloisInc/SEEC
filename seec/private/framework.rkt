@@ -411,13 +411,17 @@
 
 ; show v1, c2 and b2
 (define (display-weird-component vars out)
+  (cond
+    [(equal? vars #f) (out (format "No weird components found~n"))]
+    [else
      (let* ([source-vars (first vars)]
             [target-vars (second vars)])
        (out (format
              "Expression ~a~n has emergent behavior ~a~n witnessed by target-level context ~a~n"
              (language-witness-expression source-vars)
              (language-witness-behavior target-vars)
-             (language-witness-context target-vars)))))
+             (language-witness-context target-vars))))
+       ]))
 
 
 
