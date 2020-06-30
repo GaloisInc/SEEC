@@ -16,7 +16,6 @@
 
 (define-grammar list-api
   (value ::= integer)
-  (valopt ::= value none)
   (vallist ::= (value vallist) empty)
   (method ::=  (cons value) nil) ; Could be renamed as constructor
   (operation ::= empty? head tail)
@@ -60,7 +59,7 @@
          hd
          (abstract-lookup (- n 1) tl))]
     [(list-api empty)
-     (list-api none)]))
+     #f]))
     
 (define (interpret-operation op l)
   (match op
@@ -96,17 +95,16 @@
 (displayln (interpret-interaction b2 abc))
 (displayln (abstract-lookup 0 abc)) |#
 
-(define (opt-eq-l-ll? vl vll)
-  (match vl
-    [(list-api none)
-     (match vll
-       [(linked-list none)
-        #t]
-       [ _
-         #f])]
-    [(list-api n:integer)
-     (opt-eq-ll? vll (bonsai->number n))]))
-
+(define (opt-equals? v1 v2)
+  (if v1
+      (if v2
+          (equal? (bonsai->number v1) (bonsai->number v2))
+          #f)
+      (if v2
+          #f
+          #t)))
+      
+     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Define a linked-list datatype that will implement the list API
 ;
@@ -115,20 +113,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define-grammar linked-list
   (value ::= integer)
-  (valopt ::= value none)
   (pointer ::= natural null) ; pointer is distance from begining of heap
   (cell ::= (value pointer))
   (heap ::= (cell heap) empty)
   (state ::= (pointer pointer heap)) ; (1) head of the list (2) head of the free-list (3) heap
   )
 
-; Equality between valopt and val
-(define (opt-eq-ll? vo v)
-  (match vo
-    [(linked-list none)
-   #f]
-  [(linked-list n:integer)
-   (equal? (bonsai->number n) v)]))
 
 (define (empty-state s)
   (linked-list (null null empty)))
@@ -261,13 +251,13 @@
 ; lookup the nth element of a list headed at hd in hp
 (define (lookup-ll-inner n hd hp)
   (if (< n 0)
-      (linked-list none)
+      #f
       (let* ([c (lookup-heap hd hp)])
         (if (equal? n 0)
             (linked-list ,(cell-value c))
             (match (cell-pointer c)
               [(linked-list null)
-               (linked-list none)]
+               #f]
               [(linked-list ptr:natural) 
                (lookup-ll-inner (- n 1) (bonsai->number ptr) hp)])))))
 
@@ -276,7 +266,7 @@
     [(linked-list (hd:pointer _:pointer hp:heap))
      (match hd
        [(linked-list null)
-        (linked-list none)]
+        #f]
        [(linked-list hd:natural)
        (lookup-ll-inner n (bonsai->number hd) hp)])]))
 
@@ -422,7 +412,7 @@
 (define (get-value k l)
   (match l
     [(list-api empty)
-     (list-api none)]
+     #f]
     [(list-api (kc:value tl:vallist))
      (match tl
        [(list-api (vc:value tll:vallist))
@@ -440,21 +430,21 @@
 
 (define (get-value-ll-inner fuel k hd hp)
   (if (<= fuel 0)
-      (linked-list none)
+      #f
       (match hd
         [(linked-list null)
-         (linked-list none)]
+         #f]
         [(linked-list n:natural)
          (let* ([k-c (lookup-heap (bonsai->number n) hp)]
                 [v-c (lookup-heap (bonsai->number (cell-pointer k-c)) hp)]
                 [newhd (cell-pointer v-c)])
-           #|(begin
+           #;(begin
              (displayln "in get-value-ll looking for")            
              (displayln k)
              (displayln k-c)
              (displayln v-c)
              (display "fuel")
-             (display fuel)|#
+             (display fuel))
              (if (equal? k (bonsai->number (cell-value k-c)))
                  (cell-value v-c)
                  (get-value-ll-inner (- fuel 1) k newhd hp)))])))
@@ -498,7 +488,7 @@
   (define a-int (store-value (bonsai-integer 6) (bonsai-integer 7)))
   (define as2-ll* (interpret-interaction-ll a-int as1-ll*))
   (define sol-sst1
-    (solve (assert (opt-eq-ll? (get-value-ll (bonsai-integer 7) as2-ll*) 0))))
+    (solve (assert (opt-equals? (get-value-ll (bonsai-integer 7) as2-ll*) (bonsai-integer 0)))))
   (if (unsat? sol-sst1)
       (displayln "No model found")
     (begin
@@ -513,33 +503,35 @@
   (current-bitwidth 4)
 ;  (define newfp* (linked-list null))
   (define newfp* (linked-list pointer 1))
+  ;define as1-ll* s1-ll)
   (define as1-ll* (modify-fp-state newfp* s1-ll))
   ; Restrict to scoped states (i.e. newfp* is null or scoped on heap)
   (assert (scoped-state? as1-ll*))
-  (define a-int (store-value (bonsai-integer 6) (bonsai-integer 7)))
+  (define a-int (store-value (bonsai-integer 6) (bonsai-integer 7)))  
   (define s2 (interpret-interaction a-int s1))
   (define as2-ll* (interpret-interaction-ll a-int as1-ll*))
   (define-symbolic index* integer?)
-  (define sol-sst1
-    (verify (assert (opt-eq-l-ll? (get-value index* s2) (get-value-ll index* as2-ll*)))))
-  (if (unsat? sol-sst1)
+  (define sol-sst2
+    (verify (assert (opt-equals? (get-value index* s2) (get-value-ll index* as2-ll*)))))
+  (if (unsat? sol-sst2)
       (displayln "No model found")
     (begin
       (displayln "Model found.")
       (displayln "fp...")
-      (define newfp (concretize newfp* sol-sst1))
+      (define newfp (concretize newfp* sol-sst2))
       (displayln newfp)
       (displayln "index...")
-      (define index (concretize index* sol-sst1))
+      (define index (concretize index* sol-sst2))
       (displayln index)
       (displayln "Source behavior")
       (define gis2 (get-value (bonsai-integer index) s2))
       (displayln gis2)
       (displayln "Target behavior")
+;      (define as1-ll s1-ll)
       (define as1-ll (modify-fp-state newfp s1-ll))
       (define as2-ll (interpret-interaction-ll a-int as1-ll))
       (define gias2ll (get-value-ll (bonsai-integer index) as2-ll))
       (displayln gias2ll)
       (displayln "Result:")
-      (displayln (opt-eq-l-ll? gis2 gias2ll))
+      (displayln (opt-equals? gis2 gias2ll))
      )))
