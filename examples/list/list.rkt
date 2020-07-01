@@ -10,6 +10,12 @@
     [_ (raise-argument-error 'bonsai->number "bonsai-integer?" n)]
     ))
 
+(define (uncurry f)
+  (lambda (ab)
+    (match ab
+      [(cons a b)
+       (f a b)])))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Define a language of API calls for a list datatype
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -82,6 +88,14 @@
        [(list-api (cons n:value))
         (interpret-interaction intss (list-api (,n ,l)))])]))
 
+(define-language list-lang
+  #:grammar list-api 
+  #:expression interaction #:size 3
+  #:context vallist #:size 6
+  #:link cons
+  #:evaluate (uncurry interpret-interaction))
+
+
 ; Tests for list
 
 (define abc (list-api (1 (2 (3 empty)))))
@@ -117,6 +131,8 @@
   (cell ::= (value pointer))
   (heap ::= (cell heap) empty)
   (state ::= (pointer pointer heap)) ; (1) head of the list (2) head of the free-list (3) heap
+  (method ::=  (cons value) nil) ; Could be renamed as constructor
+  (interaction ::= (method interaction) empty)
   )
 
 
@@ -275,16 +291,25 @@
 
 (define (interpret-interaction-ll ints s)
   (match ints
-    [(list-api empty)
+    [(linked-list empty)
      s]
-    [(list-api (m:method intss:interaction))
+    [(linked-list (m:method intss:interaction))
        (match m
-         [(list-api nil)                     
+         [(linked-list nil)                     
           (interpret-interaction-ll intss (nil-state s))]
-         [(list-api (cons n:value))
+         [(linked-list (cons n:value))
           (interpret-interaction-ll intss (cons-state n s))])]))
 
+(define-language ll-lang
+  #:grammar linked-list
+  #:expression interaction #:size 3
+  #:context state #:size 6
+  #:link cons
+  #:evaluate (uncurry interpret-interaction-ll))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Translation between list-api and linked-list
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; inner function for list-to-ll, produces a heap representing the ith -> end elements of the list
 (define (list-to-ll-inner i l)
@@ -306,6 +331,20 @@
       (let ([h (list-to-ll-inner 0 l)])
         (linked-list (0 null ,h)))]))
 
+
+(define (list-to-ll-method m)
+  (match m
+    [(list-api nil)
+     (linked-list nil)]
+    [(list-api (cons n:value))
+     (linked-list (cons ,n))]))
+
+(define (list-to-ll-interaction ints)
+  (match ints
+    [(list-api empty) (linked-list empty)]
+    [(list-api (m:method intss:interaction))
+               (linked-list (,(list-to-ll-method m) ,(list-to-ll-interaction intss)))]))
+  
      
 ; Test for linked-list
 (define abc-ll (list-to-ll abc))
