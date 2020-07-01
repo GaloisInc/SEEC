@@ -14,7 +14,7 @@
   (vallist     ::= list<value>) ; empty (value vallist))
   (method      ::= (insert integer) (remove integer) (member? integer) select)
   (interaction ::= list<method>) ; empty (method interaction))
-;  (context     ::= empty ((insert integer) context) ((remove integer) context))
+  (context     ::= empty ((insert integer) context) ((remove integer) context))
   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -249,19 +249,41 @@
     (display-weird-component witness displayln)))
 
 ; takes as input a whole program and the resulting behavior
+; OS: expr and init-set were switched
 (define (add1-concrete? prog res-set)
   (printf "(add1-concrete? ~a ~a)~n" prog res-set)
   (match prog
-    [(cons init-set expr)
+    [(cons expr init-set)
      (equal? (bonsai-ll-length res-set)
              (+ 1 (bonsai-ll-length init-set)))]
     [_ #f]
     ))
 
-(begin
+; OS: Concrete doesn't work here since concrete-interpret returns a trace as behavior, which doesn't witness the length of the list underlying the set
+; OS: Changing evaluate to concrete-context which makes behavior := vallist
+
+; context -> vallist -> vallist
+(define (concrete-interpret-context context state)
+  (match context
+    [(set-api empty) state]
+    [(set-api ((insert v:value) r:interaction))
+     (concrete-interpret-context r (concrete-insert state v))]
+    [(set-api ((remove v:value) r:interaction))
+     (concrete-interpret-context r (concrete-remove state v))]))
+
+
+(define-language concrete-two
+  #:grammar set-api
+  #:expression context #:size 4
+  #:context    vallist     #:size 2 #:where valid-set?
+  #:link snoc
+  #:evaluate (uncurry concrete-interpret-context))
+
+
+; OS: Not working, it think there might be a problem with bonsai-ll-length?
+#;(begin
   (displayln "Trying to find a +1 gadget")
-  (let* ([trace (set-api interaction 4)]
-         [gen (make-query-gadget concrete (lambda (v) #t) add1-concrete?)]
+  (let* ([gen (make-query-gadget concrete-two (lambda (v) #t) add1-concrete?)]
          [witness (gen)])
     (display-gadget witness displayln))
 
@@ -284,9 +306,57 @@
                    #:guarantee (assert (specification p1 b1))))
   sol
   |#
-    
   )
-    
+  
+
+(define (concrete-two-member-spec? prog res-set)
+  (let ([member1 (concrete-member? res-set (bonsai-integer 1))]
+        [member2 (concrete-member? res-set (bonsai-integer 2))])
+    (and (bonsai->racket member1) (not (bonsai->racket member2)))))
+
+(define expected-context (set-api ((insert 1) ((remove 2) empty))))
+
+
+; Trying to do something equivalent to concrete-two-member-spec with the concrete language (dealing with interactions)
+; 1) append the lookups after the interactions
+; 2) check the last two element of the trace
+(define (concrete-member-spec? prog res-set)
+  (match prog
+    [(cons expr init-set)     
+     (let* ([test-expr (set-api (cons (member? 1) (cons (member? 2) nil)))]
+            [full-expr (append expr test-expr)]
+            [trace (concrete-interpret full-expr test-expr)]
+            [test-trace (drop trace (length expr))])
+       (match test-trace
+         [(list mem1 mem2)
+            (and mem1 (not mem2))]
+         [ _ #f]))]))
+
+#;(begin
+  (define lang concrete-two)
+  (define specification concrete-member-spec?)
+  (define c1 (make-symbolic-var (language-context lang)))
+  (define v1 (make-symbolic-var (language-expression lang)))
+  (define p1 ((language-link lang) c1 v1))
+  (define b1 ((language-evaluate lang) p1))
+  ; Creating a second context to return as example
+  (define c2 (make-symbolic-var (language-context lang)))
+  (define p2 ((language-link lang) c2 v1))
+  (define b2 ((language-evaluate lang) p2))
+
+  (define sol (synthesize
+                   #:forall c1
+                   #:guarantee (assert (specification p1 b1))))
+
+(define witness (sol))
+(displayln witness))
+#;(begin
+  (displayln "Trying to find a concrete-member-spec gadget")
+  (let* ([gen (make-query-gadget concrete-two (lambda (v) #t) concrete-member-spec?)]
+         [witness (gen)])
+    (display-gadget witness displayln)))
+     
+
 
 
 
