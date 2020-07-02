@@ -1,4 +1,6 @@
 #lang seec
+
+; OSTODO: there's a bug (see test 5) if method uses cons and nil. In particular, it matches a nil bonsai-list as method's nil
 (require (only-in racket/base
                   raise-argument-error
                   raise-arguments-error))
@@ -23,7 +25,7 @@
 (define-grammar list-api
   (value ::= integer)
   (vallist ::= (value vallist) empty)
-  (method ::=  (cons value) nil) ; Could be renamed as constructor
+  (method ::=  (mcons value) mnil) ; Could be renamed as constructor
   (operation ::= empty? head tail)
   (interaction ::= (method interaction) empty))
 
@@ -85,7 +87,7 @@
      (match m
        [(list-api nil)
         (interpret-interaction intss (list-api empty))]
-       [(list-api (cons n:value))
+       [(list-api (mcons n:value))
         (interpret-interaction intss (list-api (,n ,l)))])]))
 
 (define-language list-lang
@@ -100,9 +102,9 @@
 
 (define abc (list-api (1 (2 (3 empty)))))
 
-(define b0 (list-api (nil ((cons 4) empty))))
-(define b1 (list-api ((cons 4) ((cons 1) empty))))
-(define b2 (list-api (nil ,b1)))
+(define b0 (list-api (mnil ((mcons 4) empty))))
+(define b1 (list-api ((mcons 4) ((mcons 1) empty))))
+(define b2 (list-api (mnil ,b1)))
 
 #|
 (displayln (interpret-interaction b1 abc))
@@ -131,7 +133,7 @@
   (cell ::= (value pointer))
   (heap ::= (cell heap) empty)
   (state ::= (pointer pointer heap)) ; (1) head of the list (2) head of the free-list (3) heap
-  (method ::=  (cons value) nil) ; Could be renamed as constructor
+  (method ::=  (mcons value) mnil) ; Could be renamed as constructor
   (interaction ::= (method interaction) empty)
   )
 
@@ -295,10 +297,34 @@
      s]
     [(linked-list (m:method intss:interaction))
        (match m
-         [(linked-list nil)                     
+         [(linked-list mnil)                     
           (interpret-interaction-ll intss (nil-state s))]
-         [(linked-list (cons n:value))
+         [(linked-list (mcons n:value))
           (interpret-interaction-ll intss (cons-state n s))])]))
+
+; Debug version of interpret-interaction-ll
+#;(define (debug-interpret-interaction-ll ints s)
+  (displayln "In IILL with:")
+  (displayln ints)
+  (displayln s)             
+  (match ints
+    [(linked-list empty)
+     (begin
+       (displayln "empty")
+       s)]
+    [(linked-list (m:method intss:interaction))
+     (match m
+       [(linked-list mnil)
+        (begin
+          (displayln "method:nil")
+          (debug-interpret-interaction-ll intss (nil-state s)))]
+       [(linked-list (mcons n:value))
+        (begin
+          (display "method: cons ")
+          (displayln n)
+          (debug-interpret-interaction-ll intss (cons-state n s)))])]))
+
+
 
 (define-language ll-lang
   #:grammar linked-list
@@ -335,13 +361,13 @@
 
 (define (list-to-ll-method m)
   (match m
-    [(list-api nil)
-     (linked-list nil)]
-    [(list-api (cons n:value))
-     (linked-list (cons ,n))]))
+    [(list-api mnil)
+     (linked-list mnil)]
+    [(list-api (mcons n:value))
+     (linked-list (mcons ,n))]))
 
 ; OS: this is noop
-#;(define (list-to-ll-interaction ints)
+(define (list-to-ll-interaction ints)
   (match ints
     [(list-api empty) (linked-list empty)]
     [(list-api (m:method intss:interaction))
@@ -353,8 +379,8 @@
     [(list-api (hd:value tl:vallist))
      (match fp 
        [(linked-list n:natural)
-        (let ([hd-ll (lookup-heap n hp)])
-          (if (equal? hd (cell-value hd-ll))
+        (let ([hd-ll (lookup-heap (bonsai->number n) hp)])
+          (if (equal? (bonsai->number hd) (bonsai->number (cell-value hd-ll)))
               (list-to-ll-equal?-inner tl (cell-pointer hd-ll) hp)
               #f))]
        [(linked-list null)
@@ -378,10 +404,11 @@
   #:target ll-lang
   #:behavior-relation list-to-ll-equal?
   #:context-relation  list-to-ll-equal? 
-  #:compile (lambda (i) i) ; or list-to-ll-interaction
+  #:compile list-to-ll-interaction
   )
 
-; Inexhaustive match here
+
+
 #;(begin
   (displayln "Trying to find a trace with different behavior under compilation")
   (let* ([gen (make-query-changed-component list-to-ll-compiler)]
@@ -396,9 +423,17 @@
 ; Test for linked-list
 (define abc-ll (list-to-ll abc))
 (define empty-ll (list-to-ll abstract-nil))
-(displayln abc-ll)
+(define i-000 (list-api ((mcons 0) ((mcons 0) ((mcons 0) empty)))))
 
 #;(begin
+    (displayln abstract-nil)
+    (displayln (interpret-interaction i-000 abstract-nil))
+    (displayln empty-ll)
+    (displayln (interpret-interaction-ll i-000 empty-ll)))
+
+#;(begin
+    (displayln abc-ll)
+    (displayln (list-to-ll-equal? abc abc-ll))
     (displayln (scoped-state? abc-ll))
     (displayln (interpret-interaction-ll b1 abc-ll))
     (displayln [lookup-ll 1 abc-ll])
@@ -471,7 +506,56 @@
         (displayln [lookup-ll 1 abc-ll-i]))))
 
 
+; 4 Show that list-to-ll is correct, i.e. no changed behavior between l and (list-to-ll l)
+#;(begin
+  (displayln "LL-synth test 4: Verifying l-to-ll")
+  (define l*-t4 (list-api vallist 4))
+  (define ll*-t4 (list-to-ll l*-t4))
+  (define sol-t4
+    (verify (assert (list-to-ll-equal? l*-t4 ll*-t4))))
+  (if (unsat? sol-t4)
+      (displayln "Verified")
+      (begin
+        (displayln "Counter-example found.")
+        (define l-t4 (concretize l*-t4 sol-t4))
+        (displayln l-t4)
+        (displayln (list-to-ll l-t4)))))
 
+; 5 Show that would can't mess up the linked-list with bounded interaction
+; OSTODO: This should not be true...
+(begin
+  (displayln "LL-synth test 5: verifying interactions post list-to-ll")
+  (define l*-t5 (list-api vallist 5))
+  (define ll*-t5 (list-to-ll l*-t5))
+  (define i*-t5 (list-api interaction 5))
+  (define l2*-t5 (interpret-interaction i*-t5 l*-t5))
+  (define ll2*-t5 (interpret-interaction i*-t5 ll*-t5))
+  (define sol-t5
+    (verify (assert (list-to-ll-equal? l2*-t5 ll2*-t5))))
+  (if (unsat? sol-t5)
+      (displayln "Verified")
+      (begin
+        (displayln "Counter-example found.")
+        (define l-t5 (concretize l*-t5 sol-t5))
+        (define i-t5 (concretize i*-t5 sol-t5))
+        (displayln "Initial list:")
+        (displayln l-t5)
+        (displayln "Translated ll:")
+        (define ll-t5 (list-to-ll l-t5))
+        (displayln ll-t5)
+        (displayln "Interaction:")
+        (displayln i-t5)
+        (displayln "Resulting list:")
+        (define l2-t5 (interpret-interaction i-t5 l-t5))
+        (displayln l2-t5)
+        (displayln "Resulting linked-list:")
+        (define ll2-t5 (interpret-interaction-ll i-t5 ll-t5))
+        (displayln ll2-t5)
+        (displayln "l2 =? ll2:")
+        (displayln (list-to-ll-equal? l2-t5 ll2-t5)))))
+                   
+
+  
 
 
 ; LL p1 -> s1 -> p2 -> s2 -| , fl -|
@@ -492,7 +576,7 @@
 
 ; Create an interaction representing storing (k, v) in association store
 (define (store-value k v)
-  (list-api ((cons ,v) ((cons ,k) empty))))
+  (list-api ((mcons ,v) ((mcons ,k) empty))))
 
 
 (define (get-value k l)
@@ -544,6 +628,7 @@
        ; What we would want here is something like bounded for bonsai, i.e. a global bound on recursive calls
        (get-value-ll-inner 10 (bonsai->number k) hd hp))]))
 
+; OSTODO: Equality between list key-store and linked-list key-store
 
 ; Tests for linked-list association stores
 
@@ -594,7 +679,7 @@
       (displayln (get-value-ll (bonsai-integer 7) as2-ll))
      )))
 
-(begin
+#;(begin
   (displayln "Store-Synth test 2: find a changed behavior between list and attacked linked-list")
   (current-bitwidth 4)
 ;  (define newfp* (linked-list null))
