@@ -419,7 +419,7 @@
   )
 
 
-(begin
+#;(begin
   (displayln "Trying to find a trace with different behavior under compilation")
   (let* ([gen (make-query-changed-component list-to-ll-compiler)]
          [witness (gen)])
@@ -516,8 +516,8 @@
         (displayln [lookup-ll 1 abc-ll-i]))))
 
 
-; 4 Show that list-to-ll is correct, i.e. no changed behavior between l and (list-to-ll l)
-(begin
+; 4 Shows that list-to-ll is correct, i.e. no changed behavior between l and (list-to-ll l)
+#;(begin
   (displayln "LL-synth test 4: Verifying l-to-ll")
   (define l*-t4 (list-api vallist 4))
   (define ll*-t4 (list-to-ll l*-t4))
@@ -531,9 +531,8 @@
         (displayln l-t4)
         (displayln (list-to-ll l-t4)))))
 
-; 5 Show that would can't mess up the linked-list with bounded interaction
-; OSTODO: This should not be true...
-(begin
+; 5 Shows that would can't mess up the linked-list with bounded interaction
+#;(begin
   (displayln "LL-synth test 5: verifying interactions post list-to-ll")
   (define l*-t5 (list-api vallist 5))
   (define ll*-t5 (list-to-ll l*-t5))
@@ -605,7 +604,7 @@
 ;(displayln s1)
 ;(define s2 (interpret-interaction (store-value (bonsai-integer 4) (bonsai-integer 10)) s1))
 ;(displayln s2)
-;(displayln (get-value (bonsai-integer 4) s2))
+;(displayln (get-value (bonsai-integer 4) s1))
 
 
 (define (get-value-ll-inner fuel k hd hp)
@@ -623,8 +622,14 @@
              (displayln k)
              (displayln k-c)
              (displayln v-c)
-             (display "fuel")
-             (display fuel))
+             (displayln "fuel")
+             (displayln fuel)
+             (displayln "print k")
+             (print k)
+             (displayln "")
+             (displayln "print cell-value k-c")
+             (print (bonsai->number (cell-value k-c)))
+             (displayln ""))
              (if (equal? k (bonsai->number (cell-value k-c)))
                  (cell-value v-c)
                  (get-value-ll-inner (- fuel 1) k newhd hp)))])))
@@ -646,7 +651,7 @@
 
 (define s1-ll (list-to-ll s1))
 
-(define s2-ll (interpret-interaction-ll (store-value (bonsai-integer 4) (bonsai-integer 10)) s1-ll))
+;(define s2-ll (interpret-interaction-ll (store-value (bonsai-integer 4) (bonsai-integer 10)) s1-ll))
 #;(begin
     (displayln s1-ll)
     (displayln s2-ll)
@@ -667,7 +672,23 @@
 (define (modify-fp-state fp s)
   (linked-list (,(state-head s) ,fp ,(state-heap s))))
 
-(begin
+
+#;(begin
+  (displayln "Store-Styn test 0 : find a key that returns 1")
+  (define index* (linked-list value 1))
+  (define gv (get-value index* s1))
+  (define sol-sst0 (solve
+                    (assert (opt-equals? gv (bonsai-integer 1)))))
+  (if (unsat? sol-sst0)
+      (displayln "No model found")
+      (begin
+        (displayln "Model found.")
+        (displayln "index...")
+        (define index (concretize index* sol-sst0))
+        (displayln index))))
+
+
+#;(begin
   (displayln "Store-Synth test 1: find a fp with behavior 7 -> 0")
   (define newfp* (linked-list pointer 1))
   (define as1-ll* (modify-fp-state newfp* s1-ll))
@@ -691,7 +712,11 @@
       (displayln (get-value-ll (bonsai-integer 7) as2-ll))
      )))
 
-#;(begin
+
+
+    
+  
+(begin
   (displayln "Store-Synth test 2: find a changed behavior between list and attacked linked-list")
   (current-bitwidth 4)
 ;  (define newfp* (linked-list null))
@@ -702,12 +727,26 @@
   (assert (scoped-state? as1-ll*))
   (define a-int (store-value (bonsai-integer 6) (bonsai-integer 7)))  
   (define s2 (interpret-interaction a-int s1))
+  (define s2-ll (interpret-interaction-ll a-int s1-ll))
   (define as2-ll* (interpret-interaction-ll a-int as1-ll*))
-  (define-symbolic index* integer?)
+  (define index* (linked-list value 1))
   (define gas2-ll* (get-value-ll index* as2-ll*))
-  (define gs2* (get-value index* s2))
+  (define gs2* (get-value-ll index* s2-ll))
+
+  ; Below are some example of assertion to tweak the model found:
+  ; ensures that the behavior is not destructive (i.e. gas2-ll* is not #f)
+  ;(assert gas2-ll*)
+  ; ensures that the behavior is new
+  ;  (assert (not gs2*))
+  
+  ; In particular, we can find our desired attack by
+  ; requiring key (index) to be known to attacker, and result (value) to be private
+  (assert (or (equal? index* (bonsai-integer 7)) (equal? index* (bonsai-integer 6))))
+  (assert (not (or (equal? gas2-ll* (bonsai-integer 7)) (equal? gas2-ll* (bonsai-integer 6)))))
+;  (assert (not (equal? (bonsai-integer 7) gas2-ll*)))
+  (define r (opt-equals? gs2* gas2-ll*))
   (define sol-sst2
-    (verify (assert (opt-equals? gs2* gas2-ll*))))
+    (verify (assert r)))
   (if (unsat? sol-sst2)
       (displayln "No model found")
     (begin
@@ -720,16 +759,20 @@
       (displayln "index...")
 ;      (define index (concretize index* sol-sst2))
       (displayln index)
+      (displayln "Source linked-list")
+      (displayln s2-ll)
+      (define gis2 (get-value-ll index s2-ll))
       (displayln "Source behavior")
-      (define gis2 (get-value (bonsai-integer index) s2))
       (displayln gis2)
-      (displayln "Target behavior")
+
 ;      (define as1-ll s1-ll)
       (define as1-ll (modify-fp-state newfp s1-ll))
-      (displayln as1-ll)
+;      (displayln as1-ll)
       (define as2-ll (interpret-interaction-ll a-int as1-ll))
+      (displayln "Attacked linked-list")
       (displayln as2-ll)
-      (define gias2ll (get-value-ll (bonsai-integer index) as2-ll))
+      (define gias2ll (get-value-ll index as2-ll))
+      (displayln "Target behavior")
       (displayln gias2ll)
       (displayln "Result:")
       (displayln (opt-equals? gis2 gias2ll))
