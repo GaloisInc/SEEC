@@ -12,6 +12,9 @@
     [_ (raise-argument-error 'bonsai->number "bonsai-integer?" n)]
     ))
 
+(define (snoc a b)
+  (cons b a))
+
 (define (uncurry f)
   (lambda (ab)
     (match ab
@@ -94,7 +97,7 @@
   #:grammar list-api 
   #:expression interaction #:size 3
   #:context vallist #:size 6
-  #:link cons
+  #:link snoc
   #:evaluate (uncurry interpret-interaction))
 
 
@@ -156,7 +159,12 @@
   (match s
     [(linked-list (hd:pointer fp:pointer hp:heap))
      hd]))
-  
+
+(define (state-free-pointer s)
+  (match s
+    [(linked-list (hd:pointer fp:pointer hp:heap))
+     fp]))
+
 (define (state-heap s)
   (match s
     [(linked-list (hd:pointer fp:pointer hp:heap))
@@ -330,7 +338,7 @@
   #:grammar linked-list
   #:expression interaction #:size 3
   #:context state #:size 6
-  #:link cons
+  #:link snoc
   #:evaluate (uncurry interpret-interaction-ll))
 
 
@@ -403,13 +411,15 @@
   #:source list-lang
   #:target ll-lang
   #:behavior-relation list-to-ll-equal?
-  #:context-relation  list-to-ll-equal? 
-  #:compile list-to-ll-interaction
+  #:context-relation list-to-ll-equal?
+                          #;(lambda (l ll) (and
+                                      (list-to-ll-equal? l ll)
+                                      (equal? (linked-list null) (state-free-pointer ll))))
+  #:compile (lambda (i) i)
   )
 
 
-
-#;(begin
+(begin
   (displayln "Trying to find a trace with different behavior under compilation")
   (let* ([gen (make-query-changed-component list-to-ll-compiler)]
          [witness (gen)])
@@ -507,7 +517,7 @@
 
 
 ; 4 Show that list-to-ll is correct, i.e. no changed behavior between l and (list-to-ll l)
-#;(begin
+(begin
   (displayln "LL-synth test 4: Verifying l-to-ll")
   (define l*-t4 (list-api vallist 4))
   (define ll*-t4 (list-to-ll l*-t4))
@@ -529,7 +539,7 @@
   (define ll*-t5 (list-to-ll l*-t5))
   (define i*-t5 (list-api interaction 5))
   (define l2*-t5 (interpret-interaction i*-t5 l*-t5))
-  (define ll2*-t5 (interpret-interaction i*-t5 ll*-t5))
+  (define ll2*-t5 (interpret-interaction-ll i*-t5 ll*-t5))
   (define sol-t5
     (verify (assert (list-to-ll-equal? l2*-t5 ll2*-t5))))
   (if (unsat? sol-t5)
@@ -630,6 +640,8 @@
 
 ; OSTODO: Equality between list key-store and linked-list key-store
 
+
+
 ; Tests for linked-list association stores
 
 (define s1-ll (list-to-ll s1))
@@ -655,7 +667,7 @@
 (define (modify-fp-state fp s)
   (linked-list (,(state-head s) ,fp ,(state-heap s))))
 
-#;(begin
+(begin
   (displayln "Store-Synth test 1: find a fp with behavior 7 -> 0")
   (define newfp* (linked-list pointer 1))
   (define as1-ll* (modify-fp-state newfp* s1-ll))
@@ -684,32 +696,36 @@
   (current-bitwidth 4)
 ;  (define newfp* (linked-list null))
   (define newfp* (linked-list pointer 1))
-  (define as1-ll* s1-ll)
-;  (define as1-ll* (modify-fp-state newfp* s1-ll))
+;  (define as1-ll* s1-ll)
+  (define as1-ll* (modify-fp-state newfp* s1-ll))
   ; Restrict to scoped states (i.e. newfp* is null or scoped on heap)
   (assert (scoped-state? as1-ll*))
   (define a-int (store-value (bonsai-integer 6) (bonsai-integer 7)))  
   (define s2 (interpret-interaction a-int s1))
   (define as2-ll* (interpret-interaction-ll a-int as1-ll*))
   (define-symbolic index* integer?)
+  (define gas2-ll* (get-value-ll index* as2-ll*))
+  (define gs2* (get-value index* s2))
   (define sol-sst2
-    (verify (assert (opt-equals? (get-value index* s2) (get-value-ll index* as2-ll*)))))
+    (verify (assert (opt-equals? gs2* gas2-ll*))))
   (if (unsat? sol-sst2)
       (displayln "No model found")
     (begin
       (displayln "Model found.")
       (displayln "fp...")
-      (define newfp (concretize newfp* sol-sst2))
+      (define newfp-index (concretize (cons newfp* index*) sol-sst2))
+      (define newfp (car newfp-index))
+      (define index (cdr newfp-index))
       (displayln newfp)
       (displayln "index...")
-      (define index (concretize index* sol-sst2))
+;      (define index (concretize index* sol-sst2))
       (displayln index)
       (displayln "Source behavior")
       (define gis2 (get-value (bonsai-integer index) s2))
       (displayln gis2)
       (displayln "Target behavior")
-      (define as1-ll s1-ll)
-;      (define as1-ll (modify-fp-state newfp s1-ll))
+;      (define as1-ll s1-ll)
+      (define as1-ll (modify-fp-state newfp s1-ll))
       (displayln as1-ll)
       (define as2-ll (interpret-interaction-ll a-int as1-ll))
       (displayln as2-ll)
