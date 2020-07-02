@@ -307,6 +307,7 @@
   #:link cons
   #:evaluate (uncurry interpret-interaction-ll))
 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Translation between list-api and linked-list
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -339,11 +340,57 @@
     [(list-api (cons n:value))
      (linked-list (cons ,n))]))
 
-(define (list-to-ll-interaction ints)
+; OS: this is noop
+#;(define (list-to-ll-interaction ints)
   (match ints
     [(list-api empty) (linked-list empty)]
     [(list-api (m:method intss:interaction))
                (linked-list (,(list-to-ll-method m) ,(list-to-ll-interaction intss)))]))
+
+; inner function comparing l with the linked-list starting at fp in hp
+(define (list-to-ll-equal?-inner l fp hp)
+  (match l
+    [(list-api (hd:value tl:vallist))
+     (match fp 
+       [(linked-list n:natural)
+        (let ([hd-ll (lookup-heap n hp)])
+          (if (equal? hd (cell-value hd-ll))
+              (list-to-ll-equal?-inner tl (cell-pointer hd-ll) hp)
+              #f))]
+       [(linked-list null)
+        #f])]
+    [(list-api empty)
+     (match fp
+       [(linked-list null)
+        #t]
+       [ _
+         #f])]))
+
+; list -> linked-list (state) -> bool
+(define (list-to-ll-equal? l s)
+  (match s
+    [(linked-list (hd:pointer fp:pointer hp:heap))
+     (list-to-ll-equal?-inner l hd hp)]))
+
+
+(define-compiler list-to-ll-compiler
+  #:source list-lang
+  #:target ll-lang
+  #:behavior-relation list-to-ll-equal?
+  #:context-relation  list-to-ll-equal? 
+  #:compile (lambda (i) i) ; or list-to-ll-interaction
+  )
+
+; Inexhaustive match here
+#;(begin
+  (displayln "Trying to find a trace with different behavior under compilation")
+  (let* ([gen (make-query-changed-component list-to-ll-compiler)]
+         [witness (gen)])
+    (display-changed-behavior witness displayln)))
+
+
+
+
   
      
 ; Test for linked-list
@@ -461,7 +508,7 @@
 
 ; Test for list association stores
 (define s1 (list-api (0 (1 (2 (3 (4 (5 empty))))))))
-(displayln s1)
+;(displayln s1)
 ;(define s2 (interpret-interaction (store-value (bonsai-integer 4) (bonsai-integer 10)) s1))
 ;(displayln s2)
 ;(displayln (get-value (bonsai-integer 4) s2))
@@ -494,24 +541,29 @@
   (match s
     [(linked-list (hd:pointer _:pointer hp:heap))
      (let ([fuel (length-heap hp)])
+       ; What we would want here is something like bounded for bonsai, i.e. a global bound on recursive calls
        (get-value-ll-inner 10 (bonsai->number k) hd hp))]))
 
 
 ; Tests for linked-list association stores
+
 (define s1-ll (list-to-ll s1))
-(displayln s1-ll)
+
 (define s2-ll (interpret-interaction-ll (store-value (bonsai-integer 4) (bonsai-integer 10)) s1-ll))
-(displayln s2-ll)
-(displayln (get-value-ll (bonsai-integer 4) s2-ll))
+#;(begin
+    (displayln s1-ll)
+    (displayln s2-ll)
+    (displayln (get-value-ll (bonsai-integer 4) s2-ll)))
 
 
 ; Now let's try modifying s1-ll's fp to be able to get the value 3 while looking up something different than 2 (its key)
 (define as1-ll (linked-list (,(state-head s1-ll) 4 ,(state-heap s1-ll))))
-(displayln as1-ll)
-;(displayln (cons-state (bonsai-integer 7) as1-ll))
 (define as2-ll (interpret-interaction-ll (store-value (bonsai-integer 6) (bonsai-integer 7)) as1-ll))
-(displayln as2-ll)
-;(displayln (get-value-ll (bonsai-integer 1) as2-ll))
+#;(begin 
+    (displayln as1-ll)
+    (displayln (cons-state (bonsai-integer 7) as1-ll))
+    (displayln as2-ll)
+    (displayln (get-value-ll (bonsai-integer 1) as2-ll)))
 
 
 ; try to find a free pointer s.t. changed behavior between list and linked list
@@ -535,15 +587,20 @@
       (displayln "fp...")
       (define newfp (concretize newfp* sol-sst1))
       (displayln newfp)
-      )))
+      (define as2-ll (interpret-interaction-ll a-int (modify-fp-state newfp s1-ll)))
+      (displayln "as2-ll...")
+      (displayln as2-ll)
+      (displayln "get 7 as2-ll...")
+      (displayln (get-value-ll (bonsai-integer 7) as2-ll))
+     )))
 
 (begin
   (displayln "Store-Synth test 2: find a changed behavior between list and attacked linked-list")
   (current-bitwidth 4)
 ;  (define newfp* (linked-list null))
   (define newfp* (linked-list pointer 1))
-  ;define as1-ll* s1-ll)
-  (define as1-ll* (modify-fp-state newfp* s1-ll))
+  (define as1-ll* s1-ll)
+;  (define as1-ll* (modify-fp-state newfp* s1-ll))
   ; Restrict to scoped states (i.e. newfp* is null or scoped on heap)
   (assert (scoped-state? as1-ll*))
   (define a-int (store-value (bonsai-integer 6) (bonsai-integer 7)))  
@@ -566,9 +623,11 @@
       (define gis2 (get-value (bonsai-integer index) s2))
       (displayln gis2)
       (displayln "Target behavior")
-;      (define as1-ll s1-ll)
-      (define as1-ll (modify-fp-state newfp s1-ll))
+      (define as1-ll s1-ll)
+;      (define as1-ll (modify-fp-state newfp s1-ll))
+      (displayln as1-ll)
       (define as2-ll (interpret-interaction-ll a-int as1-ll))
+      (displayln as2-ll)
       (define gias2ll (get-value-ll (bonsai-integer index) as2-ll))
       (displayln gias2ll)
       (displayln "Result:")
