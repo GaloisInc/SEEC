@@ -103,11 +103,17 @@
   (define conf (printf-lang config 5))
   (displayln "Searching for a format string that evaluates in the target but not in the source")
   (displayln "NOTE: times out when increasing size of arglist beyond 2")
-  (define conf+ (behavior->config (interp-fmt-unsafe f args conf)))
+  
+  (define safe-result (interp-fmt-safe f args conf))
+  (define unsafe-result (interp-fmt-unsafe f args conf))
+  #;(define conf+ (behavior->config (interp-fmt-unsafe f args conf)))
   (define sol (synthesize
                #:forall '()
-               #:guarantee (assert (and (not (fmt-consistent-with-arglist? f args))
-                                        (conf? conf+)))))
+               #:guarantee (assert (and #;(not (fmt-consistent-with-arglist? f args))
+                                        #;(equal? safe-result (printf-lang ERR))
+                                        #;(conf? conf+)
+                                        (not (equal? safe-result unsafe-result))
+                                        ))))
   #;(define sol (verify #:assume (assert (conf? conf+))
                       #:guarantee (assert (fmt-consistent-with-arglist? f args))
                       ))
@@ -137,6 +143,14 @@
         )
     (equal? acc+ (+ c acc))
     ))
+(define (is-increment? f args conf)
+  (let* ([conf+ (behavior->config (interp-fmt-safe f args conf))]
+         [acc   (conf->acc conf)]
+         [acc+  (conf->acc conf+)]
+        )
+    (equal? acc+ (+ 1 acc))
+    ))
+
 (define (is-constant-add-positive f c args conf)
   (let* ([conf+ (behavior->config (interp-fmt-safe f args conf))]
          [acc   (conf->acc conf)]
@@ -196,20 +210,19 @@
 
 
 (define (find-add-constant)
-  (define f (printf-lang fmt 3))
-  ;(assert (equal? f (printf-lang (cons "x" nil))))
+  (define f (printf-lang fmt 5))
   (define acc0 (printf-lang integer 1))
   (define conf (printf-lang (,acc0 mnil)))
-            
-  (define args (printf-lang nil))
+  #;(define conf (printf-lang config 5))
+  (define args (printf-lang arglist 2))
+  #;(define args (printf-lang nil))
 
 
   (displayln "")
   (displayln "Searching for a format string that adds 1 to the accumulator")
   (define sol (synthesize
                #:forall acc0
-               #:assume (assert (fmt-consistent-with-arglist? f args))
-               #:guarantee (assert (is-constant-add-positive f 1 args conf))))
+               #:guarantee (assert (is-increment? f args conf))))
   (displayln "")
   (if (unsat? sol)
       (displayln "Failed to synthesize")
@@ -217,13 +230,18 @@
         (displayln "Synthesis succeeded.")
         (displayln "f...")
         (define f-instance (concretize f sol))
-        (displayln (bonsai-pretty f-instance))
+        (displayln f-instance)
         (define acc0-instance (bonsai-integer 20) #;(concretize acc0 sol))
         (displayln "acc0...")
         (displayln acc0-instance)
         (define conf-instance (printf-lang (,acc0-instance mnil)))
         (displayln "conf before...")
         (displayln conf-instance)
+        (define args-instance (concretize args sol))
+        (displayln "args...")
+        (displayln args-instance)
+
+
 
         (displayln "conf after...")
         (displayln (behavior->config (interp-fmt-safe f-instance args conf-instance)))
@@ -307,12 +325,12 @@
         (define conf+ (behavior->config result))
         (printf "result: (~a ~a)~n" t conf+)
 
-        (printf "(is-constant-add-positive ~a ~a ~a ~a): ~a~n"
+        (printf "(is-constant-add-max ~a ~a ~a ~a): ~a~n"
                 f-instance
                 x-instance
                 args-instance
                 conf-instance
-                (is-constant-add-positive f-instance (bonsai->number x-instance) args-instance conf-instance))
+                (is-constant-add-max f-instance (bonsai->number x-instance) args-instance conf-instance))
         ))
   )
 
@@ -347,8 +365,7 @@
   (define res (interp-fmt-safe f args conf))
 
   (define sol (time (synthesize
-                     #:forall (list acc0-val x-val)
-
+                     #:forall '(acc0-val x-val)
                      #:guarantee (assert (synthesis-goal))
                )))
 
@@ -556,6 +573,7 @@
 ;; (find-add-constant)
 ;; (displayln "")
 ;; (find-add-argument-max)
+;; (displayln "")
 (find-add-argument)
 
 

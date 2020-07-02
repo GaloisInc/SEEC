@@ -75,8 +75,7 @@
 
 (define-grammar printf-lang
   (fmt ::= list<fmt-elt>)
-  (fmt-elt ::= string
-               (% parameter width fmt-type))
+  (fmt-elt ::= string (% parameter width fmt-type))
   (parameter ::= (offset $))
   (width ::= NONE (* offset) natural)
   (offset ::= natural)
