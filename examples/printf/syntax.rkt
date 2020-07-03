@@ -616,16 +616,7 @@
   (match f
     [(printf-lang nil) (printf-lang (nil ,conf))]
 
-
-
     [(printf-lang (cons f1:fmt-elt f+:fmt))
-     #;(match (interp-fmt-elt-safe f1 args conf)
-       [(printf-lang (t1:trace conf+:config))
-        (match (interp-fmt-safe f+ args conf+)
-          [(printf-lang (t2:trace conf++:config))
-           (printf-lang (,(bonsai-ll-append t1 t2) ,conf++))]
-          )]
-       )
 
      (let* ([b1 (interp-fmt-elt-unsafe f1 args conf)]
             [b2 (interp-fmt-unsafe f+ args (behavior->config b1))]
@@ -633,14 +624,6 @@
             )
        (printf-lang (,t+ ,(behavior->config b2))))
      ]
-
-
-    #;[(printf-lang (cons f1:fmt-elt f+:fmt))
-     (match (interp-fmt-elt-unsafe f1 args conf)
-       [(list s-1 conf-1)
-        (match (interp-fmt-unsafe f+ args conf-1)
-          [(list s-2 conf-2)
-           (list (string-append s-1 s-2) conf-2)])])]
     ))
 
 
@@ -699,6 +682,7 @@
          (match ftype
            [(printf-lang d) (constant-int? arg)]
            [(printf-lang n) (loc? arg)]
+           [(printf-lang s) #t]
            ))))
 (define (width-consistent-with-arglist w args)
   (match w

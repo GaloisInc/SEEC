@@ -37,7 +37,6 @@
 
 (define (test-interp-fmt-safe)
   (displayln "Testing interp-fmt-safe")
-  (displayln "NOTE: times out when increasing size of f beyond 2")
   (define f (printf-lang fmt 2))
   (define args (printf-lang arglist 4))
   (define conf (printf-lang config 4))
@@ -65,7 +64,6 @@
 
 (define (test-interp-fmt-unsafe)
   (displayln "Testing interp-fmt-unsafe")
-  (displayln "NOTE: times out when increasing size of arglist beyond 2")
   (define f (printf-lang fmt 2))
   (define args (printf-lang arglist 4))
   (define conf (printf-lang config 5))
@@ -96,13 +94,14 @@
         )))
 
 (define (find-exploit)
+  (current-bitwidth 16)
+
   (define f (printf-lang fmt 5))
   ;(assert (equal? f (printf-lang (cons (% (0 $) NONE d) nil))))
   (define args (printf-lang arglist 2))
   ;(assert (equal? args (printf-lang nil)))
   (define conf (printf-lang config 5))
   (displayln "Searching for a format string that evaluates in the target but not in the source")
-  (displayln "NOTE: times out when increasing size of arglist beyond 2")
   
   (define safe-result (interp-fmt-safe f args conf))
   (define unsafe-result (interp-fmt-unsafe f args conf))
@@ -267,7 +266,7 @@
 
 (define (find-add-argument-max)
 
-  (current-bitwidth 16)
+  (current-bitwidth 5)
   (define f-concrete (printf-lang (cons (% (0 $) (* 0) d) nil)))
   (define f (printf-lang fmt 5))
   #;(define f f-concrete)
@@ -356,16 +355,13 @@
        (equal? x (bonsai-integer x-val))])
     )
 
-  (define (synthesis-goal) (and
-                                (is-constant-add-positive f x-val args conf)
-                                )
-                               )
+  (define (synthesis-goal) (is-constant-add-positive f x-val args conf))
   (assert (conf-constraint acc0-val conf))
   (assert (args-constraint x-val args args+))
   (define res (interp-fmt-safe f args conf))
 
   (define sol (time (synthesize
-                     #:forall '(acc0-val x-val)
+                     #:forall (list acc0-val x-val)
                      #:guarantee (assert (synthesis-goal))
                )))
 
@@ -432,6 +428,7 @@
   (define f-bad (printf-lang (cons (% (1 $) 13 d) nil)))
   (define f-symbolic (printf-lang fmt 5))
 
+  (printf "Searching for a format string that adds the value of x to the accumulator")
   (define sol (verify-add-argument f-symbolic))
   (if (unsat? sol)
       (printf "Failed to synthesize~n")
@@ -560,47 +557,19 @@
 
 
 
-;; (test-lookup-offset)
-;; (displayln "")
-;; (test-mem-update)
-;; (displayln "")
-;; (test-interp-fmt-safe)
-;; (displayln "")
-;; (test-interp-fmt-unsafe)
-;; (displayln "")
-;; (find-exploit)
-;; (displayln "")
-;; (find-add-constant)
-;; (displayln "")
-;; (find-add-argument-max)
-;; (displayln "")
+(test-lookup-offset)
+(displayln "")
+(test-mem-update)
+(displayln "")
+(test-interp-fmt-safe)
+(displayln "")
+(test-interp-fmt-unsafe)
+(displayln "")
+(find-exploit)
+(displayln "")
+(find-add-constant)
+(displayln "")
+(find-add-argument-max)
+(displayln "")
 (find-add-argument)
 
-
-(define (test-assertions)
-  (current-bitwidth 5)
-
-  (define-symbolic x-val integer?)
-  (define args (printf-lang arglist 3))
-  #;(displayln (bonsai-null? args))
-  (define b (match args
-      [(printf-lang (cons x:integer arglist)) 
-       (equal? x-val (bonsai->number x))]
-      [_ #f]
-      ))
-  (printf "b: ~a~n" b)
-  (assert b)
-
-  (define sol (synthesize
-   #:forall (list x-val)
-   #:guarantee #t
-   ))
-  (if (unsat? sol)
-      (printf "sol is unsat~n")
-      (begin
-        (printf "sol is sat")
-        (printf "args: ~a~n" (concretize args sol))
-        ))
-
-  )
-#;(test-assertions)
