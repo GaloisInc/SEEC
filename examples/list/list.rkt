@@ -642,7 +642,7 @@
        ; What we would want here is something like bounded for bonsai, i.e. a global bound on recursive calls
        (get-value-ll-inner 10 (bonsai->number k) hd hp))]))
 
-; OSTODO: Equality between list key-store and linked-list key-store
+; OSTODO: Equality between list association store and linked-list association store
 
 
 ; Tests for linked-list association stores
@@ -966,3 +966,121 @@
       (displayln (opt-equals? v+ v+-ll))
      ))))
 #;(ss4)
+
+
+(define (alist-in al i)
+  (match al
+    [(alist-api empty) #f]
+    [(alist-api (k+:key v+:value al+:alist))
+     (if (or (equal? i k+) (equal? i v+))
+         #t
+         (alist-in al+ i))]))
+
+
+(define (ss5) (begin
+  (displayln "Store-Synth test 5: Remove constants from the test 4")
+  (current-bitwidth 4)
+
+  (define al* (alist-api alist 4))
+
+  (define al-ll* (alist->ll al*))
+
+  (define newfp* (linked-list pointer 1))
+  ; al as an attacked ll
+  (define al-all* (modify-fp-state newfp* al-ll*))
+  ; Restrict to scoped states (i.e. newfp* is null or scoped on heap)
+  (assert (scoped-state? al-all*))
+  (define a-key* (alist-api key 1))
+  (define a-val* (alist-api value 1))
+  (define a-int* (alist-api ((add-elem ,a-key* ,a-val*) empty)))
+  (define ll-int* (alist->ll-interaction a-int*))
+;  (displayln "ll-int...")
+;  (displayln ll-int)
+
+  (define al+* (interpret-interaction-assoc a-int* al*))
+  (define al+-ll* (interpret-interaction-ll ll-int* al-ll*))
+  (define al+-all* (interpret-interaction-ll ll-int* al-all*))
+
+
+  ; symbolic index
+  (define index* (linked-list value 1))
+
+  (define v* (get-value-ll index* al+-all*))
+  (define v (get-value-ll index* al+-ll*))
+
+
+  ; Below are some example of assertion to tweak the model found:
+  ; ensures that the behavior is not destructive (i.e. gas2-ll* is not #f)
+  ;(assert v*)
+  ; ensures that the behavior is new
+  ;  (assert (not v))
+
+  ; In particular, we can find our desired attack by
+  ; requiring key (index) to be known to attacker, and result (value) to be private
+  ;(assert (or (equal? index* a-key*) (equal? index* a-val*)))
+  ; For forall al to be true, we need to replace this by "v* in al"
+  ;  (assert (not (or (equal? v* a-key*) (equal? v* a-val*))))
+  
+  (assert (not (or (alist-in al* a-key*) (alist-in al* a-val*))))
+  (assert (alist-in al* v*))
+  
+  (define r (opt-equals? v v*))
+  (define sol-sst5 (synthesize #:forall al*
+                               #:guarantee (assert (not r))))
+  (if (unsat? sol-sst5)
+      (displayln "No model found")
+    (begin
+      (displayln "Model found.")
+      (define concrete-vars (concretize (list newfp* index* a-key* a-val*) sol-sst5))      
+      (define newfp (first concrete-vars))
+      (define index (second concrete-vars))
+      (define a-key (third concrete-vars))
+      (define a-val (fourth concrete-vars))
+      (define a-int (alist-api ((add-elem ,a-key ,a-val) empty)))
+      (define ll-int (alist->ll-interaction a-int))
+
+
+      ; Generate some list that respects the restrictions on al*
+      (clear-asserts!)
+      (define fresh-al* (alist-api alist 4))
+      (define fresh-al-ll* (alist->ll fresh-al*))
+      (define fresh-al-all* (modify-fp-state newfp fresh-al-ll*))
+      (assert (scoped-state? fresh-al-all*))
+      (define sol-fresh-al (solve (assert (not (or (alist-in fresh-al* a-key) (alist-in fresh-al* a-val))))))
+      (define example-vars (concretize (list fresh-al* fresh-al-ll* fresh-al-all*) sol-fresh-al))
+      (define al (first example-vars))
+      (define al-ll (second example-vars))
+      (define al-all (third example-vars))
+      (define al+ (interpret-interaction-assoc a-int al))
+      (define al+-ll (interpret-interaction-ll ll-int al-ll))
+      (define al+-all (interpret-interaction-ll ll-int al-all))
+      
+      
+      (displayln "Attack k/v")
+      (displayln a-int)
+      (displayln "fp...")
+      (displayln newfp)
+      (displayln "index...")
+      (displayln index)
+
+      (displayln "Source list")
+      (displayln al)
+      (displayln "Source list after interaction")
+      (displayln al+)
+      (define v+ (alist-lookup al+ index))
+      (displayln "Source behavior of (lookup index)")
+      (displayln v+)
+      (displayln "Translated linked-list")
+      (displayln al-ll)
+      (displayln "Translated linked-list after interaction")
+      (displayln al+-ll)
+      (displayln "Attacked linked-list")
+      (displayln al-all)
+      (displayln "Attacked linked-list after interaction")
+      (displayln al+-all)
+      (define v+-ll (get-value-ll index al+-all))
+      (displayln "Target behavior of (lookup index)")
+      (displayln v+-ll)
+      (displayln "Result:")
+      (displayln (opt-equals? v+ v+-ll))))))
+(ss5)
