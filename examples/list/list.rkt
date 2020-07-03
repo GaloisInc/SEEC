@@ -132,7 +132,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define-grammar linked-list
   (value ::= integer)
-  (pointer ::= natural null) ; pointer is distance from begining of heap
+  (pointer ::= natural null) ; pointer is distance from beginning of heap
   (cell ::= (value pointer))
   (heap ::= (cell heap) empty)
   (state ::= (pointer pointer heap)) ; (1) head of the list (2) head of the free-list (3) heap
@@ -714,7 +714,7 @@
 
     
   
-(begin
+#;(begin
   (displayln "Store-Synth test 2: find a changed behavior between list and attacked linked-list")
   (current-bitwidth 4)
 ;  (define newfp* (linked-list null))
@@ -784,10 +784,10 @@
 (define-grammar alist-api
   (value   ::= integer null)
   (key     ::= integer)
-  (vallist ::= (key value vallist) empty)
+  (alist ::= (key value alist) empty)
   (method  ::= (add-elem key value) reset)
   (interaction ::= (method interaction) empty)
-  (operation ::= (lookup key))
+  (operation ::= (lookup key) empty?)
   )
 
 (define (interpret-interaction-assoc ints al)
@@ -814,7 +814,7 @@
 (define (alist-lookup al k)
   (match al
     [(alist-api empty) #f]
-    [(alist-api (k+:key v+:value al+:vallist))
+    [(alist-api (k+:key v+:value al+:alist))
      (if (equal? k k+)
          v+
          (alist-lookup al+ k))]))
@@ -824,13 +824,16 @@
 (define (alist->ll-operation op s)
   (match op
     [(alist-api (lookup k:key))
-     (get-value-ll k s)]))
+     (get-value-ll k s)]
+    [(alist-api empty?)
+     (equal? (state-head s) (linked-list null))]
+    ))
 
 
 (define (alist->list al)
   (match al
     [(alist-api empty) (list-api empty)]
-    [(alist-api (k:key v:value al+:vallist))
+    [(alist-api (k:key v:value al+:alist))
      (list-api (,k (,v ,(alist->list al+))))]))
 
 (define (alist->ll al) (list-to-ll (alist->list al)))
@@ -890,36 +893,34 @@
   (displayln "Store-Synth test 4: find a changed behavior between list and attacked linked-list")
   (current-bitwidth 4)
 
-  (define al1 (alist-api (0 1 (2 3 (4 5 empty)))))
-  (displayln "al1...")
-  (displayln al1)
+  (define al (alist-api (0 1 (2 3 (4 5 empty)))))
+  (displayln "al...")
+  (displayln al)
 
-  (define al1-ll (alist->ll al1))
-  (displayln "al1-ll...")
-  (displayln al1-ll)
+  (define al-ll (alist->ll al))
+  (displayln "al-ll...")
+  (displayln al-ll)
 
   (define newfp* (linked-list pointer 1))
-  (define al1-ll* (modify-fp-state newfp* al1-ll))
+  (define al-ll* (modify-fp-state newfp* al-ll))
   ; Restrict to scoped states (i.e. newfp* is null or scoped on heap)
-  (assert (scoped-state? al1-ll*))
+  (assert (scoped-state? al-ll*))
 
   (define a-int (alist-api ((add-elem 6 7) empty)))
   (define ll-int (alist->ll-interaction a-int))
   (displayln "ll-int...")
   (displayln ll-int)
 
-  (define al2 (interpret-interaction-assoc a-int al1))
-  (define al2-ll (interpret-interaction-ll ll-int al1-ll))
-  (define al2-ll* (interpret-interaction-ll ll-int al1-ll*))
+  (define al+ (interpret-interaction-assoc a-int al))
+  (define al+-ll (interpret-interaction-ll ll-int al-ll))
+  (define al+-ll* (interpret-interaction-ll ll-int al-ll*))
 
 
   ; symbolic index
   (define index* (linked-list value 1))
 
-  #;(define gas2-ll* (get-value-ll index* as2-ll*))
-  #;(define gs2* (get-value-ll index* s2-ll))
-  (define v* (get-value-ll index* al2-ll*))
-  (define v (get-value-ll index* al2-ll))
+  (define v* (get-value-ll index* al+-ll*))
+  (define v (get-value-ll index* al+-ll))
 
 
   ; Below are some example of assertion to tweak the model found:
@@ -932,10 +933,9 @@
   ; requiring key (index) to be known to attacker, and result (value) to be private
   (assert (or (equal? index* (bonsai-integer 7)) (equal? index* (bonsai-integer 6))))
   (assert (not (or (equal? v* (bonsai-integer 7)) (equal? v* (bonsai-integer 6)))))
-;  (assert (not (equal? (bonsai-integer 7) gas2-ll*)))
   (define r (opt-equals? v v*))
-  (define sol-sst2
-    (verify (assert r)))
+  (define sol-sst2 (synthesize #:forall '()
+                               #:guarantee (assert (not r))))
   (if (unsat? sol-sst2)
       (displayln "No model found")
     (begin
@@ -949,22 +949,20 @@
 ;      (define index (concretize index* sol-sst2))
       (displayln index)
       (displayln "Source linked-list after interaction")
-      (displayln al2)
-      (define v2 (alist-lookup al2 index))
-      #;(define gis2 (get-value-ll index al2))
+      (displayln al+)
+      (define v+ (alist-lookup al+ index))
+      #;(define gis2 (get-value-ll index al+))
       (displayln "Source behavior of (lookup index)")
-      (displayln v2)
+      (displayln v+)
 
-;      (define as1-ll s1-ll)
-      (define al1-ll-modified (modify-fp-state newfp al1-ll))
-;      (displayln al1-ll)
-      (define al2-ll-modified (interpret-interaction-ll ll-int al1-ll-modified))
+      (define al-ll-modified (modify-fp-state newfp al-ll))
+      (define al+-ll-modified (interpret-interaction-ll ll-int al-ll-modified))
       (displayln "Attacked linked-list after interaction")
-      (displayln al2-ll-modified)
-      (define v2-ll (get-value-ll index al2-ll-modified))
+      (displayln al+-ll-modified)
+      (define v+-ll (get-value-ll index al+-ll-modified))
       (displayln "Target behavior of (lookup index)")
-      (displayln v2-ll)
+      (displayln v+-ll)
       (displayln "Result:")
-      (displayln (opt-equals? v2 v2-ll))
+      (displayln (opt-equals? v+ v+-ll))
      ))))
-(ss4)
+#;(ss4)
