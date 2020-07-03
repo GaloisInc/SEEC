@@ -1,18 +1,21 @@
 #lang rosette/safe
 
 (provide define-language
+         refine-language
          define-compiler
          (struct-out language)
          (struct-out compiler)
-         find-changed-behavior
-         find-changed-component
-         find-weird-computation
-         find-weird-component
+         make-query-changed-behavior
+         make-query-changed-component
+         make-query-weird-computation
+         make-query-weird-component
          (struct-out solution)
          concretize-witness
+         ;enumerate-witness
+         run-query
          display-changed-behavior
          display-weird-component
-         find-gadget
+         make-query-gadget
          display-gadget
          display-list
          seec-add
@@ -24,6 +27,13 @@
          )
 
 (require (for-syntax syntax/parse)
+         (prefix-in unsafe:
+                    (combine-in
+                     (only-in racket
+                              for/list
+                              in-range
+                              in-producer)
+                    racket/generator))
          "bonsai2.rkt")
 
 #|
@@ -37,13 +47,25 @@
     it contains trusted relations over behaviors and contexts and
     and a compilation function
 
+   1) Create language structures
+      > define-language ...
+      > define-compiler ...
+   2) Create query
+      > make-query-X ...
+   3) Run the query n times
+      > run-query #:count n
+   4) Display the concrete witnesses returned by the query
+      > display-X
 
 
-TODO: give more examples with nondet (e.g. buggy set)
-TODO: pack the vars in solution in a structure
-TODO: create more macros:
-   e.g. set e.g. 1 where verify is used instead of synthesize
-   e.g. n-to-z style where C2 is computed from C1
+ TODO: change bound as separate call or part of query, replace the #:size argument in language
+ TODO: change rel to be
+  Eq (use the same symbolic var)
+  Fn 
+ TODO: make solution into a generator -- TODO2, can use solve+ instead of verify for some queries?
+
+
+
 
 |#
 
@@ -104,23 +126,47 @@ TODO: create more macros:
                 [predctx (define-predsyn grammar ctxt.gen ctxt.pred ctxt.bound)])
            (language predexp predctx link eval)))]))
 
-; TODO:
-; Augment exp or context's where-clause
-#|
+(define-syntax (define-language-class stx)
+  (syntax-parse stx
+    [(_ name
+        #:grammar    grammar
+        #:expression expr:id
+        #:context    ctxt:id
+        #:link       link
+        #:evaluate   eval)
+     #'(define (name expr-tuple ctx-tuple)         
+         (let* ([predexp (define-predsyn grammar expr (first expr-tuple) (second expr-tuple))]
+                [predctx (define-predsyn grammar ctxt (first ctx-tuple) (second expr-tuple))])
+           (language predexp predctx link eval)))]))
 
+
+; Refine the "where" clause on expression or context
 (define-syntax (refine-language stx)
   (syntax-parse stx
-    [(_ name (~optional (~seq #:context-where cf)
-                        (~seq #:expression-where ef)
-                        #:defaults ([cf #'#f]
-                                    [ef #'#f])))
-     (let* ([exp (if ef () ()]
-            [ctx (if cf () ()])
-       #'(struct-copy language name
-                      [exp]
-                      [ctx]))
-     ])]))
-|#
+    [(_ name (~seq (~optional
+                    (~seq #:expression-where ef)
+                    #:defaults ([ef #'#f]))
+                   (~optional
+                    (~seq #:context-where cf)
+                    #:defaults ([cf #'#f]))
+                   ))     
+     #`(let* ([oldexpression (language-expression name)]
+              [olde-generator (predsyn-generator oldexpression)]
+              [olde-predicate (predsyn-predicate oldexpression)]
+              [exp (if ef
+                       (predsyn olde-generator (lambda (x) (and (olde-predicate x)
+                                                                 (ef x))))
+                       oldexpression)]
+              [oldcontext (language-context name)]
+              [oldc-generator (predsyn-generator oldcontext)]
+              [oldc-predicate (predsyn-predicate oldcontext)]
+              [ctx (if cf
+                       (predsyn oldc-generator (lambda (x) (and (oldc-predicate x)
+                                                               (cf x))))
+                       oldcontext)])              
+         (language exp ctx (language-link name) (language-evaluate name)))]))
+
+
 
 ; A compiler between languages consists of:
 ; source: a lang structure standing in as source
@@ -189,53 +235,84 @@ TODO: create more macros:
   [(define write-proc weird-component-solution-write)])
 
 
-; find-changed-behavior: {r:scomp} r.source.expression -> solution + failure
+
+; make-query-changed-behavior: {r:scomp} r.source.expression -> generator witness
 ; Solve the following synthesis problem:
 ; (\lambda v1).
 ; Exists c1:s.t.context c2:r.t.context,
 ;    r.ctx-relation(c1, c2)
 ;       not (r.behavior-relation(r.s.apply(c1, v1), r.t.apply(c2, r.compile(v1))))
-(define-syntax (find-changed-behavior stx)
-  (syntax-parse stx
-    [(_ comp v1)
-     #`(let* ([source (compiler-source comp)]
-              [target (compiler-target comp)]
-              [c1 (make-symbolic-var (language-context source))]
-              [c2 (make-symbolic-var (language-context target))]
-              [source-evaluate (language-evaluate source)]
-              [source-link (language-link source)]
-              [p1 (source-link c1 v1)]
-              [b1 (source-evaluate p1)]
-              [target-evaluate (language-evaluate target)]
-              [target-link (language-link target)]
-              [compile (compiler-compile comp)]
-              [v2 (compile v1)]
-              [p2 (target-link c2 v2)]
-              [b2 (target-evaluate p2)]
-              [context-relation (compiler-context-relation comp)]
-              [ccomp (if context-relation
-                         (context-relation c1 c2)
-                         #t)]
-              [behavior-relation (compiler-behavior-relation comp)]
-              [equality (with-asserts-only (assert (behavior-relation b1 b2)))]
-              [sol (verify
-                    #:assume (assert ccomp)
-                    #:guarantee (assert (apply && equality)))])
-         (if (unsat? sol)
-             (failure "Failed to synthesize a changed behavior")
-             (changed-behavior-solution (list (language-witness v1 c1 p1 b1) (language-witness v2 c2 p2 b2)) sol)))]))
+; Returns a generator of concrete witness, each of which will have a different #:found-core (source context is default)
 
-; find-emergent-computation :
-;     {r:comp} r.source.expression -> solution + failure
+(define-syntax (make-query-changed-behavior stx)
+  (syntax-parse stx
+    [(_ comp v1 (~optional
+                 (~seq #:found-core found-core)
+                 #:defaults ([found-core #'(lambda (w) (language-witness-context (first w)))]))) ; default projects out c1)
+     #'(let* ([source (compiler-source comp)]
+              [target (compiler-target comp)]
+            [c1 (make-symbolic-var (language-context source))]
+            [c2 (make-symbolic-var (language-context target))]
+            [source-evaluate (language-evaluate source)]
+            [source-link (language-link source)]
+            [p1 (source-link c1 v1)]
+            [b1 (source-evaluate p1)]
+            [target-evaluate (language-evaluate target)]
+            [target-link (language-link target)]
+            [compile (compiler-compile comp)]
+            [v2 (compile v1)]
+            [p2 (target-link c2 v2)]
+            [b2 (target-evaluate p2)]
+            [context-relation (compiler-context-relation comp)]
+            [ccomp (if context-relation
+                       (context-relation c1 c2)
+                       #t)]
+            [behavior-relation (compiler-behavior-relation comp)]
+            [equality (with-asserts-only (assert (behavior-relation b1 b2)))]
+            [language-witnesses (list (language-witness v1 c1 p1 b1) (language-witness v2 c2 p2 b2))]
+            [sym-core (found-core language-witnesses)])
+         (unsafe:generator
+          ()
+          (let loop ([found (list)])
+            (let* (
+                   [tmpsol (verify
+                                     #:assume (assert (and ccomp
+                                                           (not (ormap (lambda (t) (equal? sym-core t)) found))))
+                                     #:guarantee (assert (apply && equality)))])
+                       (if (unsat? tmpsol)
+                           #f
+                           (let* ([symbolic-witness (changed-behavior-solution language-witnesses tmpsol)]
+                                 
+                                  [witness (concretize-witness symbolic-witness)]
+                                  [core (found-core witness)]) 
+                             (unsafe:yield witness)
+                             (loop (cons core found))))))))]))
+
+
+(define-syntax (run-query stx)
+  (syntax-parse stx
+    [(_ (~optional (~seq #:count max:expr)
+                   #:defaults ([max #'#f]))
+         gen)
+     #'(unsafe:for/list ([i (unsafe:in-range max)]
+                           [t (unsafe:in-producer gen #f)])
+                          t)]))
+
+
+; make-query-emergent-computation :
+;     {r:comp} r.source.expression -> generator witness
 ; Solve the following synthesis problem:
 ; (\lambda v1).
 ; Exists c2:r.t.context,
 ;   Forall c1:r.s.context,
 ;     r.context-relation(c1, c2) ->
 ;       not (r.behavior-relation(r.s.apply(c1, v1), r.t.apply(c2, r.compile(v1))))
-(define-syntax (find-weird-computation stx)
+; Returns a generator of concrete witness, each of which will have a different #:found-core (target context is default)
+(define-syntax (make-query-weird-computation stx)
   (syntax-parse stx
-    [(_ comp v1)
+    [(_ comp v1 (~optional
+                    (~seq #:found-core found-core)
+                    #:defaults ([found-core #'(lambda (w) (language-witness-context (second w)))]))) ; default projects out c2
      #`(let* ([source (compiler-source comp)]
               [target (compiler-target comp)]
               [c1 (make-symbolic-var (language-context source))]
@@ -255,15 +332,26 @@ TODO: create more macros:
               [p2 (target-link c2 v2)])
          (let*-values ([(b1 nondet1) (capture-nondeterminism (source-evaluate p1))] ; capture nondet
                        [(b2 nondet2) (capture-nondeterminism (target-evaluate p2))])
-           (let*
-               ([equality (with-asserts-only (assert (behavior-relation b1 b2)))]
-                [sol (synthesize
-                      #:forall (cons c1 (cons nondet1 nondet2)) ; quantify over nondet
-                      #:assume (assert ccomp) 
-                      #:guarantee (assert (! (apply && equality))))])
-             (if (unsat? sol)
-                 (failure "Failed to synthesize a weird computation")
-                 (weird-component-solution (list (language-witness v1 c1 p1 b1) (language-witness v2 c2 p2 b2)) sol)))))]))
+           (let* ([equality (with-asserts-only (assert (behavior-relation b1 b2)))]
+                  [language-witnesses (list (language-witness v1 c1 p1 b1) (language-witness v2 c2 p2 b2))]
+                  [sym-core (found-core language-witnesses)])
+             (unsafe:generator
+              ()
+              (let loop ([found (list)])
+                (let ([tmpsol (synthesize
+                               #:forall (cons c1 (cons nondet1 nondet2)) ; quantify over nondet
+                               #:assume (assert (and ccomp
+                                                     (not (ormap (lambda (t) (equal? sym-core t)) found))))
+                               #:guarantee (assert (! (apply && equality))))])
+                  (if (unsat? tmpsol)
+                      #f
+                      (let* ([symbolic-witness (weird-component-solution language-witnesses tmpsol)]
+                             
+                             [witness (concretize-witness symbolic-witness)]
+                             ; Projecting c2 out of the concrete witness
+                             [core (found-core witness)]) 
+                        (unsafe:yield witness)
+                        (loop (cons core found))))))))))]))
 
 
 ; concretize all vars included in the solution, return a list of language-witness with concrete vars
@@ -276,21 +364,11 @@ TODO: create more macros:
       (pack-language-witness concretized)))
 
 
-#;(define (display-solution solution)
-  (if solution
-      (let ([concretized (concretize-witness solution)])
-        (printf
-          "Expression ~a~n    has emergent behavior ~a~n    witnessed by target-level context ~a~n"
-          (solution-program concretized)
-          (solution-behavior concretized)
-          (solution-context concretized)))
-      (displayln "Failed to synthesis emergent computation")))
 
 
 ; show (c1, v1) ~> b1 and (c2, v2) ~> b2
-(define (display-changed-behavior solution out)
-  (let* ([vars (concretize-witness solution)]
-         [source-vars (first vars)]
+(define (display-changed-behavior vars out)
+  (let* ([source-vars (first vars)]
          [target-vars (second vars)])
     (begin 
       (out (format
@@ -305,82 +383,52 @@ TODO: create more macros:
             (language-witness-context target-vars))))))
 
 
-; find-changed-component: comp -> solution + failure
+
+; make-query-changed-component: comp -> solution + failure
 ; (\lambda r).
 ;   Exists v:r.s.expression
-;     find-changed-behavior r v
-(define-syntax (find-changed-component stx)
+;     make-query-changed-behavior r v
+(define-syntax (make-query-changed-component stx)
   (syntax-parse stx
     [(_ comp)
      #`(let* ([v (make-symbolic-var
                   (language-expression (compiler-source comp)))])
-         (find-changed-behavior comp v))]))
+         (make-query-changed-behavior comp v #:found-core (lambda (w) (language-witness-expression (first w)))))]))
 
 
-; find-weird-component
-; find-weird-component: comp -> solution + failure
+; make-query-weird-component
+; make-query-weird-component: comp -> solution + failure
 ; (\lambda r).
 ;   Exists v:r.s.expression
-;     find-exploit r v
-(define-syntax (find-weird-component stx)
+;     make-query-exploit r v
+(define-syntax (make-query-weird-component stx)
   (syntax-parse stx
     [(_ comp)
      #`(let* ([v (make-symbolic-var
                   (language-expression (compiler-source comp)))])
-         (find-weird-computation comp v))]))
+         (make-query-weird-computation comp v #:found-core (lambda (w) (language-witness-expression (first w)))))]))
 
 
 ; show v1, c2 and b2
-(define (display-weird-component sol out)
+(define (display-weird-component vars out)
   (cond
-    [(failure? sol) (out sol)]
-    [(solution? sol)
-     (let* ([vars (concretize-witness sol)]
-            [source-vars (first vars)]
+    [(equal? vars #f) (out (format "No weird components found~n"))]
+    [else
+     (let* ([source-vars (first vars)]
             [target-vars (second vars)])
        (out (format
              "Expression ~a~n has emergent behavior ~a~n witnessed by target-level context ~a~n"
              (language-witness-expression source-vars)
              (language-witness-behavior target-vars)
-             (language-witness-context target-vars))))]
-    ))
+             (language-witness-context target-vars))))
+       ]))
 
 
 
-
-#|
- Notes for Printf's uses of the framework:
-
-LANG
-Expression:
-fmt (format strings)
-Context:
-
-Behavior:
-(res, config)
-Program:
-(f:fmt, args:vlist, conf:config)
-Link:
-
-Evaluate:
-interp-fmt-unsafe
-
-OTHER:
-Valid-program:
-
-conf is of the form (,(printf-lang integer 1) mnil)
-AND
-fmt-consistent-with-vlist? f args
-
-Specification:
- get f and conf and arg out of program
-  is-constant-add f 1 args conf
-
-|#
 
 ; Source: format-str, (arg-list x acc), cons, run
 ; Goal: find a format-str s.t. given a ctx (arg-list, acc), increment the acc. (input is Source, v-ctx:Context -> bool (in addition to the one in source), spec:Context -> behavior -> bool
-(define-syntax (find-gadget stx)
+(define-syntax (make-query-gadget stx)
   (syntax-parse stx
     [(_ lang valid-program specification)
      #`(let* ([c1 (make-symbolic-var (language-context lang))]
@@ -390,14 +438,25 @@ Specification:
               ; Creating a second context to return as example
               [c2 (make-symbolic-var (language-context lang))]
               [p2 ((language-link lang) c2 v1)]
-              [b2 ((language-evaluate lang) p2)]
-              [sol (synthesize
-                    #:forall c1
-                    #:assume (assert (valid-program p1))
-                    #:guarantee (assert (specification p1 b1)))])
-         (if (unsat? sol)
-             (failure "Failed to synthesize a gadget")
-             (solution (list (language-witness v1 c2 p2 b2)) sol)))]))
+              [b2 ((language-evaluate lang) p2)])
+         (unsafe:generator
+          ()
+          (let loop ([found (list)])
+            (let ([tmpsol (synthesize
+                           #:forall c1
+                           #:assume (assert (and (valid-program p1)
+                                                 (not (ormap (lambda (t) (equal? v1 t)) found))))
+                           #:guarantee (assert (specification p1 b1)))])
+              (if (unsat? tmpsol)
+                  #f
+                  (let* ([symbolic-witness (solution (list (language-witness v1 c2 p2 b2)) tmpsol)]
+                         
+                         [witness (concretize-witness symbolic-witness)]
+                         ; Projecting v1 out of the concrete witness
+                         [core (language-witness-expression (first witness))])
+                    (unsafe:yield witness)
+                    (loop (cons core found))))))))]))
+
 
 (define (display-gadget sol out)
   (cond
