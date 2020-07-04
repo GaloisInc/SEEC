@@ -412,30 +412,30 @@
 ; Linked-List Synthesis Test
 
 ; 1 - Find a n s.t. nth n (1 -> 2 -> 3) = Some 3
-(define sll1 (begin
-  (displayln "LL-synth test 1: symbolic nth index")
-  (define-symbolic* n* integer?)
-  (define sol
-    (solve (assert (opt-eq-ll? (nth-ll n* abc-ll) 3))))
-  (if (unsat? sol)
-      (displayln "No model found")
-    (begin
-      (displayln "Model found.")
-      (displayln "n...")
-      (define n (concretize n* sol))
-      (displayln n)
-      (displayln "nth n abc-ll...")
+(define (sll1) (begin
+     (displayln "LL-synth test 1: symbolic nth index")          
+     (define n* (linked-list value 1))
+     (define sol
+       (solve (assert (opt-equals? (nth-ll n* abc-ll) 3))))
+     (if (unsat? sol)
+         (displayln "No model found")
+         (begin
+           (displayln "Model found.")
+           (displayln "n...")
+           (define n (concretize n* sol))
+           (displayln n)
+           (displayln "nth n abc-ll...")
       (displayln (nth-ll n abc-ll))))))
 #;(sll1)
 
 ; 2 - Find a ll s.t. nth 0 ll = Some 3
-(define sll2 (begin
+(define (sll2) (begin
     (displayln "LL-synth test 2: symbolic linked-list")
     (define ll* (linked-list state 5))
     ;; Restrict to states where all pointers are scoped
     ;(assert (scoped-state? ll*)) 
     (define sol2
-      (solve (assert (opt-eq-ll? (nth-ll 0 ll*) 3))))
+      (solve (assert (opt-equals? (nth-ll 0 ll*) 3))))
     (if (unsat? sol2)
         (displayln "No model found")
         (begin
@@ -449,12 +449,12 @@
 
 
 ; 3 Find an interaction i and a n s.t. nth n (i abc-ll) = Some 4
-(define sll3 (begin
+(define (sll3) (begin
   (displayln "LL-synth test 3: symbolic interaction")
   (define i* (list-api interaction 4))
   (define abc-ll-i* (interpret-interaction-ll i* abc-ll))
   (define sol3
-    (solve (assert (opt-eq-ll? (nth-ll 1 abc-ll-i*) 4))))
+    (solve (assert (opt-equals? (nth-ll 1 abc-ll-i*) 4))))
   (if (unsat? sol3)
       (displayln "No model found")
       (begin
@@ -469,7 +469,7 @@
 
 
 ; 4 Shows that list-to-ll is correct, i.e. no changed behavior between l and (list-to-ll l)
-(define sll4 (begin
+(define (sll4) (begin
   (displayln "LL-synth test 4: Verifying l-to-ll")
   (define l*-t4 (list-api vallist 4))
   (define ll*-t4 (list-to-ll l*-t4))
@@ -485,7 +485,7 @@
 #;(sll4)
 
 ; 5 Shows that interactions preserve the correspondence between lists and translated linked-lists
-(define sll5 (begin
+(define (sll5) (begin
   (displayln "LL-synth test 5: verifying interactions post list-to-ll")
   (define l*-t5 (list-api vallist 5))
   (define ll*-t5 (list-to-ll l*-t5))
@@ -587,7 +587,7 @@
   (linked-list (,(state-head s) ,fp ,(state-heap s))))
 
 
-(define ss0 (begin
+(define (ss0) (begin
   (displayln "Store-Styn test 0 : find a key that returns 1")
   (define index* (linked-list value 1))
   (define gv (lookup index* s1))
@@ -808,7 +808,7 @@
 #;(ss2)
 
 (define (ss3) (begin
-  (displayln "Store-Synth test 3: Synthesize an attack which is valid on any association list")
+  (displayln "Store-Synth test 3: Synthesize an attack on linked-list valid on any association list")
   (current-bitwidth 4)
 
   (define al* (alist-api alist 4))
@@ -823,7 +823,9 @@
 
   (define a-key* (alist-api key 1))
   (define a-val* (alist-api value 1))
-  (assert (not (or (alist-in al* a-key*) (alist-in al* a-val*))))
+  (assert (equal? (lookup-ll a-key* al-ll*) #f))
+  (assert (equal? (lookup-ll a-val* al-ll*) #f))
+
   (define a-int* (alist-api ((add-elem ,a-key* ,a-val*) empty)))
   
   (define ll-int* (alist->ll-interaction a-int*))
@@ -840,10 +842,10 @@
 
   ; We can find our desired attack by requiring:
   ; 1) the key (index) is known to attacker.
-  (assert (alist-ints-in a-int* index*))
+  (assert (or (equal? a-key* index*)
+              (equal? a-val* index*)))
   ; 2) the result (value) is not known to the attacker.
-  (assert (not (alist-ints-in a-int* v*)))
-  ; (assert (alist-in al* v*))
+  (assert (alist-in al* v*))
   
   (define r (opt-equals? v v*))
 
