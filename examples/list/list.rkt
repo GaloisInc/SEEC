@@ -1,6 +1,5 @@
 #lang seec
 
-; OSTODO: there's a bug (see test 5) if method uses cons and nil. In particular, it matches a nil bonsai-list as method's nil
 (require (only-in racket/base
                   raise-argument-error
                   raise-arguments-error))
@@ -309,29 +308,6 @@
      (interpret-interaction-ll intss (cons-state n s))]
     ))
 
-; Debug version of interpret-interaction-ll
-#;(define (debug-interpret-interaction-ll ints s)
-  (displayln "In IILL with:")
-  (displayln ints)
-  (displayln s)             
-  (match ints
-    [(linked-list empty)
-     (begin
-       (displayln "empty")
-       s)]
-    [(linked-list (m:method intss:interaction))
-     (match m
-       [(linked-list mnil)
-        (begin
-          (displayln "method:nil")
-          (debug-interpret-interaction-ll intss (nil-state s)))]
-       [(linked-list (mcons n:value))
-        (begin
-          (display "method: cons ")
-          (displayln n)
-          (debug-interpret-interaction-ll intss (cons-state n s)))])]))
-
-
 
 (define-language ll-lang
   #:grammar linked-list
@@ -634,8 +610,7 @@
 ; Tests for linked-list association stores
 
 (define s1-ll (list-to-ll s1))
-
-;(define s2-ll (interpret-interaction-ll (store-value (bonsai-integer 4) (bonsai-integer 10)) s1-ll))
+(define s2-ll (interpret-interaction-ll (store-value (bonsai-integer 4) (bonsai-integer 10)) s1-ll))
 #;(begin
     (displayln s1-ll)
     (displayln s2-ll)
@@ -670,97 +645,6 @@
         (displayln "index...")
         (define index (concretize index* sol-sst0))
         (displayln index))))
-
-
-#;(begin
-  (displayln "Store-Synth test 1: find a fp with behavior 7 -> 0")
-  (define newfp* (linked-list pointer 1))
-  (define as1-ll* (modify-fp-state newfp* s1-ll))
-  ; Restrict to scoped states (i.e. newfp* is null or scoped on heap)
-  (assert (scoped-state? as1-ll*))
-  (define a-int (store-value (bonsai-integer 6) (bonsai-integer 7)))
-  (define as2-ll* (interpret-interaction-ll a-int as1-ll*))
-  (define sol-sst1
-    (solve (assert (opt-equals? (lookup-ll (bonsai-integer 7) as2-ll*) (bonsai-integer 0)))))
-  (if (unsat? sol-sst1)
-      (displayln "No model found")
-    (begin
-      (displayln "Model found.")
-      (displayln "fp...")
-      (define newfp (concretize newfp* sol-sst1))
-      (displayln newfp)
-      (define as2-ll (interpret-interaction-ll a-int (modify-fp-state newfp s1-ll)))
-      (displayln "as2-ll...")
-      (displayln as2-ll)
-      (displayln "get 7 as2-ll...")
-      (displayln (lookup-ll (bonsai-integer 7) as2-ll))
-     )))
-
-
-
-    
-  
-#;(begin
-  (displayln "Store-Synth test 2: find a changed behavior between list and attacked linked-list")
-  (current-bitwidth 4)
-;  (define newfp* (linked-list null))
-  (define newfp* (linked-list pointer 1))
-;  (define as1-ll* s1-ll)
-  (define as1-ll* (modify-fp-state newfp* s1-ll))
-  ; Restrict to scoped states (i.e. newfp* is null or scoped on heap)
-  (assert (scoped-state? as1-ll*))
-  (define a-int (store-value (bonsai-integer 6) (bonsai-integer 7)))  
-  (define s2 (interpret-interaction a-int s1))
-  (define s2-ll (interpret-interaction-ll a-int s1-ll))
-  (define as2-ll* (interpret-interaction-ll a-int as1-ll*))
-  (define index* (linked-list value 1))
-  (define gas2-ll* (lookup-ll index* as2-ll*))
-  (define gs2* (lookup-ll index* s2-ll))
-
-  ; Below are some example of assertion to tweak the model found:
-  ; ensures that the behavior is not destructive (i.e. gas2-ll* is not #f)
-  ;(assert gas2-ll*)
-  ; ensures that the behavior is new
-  ;  (assert (not gs2*))
-  
-  ; In particular, we can find our desired attack by
-  ; requiring key (index) to be known to attacker, and result (value) to be private
-  (assert (or (equal? index* (bonsai-integer 7)) (equal? index* (bonsai-integer 6))))
-  (assert (not (or (equal? gas2-ll* (bonsai-integer 7)) (equal? gas2-ll* (bonsai-integer 6)))))
-;  (assert (not (equal? (bonsai-integer 7) gas2-ll*)))
-  (define r (opt-equals? gs2* gas2-ll*))
-  (define sol-sst2
-    (verify (assert r)))
-  (if (unsat? sol-sst2)
-      (displayln "No model found")
-    (begin
-      (displayln "Model found.")
-      (displayln "fp...")
-      (define newfp-index (concretize (cons newfp* index*) sol-sst2))
-      (define newfp (car newfp-index))
-      (define index (cdr newfp-index))
-      (displayln newfp)
-      (displayln "index...")
-;      (define index (concretize index* sol-sst2))
-      (displayln index)
-      (displayln "Source linked-list")
-      (displayln s2-ll)
-      (define gis2 (lookup-ll index s2-ll))
-      (displayln "Source behavior")
-      (displayln gis2)
-
-;      (define as1-ll s1-ll)
-      (define as1-ll (modify-fp-state newfp s1-ll))
-;      (displayln as1-ll)
-      (define as2-ll (interpret-interaction-ll a-int as1-ll))
-      (displayln "Attacked linked-list")
-      (displayln as2-ll)
-      (define gias2ll (lookup-ll index as2-ll))
-      (displayln "Target behavior")
-      (displayln gias2ll)
-      (displayln "Result:")
-      (displayln (opt-equals? gis2 gias2ll))
-     )))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -824,9 +708,27 @@
 
 (define (alist->ll al) (list-to-ll (alist->list al)))
 
+; True if i is a key or a value in alist al
+(define (alist-in al i)
+  (match al
+    [(alist-api empty) #f]
+    [(alist-api (k+:key v+:value al+:alist))
+     (if (or (equal? i k+) (equal? i v+))
+         #t
+         (alist-in al+ i))]))
+
+; True if i is a key or a value in interaction ints
+(define (alist-ints-in ints i)
+  (match ints
+    [(alist-api empty)
+     #f]
+    [(alist-api ((add-elem k+:key v+:value) ints+:interaction))
+     (if (or (equal? i k+) (equal? i v+))
+         #t
+         (alist-ints-in ints+ i))]))
 
 
-(define (ss3) (begin
+(define (ss1) (begin
 
   (define al1 (alist-api (0 1 (2 3 (4 5 empty)))))
   (displayln "al1...")
@@ -836,7 +738,7 @@
   (displayln "al1-ll...")
   (displayln al1-ll)
 
-  (displayln "Store-Synth test 3: find a fp with behavior 7 -> 0 from the al grammar")
+  (displayln "Store-Synth test 1: find a fp with behavior 7 -> 0 from the al grammar")
   (define newfp* (linked-list pointer 1))
   #;(define as1-ll (modify-fp-state newfp* s1-ll))
   (define al1-ll* (match al1-ll
@@ -871,12 +773,12 @@
       (displayln "get 7 al2-ll...")
       (displayln (lookup-ll (bonsai-integer 7) al2-ll))
      ))))
-#;(ss3)
+#;(ss1)
 
 
 
-(define (ss4) (begin
-  (displayln "Store-Synth test 4: find a changed behavior between list and attacked linked-list")
+(define (ss2) (begin
+  (displayln "Store-Synth test 2: find a changed behavior between list and attacked linked-list")
   (current-bitwidth 4)
 
   (define al (alist-api (0 1 (2 3 (4 5 empty)))))
@@ -951,48 +853,28 @@
       (displayln "Result:")
       (displayln (opt-equals? v+ v+-ll))
      ))))
-#;(ss4)
+#;(ss2)
 
 
-; True if i is a key or a value in alist al
-(define (alist-in al i)
-  (match al
-    [(alist-api empty) #f]
-    [(alist-api (k+:key v+:value al+:alist))
-     (if (or (equal? i k+) (equal? i v+))
-         #t
-         (alist-in al+ i))]))
-
-; True if i is a key or a value in interaction al-int
-(define (alist-ints-in ints i)
-  (match ints
-    [(alist-api empty)
-     #f]
-    [(alist-api ((add-elem k+:key v+:value) ints+:interaction))
-     (if (or (equal? i k+) (equal? i v+))
-         #t
-         (alist-ints-in ints+ i))]))
-
-
-
-(define (ss5) (begin
-  (displayln "Store-Synth test 5: Remove constants from the test 4")
+(define (ss3) (begin
+  (displayln "Store-Synth test 3: Synthesize an attack which is valid on any association list")
   (current-bitwidth 4)
 
   (define al* (alist-api alist 4))
 
   (define al-ll* (alist->ll al*))
 
+  
   (define a-fp* (linked-list pointer 1))
   ; al as an attacked ll
   (define al-all* (modify-fp-state a-fp* al-ll*))
   ; Restrict to scoped states (i.e. a-fp* is null or scoped on heap)
   (assert (scoped-state? al-all*))
 
+
   (define a-key* (alist-api key 1))
   (define a-val* (alist-api value 1))
   (assert (not (or (alist-in al* a-key*) (alist-in al* a-val*))))
-  
   (define a-int* (alist-api ((add-elem ,a-key* ,a-val*) empty)))
   
   (define ll-int* (alist->ll-interaction a-int*))
@@ -1011,21 +893,22 @@
 
 
   ; We can find our desired attack by requiring:
-  ; 1) key (index) to be known to attacker...
+  ; 1) the key (index) is known to attacker.
   (assert (alist-ints-in a-int* index*))
-  ; 2) result (value) to be private
-  (assert (alist-in al* v*))
+  ; 2) the result (value) is not known to the attacker.
+  (assert (not (alist-ints-in a-int* v*)))
+;  (assert (alist-in al* v*))
   
   (define r (opt-equals? v v*))
 
-  (define sol-sst5 (synthesize #:forall al*
+  (define sol-sst3 (synthesize #:forall al*
                                #:guarantee (assert (not r))))
-  (if (unsat? sol-sst5)
+  (if (unsat? sol-sst3)
       (displayln "No model found")
     (begin
       (displayln "Model found.")
       (displayln "")
-      (define concrete-vars (concretize (list a-fp* index* a-key* a-val*) sol-sst5))      
+      (define concrete-vars (concretize (list a-fp* index* a-key* a-val*) sol-sst3))      
       (define a-fp (first concrete-vars))
       (define index (second concrete-vars))
       (define a-key (third concrete-vars))
@@ -1080,8 +963,5 @@
       (define v+-ll (lookup-ll index al+-all))
       (displayln "Target behavior of (lookup index)")
       (displayln v+-ll)
-      
-      ;(displayln "Result:")
-      ;(displayln (opt-equals? v+ v+-ll))
       ))))
-(ss5)
+(ss3)
