@@ -63,12 +63,12 @@
     [(list-api (hd:value tl:vallist))
      tl]))
 
-(define (abstract-lookup n l)
+(define (abstract-nth n l)
   (match l
     [(list-api (hd:value tl:vallist))
      (if (equal? n 0)
          hd
-         (abstract-lookup (- n 1) tl))]
+         (abstract-nth (- n 1) tl))]
     [(list-api empty)
      #f]))
     
@@ -112,7 +112,7 @@
 #|
 (displayln (interpret-interaction b1 abc))
 (displayln (interpret-interaction b2 abc))
-(displayln (abstract-lookup 0 abc)) |#
+(displayln (abstract-nth 0 abc)) |#
 
 (define (opt-equals? v1 v2)
   (if v1
@@ -220,7 +220,7 @@
 ; n1:natural, ptr2:pointer, hp:heap
 ; append l2 at the end of l1
 (define (append-ll n1 ptr2 hp)
-  (let ([hd1 (lookup-heap n1 hp)])        
+  (let ([hd1 (nth-heap n1 hp)])        
     (match hd1
       [(linked-list (v:value null))
        (let ([newhd1 (linked-list (,v ,ptr2))])
@@ -266,35 +266,35 @@
 
 
 ; return the nth element in the heap
-(define (lookup-heap n hp)
+(define (nth-heap n hp)
   (match hp
     [(linked-list (hd-c:cell tl-hp:heap))          
      (if (equal? n 0)         
            (linked-list ,hd-c)
-           (lookup-heap (- n 1) tl-hp))]))
+           (nth-heap (- n 1) tl-hp))]))
 
 
 ; lookup the nth element of a list headed at hd in hp
-(define (lookup-ll-inner n hd hp)
+(define (nth-ll-inner n hd hp)
   (if (< n 0)
       #f
-      (let* ([c (lookup-heap hd hp)])
+      (let* ([c (nth-heap hd hp)])
         (if (equal? n 0)
             (linked-list ,(cell-value c))
             (match (cell-pointer c)
               [(linked-list null)
                #f]
               [(linked-list ptr:natural) 
-               (lookup-ll-inner (- n 1) (bonsai->number ptr) hp)])))))
+               (nth-ll-inner (- n 1) (bonsai->number ptr) hp)])))))
 
-(define (lookup-ll n s)
+(define (nth-ll n s)
   (match s    
     [(linked-list (hd:pointer _:pointer hp:heap))
      (match hd
        [(linked-list null)
         #f]
        [(linked-list hd:natural)
-       (lookup-ll-inner n (bonsai->number hd) hp)])]))
+       (nth-ll-inner n (bonsai->number hd) hp)])]))
 
 
 
@@ -386,7 +386,7 @@
     [(list-api (hd:value tl:vallist))
      (match fp 
        [(linked-list n:natural)
-        (let ([hd-ll (lookup-heap (bonsai->number n) hp)])
+        (let ([hd-ll (nth-heap (bonsai->number n) hp)])
           (if (equal? (bonsai->number hd) (bonsai->number (cell-value hd-ll)))
               (list-to-ll-equal?-inner tl (cell-pointer hd-ll) hp)
               #f))]
@@ -445,28 +445,28 @@
     (displayln (list-to-ll-equal? abc abc-ll))
     (displayln (scoped-state? abc-ll))
     (displayln (interpret-interaction-ll b1 abc-ll))
-    (displayln [lookup-ll 1 abc-ll])
+    (displayln [nth-ll 1 abc-ll])
     (displayln (length-heap abc-heap))
-    (displayln (lookup-ll 1 abc-state))
-    ;(displayln (lookup-ll 2 abc-state))
+    (displayln (nth-ll 1 abc-state))
+    ;(displayln (nth-ll 2 abc-state))
     (displayln (state-heap empty-ll))
     ;(displayln (list-to-ll-inner 0 abc))
     ;(define abc-ll2 (linked-list (0 null ,(list-to-ll-inner 0 abc))))
     ;(displayln abc-ll2)
     ;(displayln (state-heap abc-ll2))   
     ;(displayln (length-heap (state-heap abc-ll)))
-    ;(displayln (lookup-ll 1 abc-ll))
+    ;(displayln (nth-ll 1 abc-ll))
     ;(displayln (interpret-interaction-ll b1-ll abc-ll))    
     )
 
 ; Synthesis test
 
-; 1 - Find a n s.t. lookup n (1 -> 2 -> 3) = Some 3
+; 1 - Find a n s.t. nth n (1 -> 2 -> 3) = Some 3
 #;(begin
-  (displayln "LL-synth test 1: symbolic lookup index")
+  (displayln "LL-synth test 1: symbolic nth index")
   (define-symbolic* n* integer?)
   (define sol
-    (solve (assert (opt-eq-ll? (lookup-ll n* abc-ll) 3))))
+    (solve (assert (opt-eq-ll? (nth-ll n* abc-ll) 3))))
   (if (unsat? sol)
       (displayln "No model found")
     (begin
@@ -474,17 +474,17 @@
       (displayln "n...")
       (define n (concretize n* sol))
       (displayln n)
-      (displayln "lookup n abc-ll...")
-      (displayln (lookup-ll n abc-ll)))))
+      (displayln "nth n abc-ll...")
+      (displayln (nth-ll n abc-ll)))))
 
-; 2 - Find a ll s.t. lookup 0 ll = Some 3
+; 2 - Find a ll s.t. nth 0 ll = Some 3
 #;(begin
     (displayln "LL-synth test 2: symbolic linked-list")
     (define ll* (linked-list state 5))
     ;; Restrict to states where all pointers are scoped
     ;(assert (scoped-state? ll*)) 
     (define sol2
-      (solve (assert (opt-eq-ll? (lookup-ll 0 ll*) 3))))
+      (solve (assert (opt-eq-ll? (nth-ll 0 ll*) 3))))
     (if (unsat? sol2)
         (displayln "No model found")
         (begin
@@ -492,17 +492,17 @@
           (displayln "ll...")
           (define ll (concretize ll* sol2))
           (displayln ll)
-          (displayln "lookup n abc-ll...")
-          (displayln (lookup-ll 0 ll)))))
+          (displayln "nth n abc-ll...")
+          (displayln (nth-ll 0 ll)))))
 
 
-; 3 Find an interaction i and a n s.t. lookup n (i abc-ll) = Some 4
+; 3 Find an interaction i and a n s.t. nth n (i abc-ll) = Some 4
 #;(begin
   (displayln "LL-synth test 3: symbolic interaction")
   (define i* (list-api interaction 4))
   (define abc-ll-i* (interpret-interaction-ll i* abc-ll))
   (define sol3
-    (solve (assert (opt-eq-ll? (lookup-ll 1 abc-ll-i*) 4))))
+    (solve (assert (opt-eq-ll? (nth-ll 1 abc-ll-i*) 4))))
   (if (unsat? sol3)
       (displayln "No model found")
       (begin
@@ -511,8 +511,8 @@
         (define i (concretize i* sol3))
         (displayln i)
         (define abc-ll-i (interpret-interaction-ll i abc-ll))
-        (displayln "lookup 1 (apply i abc-ll)...")
-        (displayln [lookup-ll 1 abc-ll-i]))))
+        (displayln "nth 1 (apply i abc-ll)...")
+        (displayln [nth-ll 1 abc-ll-i]))))
 
 
 ; 4 Shows that list-to-ll is correct, i.e. no changed behavior between l and (list-to-ll l)
@@ -587,7 +587,7 @@
   (list-api ((mcons ,v) ((mcons ,k) empty))))
 
 
-(define (get-value k l)
+(define (lookup k l)
   (match l
     [(list-api empty)
      #f]
@@ -596,53 +596,39 @@
        [(list-api (vc:value tll:vallist))
         (if (equal? (bonsai->number kc) (bonsai->number k))
             vc
-            (get-value k tll))])]))
+            (lookup k tll))])]))
 
 ; Test for list association stores
 (define s1 (list-api (0 (1 (2 (3 (4 (5 empty))))))))
 ;(displayln s1)
 ;(define s2 (interpret-interaction (store-value (bonsai-integer 4) (bonsai-integer 10)) s1))
 ;(displayln s2)
-;(displayln (get-value (bonsai-integer 4) s1))
+;(displayln (nth (bonsai-integer 4) s1))
 
 
-(define (get-value-ll-inner fuel k hd hp)
+(define (lookup-ll-inner fuel k hd hp)
   (if (<= fuel 0)
       #f
       (match hd
         [(linked-list null)
          #f]
         [(linked-list n:natural)
-         (let* ([k-c (lookup-heap (bonsai->number n) hp)]
-                [v-c (lookup-heap (bonsai->number (cell-pointer k-c)) hp)]
+         (let* ([k-c (nth-heap (bonsai->number n) hp)]
+                [v-c (nth-heap (bonsai->number (cell-pointer k-c)) hp)]
                 [newhd (cell-pointer v-c)])
-           #;(begin
-             (displayln "in get-value-ll looking for")            
-             (displayln k)
-             (displayln k-c)
-             (displayln v-c)
-             (displayln "fuel")
-             (displayln fuel)
-             (displayln "print k")
-             (print k)
-             (displayln "")
-             (displayln "print cell-value k-c")
-             (print (bonsai->number (cell-value k-c)))
-             (displayln ""))
              (if (equal? k (bonsai->number (cell-value k-c)))
                  (cell-value v-c)
-                 (get-value-ll-inner (- fuel 1) k newhd hp)))])))
+                 (lookup-ll-inner (- fuel 1) k newhd hp)))])))
 
 
   
-(define (get-value-ll k s)
+(define (lookup-ll k s)
   (match s
     [(linked-list (hd:pointer _:pointer hp:heap))
      (let ([fuel (length-heap hp)])
        ; What we would want here is something like bounded for bonsai, i.e. a global bound on recursive calls
-       (get-value-ll-inner 10 (bonsai->number k) hd hp))]))
+       (lookup-ll-inner 10 (bonsai->number k) hd hp))]))
 
-; OSTODO: Equality between list association store and linked-list association store
 
 
 ; Tests for linked-list association stores
@@ -653,7 +639,7 @@
 #;(begin
     (displayln s1-ll)
     (displayln s2-ll)
-    (displayln (get-value-ll (bonsai-integer 4) s2-ll)))
+    (displayln (lookup-ll (bonsai-integer 4) s2-ll)))
 
 
 ; Now let's try modifying s1-ll's fp to be able to get the value 3 while looking up something different than 2 (its key)
@@ -663,7 +649,7 @@
     (displayln as1-ll)
     (displayln (cons-state (bonsai-integer 7) as1-ll))
     (displayln as2-ll)
-    (displayln (get-value-ll (bonsai-integer 1) as2-ll)))
+    (displayln (lookup-ll (bonsai-integer 1) as2-ll)))
 
 
 ; try to find a free pointer s.t. changed behavior between list and linked list
@@ -674,7 +660,7 @@
 #;(begin
   (displayln "Store-Styn test 0 : find a key that returns 1")
   (define index* (linked-list value 1))
-  (define gv (get-value index* s1))
+  (define gv (lookup index* s1))
   (define sol-sst0 (solve
                     (assert (opt-equals? gv (bonsai-integer 1)))))
   (if (unsat? sol-sst0)
@@ -695,7 +681,7 @@
   (define a-int (store-value (bonsai-integer 6) (bonsai-integer 7)))
   (define as2-ll* (interpret-interaction-ll a-int as1-ll*))
   (define sol-sst1
-    (solve (assert (opt-equals? (get-value-ll (bonsai-integer 7) as2-ll*) (bonsai-integer 0)))))
+    (solve (assert (opt-equals? (lookup-ll (bonsai-integer 7) as2-ll*) (bonsai-integer 0)))))
   (if (unsat? sol-sst1)
       (displayln "No model found")
     (begin
@@ -707,7 +693,7 @@
       (displayln "as2-ll...")
       (displayln as2-ll)
       (displayln "get 7 as2-ll...")
-      (displayln (get-value-ll (bonsai-integer 7) as2-ll))
+      (displayln (lookup-ll (bonsai-integer 7) as2-ll))
      )))
 
 
@@ -728,8 +714,8 @@
   (define s2-ll (interpret-interaction-ll a-int s1-ll))
   (define as2-ll* (interpret-interaction-ll a-int as1-ll*))
   (define index* (linked-list value 1))
-  (define gas2-ll* (get-value-ll index* as2-ll*))
-  (define gs2* (get-value-ll index* s2-ll))
+  (define gas2-ll* (lookup-ll index* as2-ll*))
+  (define gs2* (lookup-ll index* s2-ll))
 
   ; Below are some example of assertion to tweak the model found:
   ; ensures that the behavior is not destructive (i.e. gas2-ll* is not #f)
@@ -759,7 +745,7 @@
       (displayln index)
       (displayln "Source linked-list")
       (displayln s2-ll)
-      (define gis2 (get-value-ll index s2-ll))
+      (define gis2 (lookup-ll index s2-ll))
       (displayln "Source behavior")
       (displayln gis2)
 
@@ -769,7 +755,7 @@
       (define as2-ll (interpret-interaction-ll a-int as1-ll))
       (displayln "Attacked linked-list")
       (displayln as2-ll)
-      (define gias2ll (get-value-ll index as2-ll))
+      (define gias2ll (lookup-ll index as2-ll))
       (displayln "Target behavior")
       (displayln gias2ll)
       (displayln "Result:")
@@ -824,7 +810,7 @@
 (define (alist->ll-operation op s)
   (match op
     [(alist-api (lookup k:key))
-     (get-value-ll k s)]
+     (lookup-ll k s)]
     [(alist-api empty?)
      (equal? (state-head s) (linked-list null))]
     ))
@@ -868,7 +854,7 @@
   (displayln ll-int)
   (define al2-ll* (interpret-interaction-ll ll-int al1-ll*))
 
-  (define lookup-7 (get-value-ll (bonsai-integer 7) al2-ll*))
+  (define lookup-7 (lookup-ll (bonsai-integer 7) al2-ll*))
 
   (define sol-sst1
     (solve (assert (opt-equals? lookup-7 (bonsai-integer 0)))))
@@ -883,7 +869,7 @@
       (displayln "al2-ll...")
       (displayln al2-ll)
       (displayln "get 7 al2-ll...")
-      (displayln (get-value-ll (bonsai-integer 7) al2-ll))
+      (displayln (lookup-ll (bonsai-integer 7) al2-ll))
      ))))
 #;(ss3)
 
@@ -919,8 +905,8 @@
   ; symbolic index
   (define index* (linked-list value 1))
 
-  (define v* (get-value-ll index* al+-ll*))
-  (define v (get-value-ll index* al+-ll))
+  (define v* (lookup-ll index* al+-ll*))
+  (define v (lookup-ll index* al+-ll))
 
 
   ; Below are some example of assertion to tweak the model found:
@@ -951,7 +937,7 @@
       (displayln "Source linked-list after interaction")
       (displayln al+)
       (define v+ (alist-lookup al+ index))
-      #;(define gis2 (get-value-ll index al+))
+      #;(define gis2 (lookup-ll index al+))
       (displayln "Source behavior of (lookup index)")
       (displayln v+)
 
@@ -959,7 +945,7 @@
       (define al+-ll-modified (interpret-interaction-ll ll-int al-ll-modified))
       (displayln "Attacked linked-list after interaction")
       (displayln al+-ll-modified)
-      (define v+-ll (get-value-ll index al+-ll-modified))
+      (define v+-ll (lookup-ll index al+-ll-modified))
       (displayln "Target behavior of (lookup index)")
       (displayln v+-ll)
       (displayln "Result:")
@@ -968,6 +954,7 @@
 #;(ss4)
 
 
+; True if i is a key or a value in alist al
 (define (alist-in al i)
   (match al
     [(alist-api empty) #f]
@@ -975,6 +962,17 @@
      (if (or (equal? i k+) (equal? i v+))
          #t
          (alist-in al+ i))]))
+
+; True if i is a key or a value in interaction al-int
+(define (alist-ints-in ints i)
+  (match ints
+    [(alist-api empty)
+     #f]
+    [(alist-api ((add-elem k+:key v+:value) ints+:interaction))
+     (if (or (equal? i k+) (equal? i v+))
+         #t
+         (alist-ints-in ints+ i))]))
+
 
 
 (define (ss5) (begin
@@ -985,17 +983,19 @@
 
   (define al-ll* (alist->ll al*))
 
-  (define newfp* (linked-list pointer 1))
+  (define a-fp* (linked-list pointer 1))
   ; al as an attacked ll
-  (define al-all* (modify-fp-state newfp* al-ll*))
-  ; Restrict to scoped states (i.e. newfp* is null or scoped on heap)
+  (define al-all* (modify-fp-state a-fp* al-ll*))
+  ; Restrict to scoped states (i.e. a-fp* is null or scoped on heap)
   (assert (scoped-state? al-all*))
+
   (define a-key* (alist-api key 1))
   (define a-val* (alist-api value 1))
+  (assert (not (or (alist-in al* a-key*) (alist-in al* a-val*))))
+  
   (define a-int* (alist-api ((add-elem ,a-key* ,a-val*) empty)))
+  
   (define ll-int* (alist->ll-interaction a-int*))
-;  (displayln "ll-int...")
-;  (displayln ll-int)
 
   (define al+* (interpret-interaction-assoc a-int* al*))
   (define al+-ll* (interpret-interaction-ll ll-int* al-ll*))
@@ -1005,34 +1005,28 @@
   ; symbolic index
   (define index* (linked-list value 1))
 
-  (define v* (get-value-ll index* al+-all*))
-  (define v (get-value-ll index* al+-ll*))
+  (define v* (lookup-ll index* al+-all*))
+  (define v (lookup-ll index* al+-ll*))
 
 
-  ; Below are some example of assertion to tweak the model found:
-  ; ensures that the behavior is not destructive (i.e. gas2-ll* is not #f)
-  ;(assert v*)
-  ; ensures that the behavior is new
-  ;  (assert (not v))
 
-  ; In particular, we can find our desired attack by
-  ; requiring key (index) to be known to attacker, and result (value) to be private
-  ;(assert (or (equal? index* a-key*) (equal? index* a-val*)))
-  ; For forall al to be true, we need to replace this by "v* in al"
-  ;  (assert (not (or (equal? v* a-key*) (equal? v* a-val*))))
-  
-  (assert (not (or (alist-in al* a-key*) (alist-in al* a-val*))))
+  ; We can find our desired attack by requiring:
+  ; 1) key (index) to be known to attacker...
+  (assert (alist-ints-in a-int* index*))
+  ; 2) result (value) to be private
   (assert (alist-in al* v*))
   
   (define r (opt-equals? v v*))
+
   (define sol-sst5 (synthesize #:forall al*
                                #:guarantee (assert (not r))))
   (if (unsat? sol-sst5)
       (displayln "No model found")
     (begin
       (displayln "Model found.")
-      (define concrete-vars (concretize (list newfp* index* a-key* a-val*) sol-sst5))      
-      (define newfp (first concrete-vars))
+      (displayln "")
+      (define concrete-vars (concretize (list a-fp* index* a-key* a-val*) sol-sst5))      
+      (define a-fp (first concrete-vars))
       (define index (second concrete-vars))
       (define a-key (third concrete-vars))
       (define a-val (fourth concrete-vars))
@@ -1044,7 +1038,7 @@
       (clear-asserts!)
       (define fresh-al* (alist-api alist 4))
       (define fresh-al-ll* (alist->ll fresh-al*))
-      (define fresh-al-all* (modify-fp-state newfp fresh-al-ll*))
+      (define fresh-al-all* (modify-fp-state a-fp fresh-al-ll*))
       (assert (scoped-state? fresh-al-all*))
       (define sol-fresh-al (solve (assert (not (or (alist-in fresh-al* a-key) (alist-in fresh-al* a-val))))))
       (define example-vars (concretize (list fresh-al* fresh-al-ll* fresh-al-all*) sol-fresh-al))
@@ -1055,14 +1049,15 @@
       (define al+-ll (interpret-interaction-ll ll-int al-ll))
       (define al+-all (interpret-interaction-ll ll-int al-all))
       
-      
-      (displayln "Attack k/v")
-      (displayln a-int)
-      (displayln "fp...")
-      (displayln newfp)
-      (displayln "index...")
-      (displayln index)
 
+      (displayln "Attack key/value")
+      (displayln a-int)
+      (displayln "Attack fp...")
+      (displayln a-fp)
+      (displayln "Index...")
+      (displayln index)
+      (displayln "")
+      
       (displayln "Source list")
       (displayln al)
       (displayln "Source list after interaction")
@@ -1070,17 +1065,23 @@
       (define v+ (alist-lookup al+ index))
       (displayln "Source behavior of (lookup index)")
       (displayln v+)
+      (displayln "")
+      
       (displayln "Translated linked-list")
       (displayln al-ll)
       (displayln "Translated linked-list after interaction")
       (displayln al+-ll)
+      (displayln "")
+      
       (displayln "Attacked linked-list")
       (displayln al-all)
       (displayln "Attacked linked-list after interaction")
       (displayln al+-all)
-      (define v+-ll (get-value-ll index al+-all))
+      (define v+-ll (lookup-ll index al+-all))
       (displayln "Target behavior of (lookup index)")
       (displayln v+-ll)
-      (displayln "Result:")
-      (displayln (opt-equals? v+ v+-ll))))))
+      
+      ;(displayln "Result:")
+      ;(displayln (opt-equals? v+ v+-ll))
+      ))))
 (ss5)
