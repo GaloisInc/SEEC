@@ -4,7 +4,6 @@
                   raise-argument-error
                   raise-arguments-error))
 
-
 (define (bonsai->number n)
   (match n
     [(bonsai-integer i) i]
@@ -27,10 +26,9 @@
 (define-grammar list-api
   (value ::= integer)
   (vallist ::= (value vallist) empty)
-  (method ::=  (mcons value) mnil) ; Could be renamed as constructor
+  (method ::=  (mcons value) mnil) 
   (operation ::= empty? head tail)
   (interaction ::= (method interaction) empty))
-
 
 (define (length-list l)
   (match l
@@ -50,7 +48,6 @@
      #t]
     [ _
       #f]))
-
 
 (define (abstract-head n l)
   (match l
@@ -81,7 +78,6 @@
       (abstract-tail l)
       ]))
 
-
 (define (interpret-interaction ints l)
   (match ints
     [(list-api empty) l]
@@ -98,7 +94,6 @@
   #:context vallist #:size 6
   #:link snoc
   #:evaluate (uncurry interpret-interaction))
-
 
 ; Tests for list
 
@@ -122,13 +117,13 @@
           #f
           #t)))
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Define a linked-list datatype that will implement the list API
 ;
 ; begin
 ;    
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (define-grammar linked-list
   (value ::= integer)
   (pointer ::= natural null) ; pointer is distance from beginning of heap
@@ -136,9 +131,7 @@
   (heap ::= (cell heap) empty)
   (state ::= (pointer pointer heap)) ; (1) head of the list (2) head of the free-list (3) heap
   (method ::=  (mcons value) mnil) ; Could be renamed as constructor
-  (interaction ::= (method interaction) empty)
-  )
-
+  (interaction ::= (method interaction) empty))
 
 (define (empty-state s)
   (linked-list (null null empty)))
@@ -197,7 +190,6 @@
         (scoped-pointer? fp l-h)
         (scoped-heap? hp l-h)))]))
 
-  
 ; Replace the ith cell of hp with c, returns the modified hp and i.*next
 (define (overwrite-heap i c hp)
   (match hp
@@ -227,7 +219,6 @@
       [(linked-list (_:value n:natural))
        (append-ll n ptr2 hp)])))
 
-
 ; push v on top of heap (at the end of the list)
 (define (snoc-heap c h)
   (match h
@@ -235,7 +226,6 @@
      (linked-list (,c empty))]
     [(linked-list (hd-c:cell tl-hp:heap))
      (linked-list (,hd-c ,(snoc-heap c tl-hp)))]))
-
 
 (define (nil-state s)
   (match s
@@ -261,8 +251,6 @@
           (let* ([new-cell (linked-list (,v ,hd))]
                  [new-hp-fp (overwrite-heap (bonsai->number i) new-cell hp)])
             (linked-list (,i ,(second new-hp-fp) ,(first new-hp-fp))))])]))
-  
-
 
 ; return the nth element in the heap
 (define (nth-heap n hp)
@@ -271,7 +259,6 @@
      (if (equal? n 0)         
            (linked-list ,hd-c)
            (nth-heap (- n 1) tl-hp))]))
-
 
 ; lookup the nth element of a list headed at hd in hp
 (define (nth-ll-inner n hd hp)
@@ -295,9 +282,6 @@
        [(linked-list hd:natural)
        (nth-ll-inner n (bonsai->number hd) hp)])]))
 
-
-
-
 (define (interpret-interaction-ll ints s)
   (match ints
     [(linked-list empty)
@@ -308,14 +292,12 @@
      (interpret-interaction-ll intss (cons-state n s))]
     ))
 
-
 (define-language ll-lang
   #:grammar linked-list
   #:expression interaction #:size 3
   #:context state #:size 6
   #:link snoc
   #:evaluate (uncurry interpret-interaction-ll))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Translation between list-api and linked-list
@@ -332,7 +314,6 @@
             [c (linked-list (,hd ,(bonsai-integer ii)))])
        (linked-list (,c ,h)))]))
 
-
 (define (list-to-ll l)
   (match l
     [(list-api empty)
@@ -341,7 +322,6 @@
       (let ([h (list-to-ll-inner 0 l)])
         (linked-list (0 null ,h)))]))
 
-
 (define (list-to-ll-method m)
   (match m
     [(list-api mnil)
@@ -349,14 +329,13 @@
     [(list-api (mcons n:value))
      (linked-list (mcons ,n))]))
 
-; OS: this is noop
 (define (list-to-ll-interaction ints)
   (match ints
     [(list-api empty) (linked-list empty)]
     [(list-api (m:method intss:interaction))
                (linked-list (,(list-to-ll-method m) ,(list-to-ll-interaction intss)))]))
 
-; inner function comparing l with the linked-list starting at fp in hp
+; Comparing vallist l with the linked-list headed at fp in hp
 (define (list-to-ll-equal?-inner l fp hp)
   (match l
     [(list-api (hd:value tl:vallist))
@@ -381,17 +360,12 @@
     [(linked-list (hd:pointer fp:pointer hp:heap))
      (list-to-ll-equal?-inner l hd hp)]))
 
-
 (define-compiler list-to-ll-compiler
   #:source list-lang
   #:target ll-lang
   #:behavior-relation list-to-ll-equal?
   #:context-relation list-to-ll-equal?
-                          #;(lambda (l ll) (and
-                                      (list-to-ll-equal? l ll)
-                                      (equal? (linked-list null) (state-free-pointer ll))))
-  #:compile (lambda (i) i)
-  )
+  #:compile (lambda (i) i))
 
 
 #;(begin
@@ -435,10 +409,10 @@
     ;(displayln (interpret-interaction-ll b1-ll abc-ll))    
     )
 
-; Synthesis test
+; Linked-List Synthesis Test
 
 ; 1 - Find a n s.t. nth n (1 -> 2 -> 3) = Some 3
-#;(begin
+(define sll1 (begin
   (displayln "LL-synth test 1: symbolic nth index")
   (define-symbolic* n* integer?)
   (define sol
@@ -451,10 +425,11 @@
       (define n (concretize n* sol))
       (displayln n)
       (displayln "nth n abc-ll...")
-      (displayln (nth-ll n abc-ll)))))
+      (displayln (nth-ll n abc-ll))))))
+#;(sll1)
 
 ; 2 - Find a ll s.t. nth 0 ll = Some 3
-#;(begin
+(define sll2 (begin
     (displayln "LL-synth test 2: symbolic linked-list")
     (define ll* (linked-list state 5))
     ;; Restrict to states where all pointers are scoped
@@ -469,11 +444,12 @@
           (define ll (concretize ll* sol2))
           (displayln ll)
           (displayln "nth n abc-ll...")
-          (displayln (nth-ll 0 ll)))))
+          (displayln (nth-ll 0 ll))))))
+#;(sll2)
 
 
 ; 3 Find an interaction i and a n s.t. nth n (i abc-ll) = Some 4
-#;(begin
+(define sll3 (begin
   (displayln "LL-synth test 3: symbolic interaction")
   (define i* (list-api interaction 4))
   (define abc-ll-i* (interpret-interaction-ll i* abc-ll))
@@ -488,11 +464,12 @@
         (displayln i)
         (define abc-ll-i (interpret-interaction-ll i abc-ll))
         (displayln "nth 1 (apply i abc-ll)...")
-        (displayln [nth-ll 1 abc-ll-i]))))
+        (displayln [nth-ll 1 abc-ll-i])))))
+#;(sll3)
 
 
 ; 4 Shows that list-to-ll is correct, i.e. no changed behavior between l and (list-to-ll l)
-#;(begin
+(define sll4 (begin
   (displayln "LL-synth test 4: Verifying l-to-ll")
   (define l*-t4 (list-api vallist 4))
   (define ll*-t4 (list-to-ll l*-t4))
@@ -504,10 +481,11 @@
         (displayln "Counter-example found.")
         (define l-t4 (concretize l*-t4 sol-t4))
         (displayln l-t4)
-        (displayln (list-to-ll l-t4)))))
+        (displayln (list-to-ll l-t4))))))
+#;(sll4)
 
-; 5 Shows that would can't mess up the linked-list with bounded interaction
-#;(begin
+; 5 Shows that interactions preserve the correspondence between lists and translated linked-lists
+(define sll5 (begin
   (displayln "LL-synth test 5: verifying interactions post list-to-ll")
   (define l*-t5 (list-api vallist 5))
   (define ll*-t5 (list-to-ll l*-t5))
@@ -536,32 +514,16 @@
         (define ll2-t5 (interpret-interaction-ll i-t5 ll-t5))
         (displayln ll2-t5)
         (displayln "l2 =? ll2:")
-        (displayln (list-to-ll-equal? l2-t5 ll2-t5)))))
-                   
-
-  
-
-
-; LL p1 -> s1 -> p2 -> s2 -| , fl -|
-; can we find a new fl pointer and interaction s.t.
-; forall p2 s2, access ? (i (state')) = s2 where state' is state with new fl pointer
-;
-; Expected solution looks like
-; fl switched to point to s1
-; cons p3 s3
-; can recover s2 (for any p2, s2) using s3
-
+        (displayln (list-to-ll-equal? l2-t5 ll2-t5))))))
+#;(sll5)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Application on top of lists: association store
-;
-;    
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Create an interaction representing storing (k, v) in association store
 (define (store-value k v)
   (list-api ((mcons ,v) ((mcons ,k) empty))))
-
 
 (define (lookup k l)
   (match l
@@ -581,7 +543,6 @@
 ;(displayln s2)
 ;(displayln (nth (bonsai-integer 4) s1))
 
-
 (define (lookup-ll-inner fuel k hd hp)
   (if (<= fuel 0)
       #f
@@ -596,19 +557,15 @@
                  (cell-value v-c)
                  (lookup-ll-inner (- fuel 1) k newhd hp)))])))
 
+; Bound on fuel provided to recursive functions
+(define rec-bound 10)
 
-  
 (define (lookup-ll k s)
   (match s
     [(linked-list (hd:pointer _:pointer hp:heap))
-     (let ([fuel (length-heap hp)])
-       ; What we would want here is something like bounded for bonsai, i.e. a global bound on recursive calls
-       (lookup-ll-inner 10 (bonsai->number k) hd hp))]))
-
-
+     (lookup-ll-inner rec-bound (bonsai->number k) hd hp)]))
 
 ; Tests for linked-list association stores
-
 (define s1-ll (list-to-ll s1))
 (define s2-ll (interpret-interaction-ll (store-value (bonsai-integer 4) (bonsai-integer 10)) s1-ll))
 #;(begin
@@ -616,8 +573,6 @@
     (displayln s2-ll)
     (displayln (lookup-ll (bonsai-integer 4) s2-ll)))
 
-
-; Now let's try modifying s1-ll's fp to be able to get the value 3 while looking up something different than 2 (its key)
 (define as1-ll (linked-list (,(state-head s1-ll) 4 ,(state-heap s1-ll))))
 (define as2-ll (interpret-interaction-ll (store-value (bonsai-integer 6) (bonsai-integer 7)) as1-ll))
 #;(begin 
@@ -632,7 +587,7 @@
   (linked-list (,(state-head s) ,fp ,(state-heap s))))
 
 
-#;(begin
+(define ss0 (begin
   (displayln "Store-Styn test 0 : find a key that returns 1")
   (define index* (linked-list value 1))
   (define gv (lookup index* s1))
@@ -644,11 +599,14 @@
         (displayln "Model found.")
         (displayln "index...")
         (define index (concretize index* sol-sst0))
-        (displayln index))))
+        (displayln index)))))
+#;(ss0)
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Association list API
+;
+;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-grammar alist-api
@@ -699,7 +657,6 @@
      (equal? (state-head s) (linked-list null))]
     ))
 
-
 (define (alist->list al)
   (match al
     [(alist-api empty) (list-api empty)]
@@ -726,7 +683,6 @@
      (if (or (equal? i k+) (equal? i v+))
          #t
          (alist-ints-in ints+ i))]))
-
 
 (define (ss1) (begin
 
@@ -775,8 +731,6 @@
      ))))
 #;(ss1)
 
-
-
 (define (ss2) (begin
   (displayln "Store-Synth test 2: find a changed behavior between list and attacked linked-list")
   (current-bitwidth 4)
@@ -803,19 +757,17 @@
   (define al+-ll (interpret-interaction-ll ll-int al-ll))
   (define al+-ll* (interpret-interaction-ll ll-int al-ll*))
 
-
   ; symbolic index
   (define index* (linked-list value 1))
 
   (define v* (lookup-ll index* al+-ll*))
   (define v (lookup-ll index* al+-ll))
 
-
   ; Below are some example of assertion to tweak the model found:
   ; ensures that the behavior is not destructive (i.e. gas2-ll* is not #f)
   ;(assert v*)
   ; ensures that the behavior is new
-  ;  (assert (not v))
+  ; (assert (not v))
 
   ; In particular, we can find our desired attack by
   ; requiring key (index) to be known to attacker, and result (value) to be private
@@ -855,7 +807,6 @@
      ))))
 #;(ss2)
 
-
 (define (ss3) (begin
   (displayln "Store-Synth test 3: Synthesize an attack which is valid on any association list")
   (current-bitwidth 4)
@@ -864,13 +815,11 @@
 
   (define al-ll* (alist->ll al*))
 
-  
   (define a-fp* (linked-list pointer 1))
   ; al as an attacked ll
   (define al-all* (modify-fp-state a-fp* al-ll*))
   ; Restrict to scoped states (i.e. a-fp* is null or scoped on heap)
   (assert (scoped-state? al-all*))
-
 
   (define a-key* (alist-api key 1))
   (define a-val* (alist-api value 1))
@@ -883,21 +832,18 @@
   (define al+-ll* (interpret-interaction-ll ll-int* al-ll*))
   (define al+-all* (interpret-interaction-ll ll-int* al-all*))
 
-
   ; symbolic index
   (define index* (linked-list value 1))
 
   (define v* (lookup-ll index* al+-all*))
   (define v (lookup-ll index* al+-ll*))
 
-
-
   ; We can find our desired attack by requiring:
   ; 1) the key (index) is known to attacker.
   (assert (alist-ints-in a-int* index*))
   ; 2) the result (value) is not known to the attacker.
   (assert (not (alist-ints-in a-int* v*)))
-;  (assert (alist-in al* v*))
+  ; (assert (alist-in al* v*))
   
   (define r (opt-equals? v v*))
 
@@ -915,7 +861,6 @@
       (define a-val (fourth concrete-vars))
       (define a-int (alist-api ((add-elem ,a-key ,a-val) empty)))
       (define ll-int (alist->ll-interaction a-int))
-
 
       ; Generate some list that respects the restrictions on al*
       (clear-asserts!)
