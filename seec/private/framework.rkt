@@ -457,21 +457,17 @@
                     (unsafe:yield witness)
                     (loop (cons core found))))))))]))
 
-
-(define (display-gadget sol out)
+(define (display-gadget vars out)
   (cond
-    [(failure? sol) (out sol)]
-    [(solution? sol)
-
-     (let* ([vars (concretize-witness sol)]
-            [lang-vars (first vars)])
+    [(equal? vars #f) (out (format "Gadget failed to synthesize~n"))]
+    [else
+     (let* ([lang-vars (first vars)])
        (out (format
           "Expression ~a~n is a gadget for the provided specification, as witnessed by behavior ~a~n in context ~a~n"
           (language-witness-expression lang-vars)
           (language-witness-behavior lang-vars)
-          (language-witness-context lang-vars)))
-       )]
-    ))
+          (language-witness-context lang-vars))))
+     ]))
 
 (define (display-list list)
   (for-each displayln list)
