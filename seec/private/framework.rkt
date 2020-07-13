@@ -1,6 +1,7 @@
 #lang rosette/safe
 
-(provide define-language
+(provide current-default-bound
+         define-language
          refine-language
          define-compiler
          (struct-out language)
@@ -27,12 +28,16 @@
          )
 
 (require (for-syntax syntax/parse)
+         racket/stxparam
          (prefix-in unsafe:
                     (combine-in
                      (only-in racket
+                              make-parameter
                               for/list
                               in-range
                               in-producer)
+                     (only-in racket/base
+                              raise-argument-error)
                     racket/generator))
          "bonsai2.rkt")
 
@@ -58,31 +63,40 @@
       > display-X
 
 
- TODO: change bound as separate call or part of query, replace the #:size argument in language
  TODO: change rel to be
   Eq (use the same symbolic var)
   Fn 
- TODO: make solution into a generator -- TODO2, can use solve+ instead of verify for some queries?
+TODO, can use solve+ instead of verify for some queries?
 
 
 
 
 |#
 
+; Default bound for any predicated syntactic class generated
+(define current-default-bound
+  (unsafe:make-parameter 5
+                         (lambda (db) 
+                           (unless (and (integer? db) (positive? db))
+                             (unsafe:raise-argument-error 'current-default-bound "positive integer" db)                  
+                             db))))
+
 ; Predicated syntactic class
 ; For the moment, we decouple pred (symbolic restrictions) from gen
 ; (syntactic generation)
-;   generator : () -> bonsai-tree
+;   generator : bound -> bonsai-tree
 ;   predicate : bonsai-tree -> bool
-(struct predsyn (generator predicate))
+;   default-bound : nat
+(struct predsyn (generator predicate default-bound))
 
 (define-syntax (define-predsyn stx)
   (syntax-parse stx
-    [(_ grammar pat pred bound)
-     #`(predsyn (thunk (grammar pat bound)) pred)]))
+    [(_ grammar pat pred default-bound)
+     #`(predsyn (lambda (bound) (grammar pat bound)) pred default-bound)]))
 
-(define (make-symbolic-var ps)
-  (let ([s ((predsyn-generator ps))])
+(define (make-symbolic-var ps [bound #f])
+  (let* ([bound (if bound bound (predsyn-default-bound ps))]
+         [s ((predsyn-generator ps) bound)])
     (assert ((predsyn-predicate ps) s))
     s))
 
@@ -104,11 +118,13 @@
 
 (begin-for-syntax
   (define-splicing-syntax-class predsyn
-    (pattern (~seq nt:id #:size n:expr)
-             #:with gen #'nt
-             #:with pred #'(lambda (t) #t)
-             #:with bound #'n)
-    (pattern (~seq nt:id #:size n:expr #:where p:expr)
+    (pattern (~seq nt:id
+                   (~optional
+                    (~seq #:size n:expr)
+                    #:defaults ([n #'(current-default-bound)]))
+                   (~optional
+                    (~seq #:where p:expr)
+                    #:defaults ([p #'(lambda (t) #t)])))
              #:with gen #'nt
              #:with pred #'p
              #:with bound #'n)))
@@ -140,30 +156,47 @@
            (language predexp predctx link eval)))]))
 
 
-; Refine the "where" clause on expression or context
+; Refine the "where" clause
+; and replace the default-bound
+; on expression or context 
 (define-syntax (refine-language stx)
   (syntax-parse stx
     [(_ name (~seq (~optional
+                    (~seq #:expression-bound eb)
+                    #:defaults ([eb #'#f]))
+                   (~optional
                     (~seq #:expression-where ef)
                     #:defaults ([ef #'#f]))
                    (~optional
+                    (~seq #:context-bound cb)
+                    #:defaults ([cb #'#f]))
+                                      (~optional
                     (~seq #:context-where cf)
-                    #:defaults ([cf #'#f]))
-                   ))     
+                    #:defaults ([cf #'#f]))))
      #`(let* ([oldexpression (language-expression name)]
               [olde-generator (predsyn-generator oldexpression)]
               [olde-predicate (predsyn-predicate oldexpression)]
-              [exp (if ef
-                       (predsyn olde-generator (lambda (x) (and (olde-predicate x)
-                                                                 (ef x))))
-                       oldexpression)]
+              [olde-default-bound (predsyn-default-bound oldexpression)]
+              [exp (predsyn olde-generator
+                            (if ef
+                                (lambda (x) (and (olde-predicate x)
+                                                 (ef x)))
+                                olde-predicate)
+                            (if eb
+                                eb
+                                olde-default-bound))]
               [oldcontext (language-context name)]
               [oldc-generator (predsyn-generator oldcontext)]
               [oldc-predicate (predsyn-predicate oldcontext)]
-              [ctx (if cf
-                       (predsyn oldc-generator (lambda (x) (and (oldc-predicate x)
-                                                               (cf x))))
-                       oldcontext)])              
+              [oldc-default-bound (predsyn-default-bound oldcontext)]
+              [ctx (predsyn oldc-generator
+                            (if cf
+                                (lambda (x) (and (oldc-predicate x)
+                                                 (cf x)))
+                                oldc-predicate)
+                            (if cb 
+                                cb
+                                oldc-default-bound))])
          (language exp ctx (language-link name) (language-evaluate name)))]))
 
 
@@ -236,23 +269,17 @@
 
 
 
-; make-query-changed-behavior: {r:scomp} r.source.expression -> generator witness
-; Solve the following synthesis problem:
-; (\lambda v1).
-; Exists c1:s.t.context c2:r.t.context,
-;    r.ctx-relation(c1, c2)
-;       not (r.behavior-relation(r.s.apply(c1, v1), r.t.apply(c2, r.compile(v1))))
-; Returns a generator of concrete witness, each of which will have a different #:found-core (source context is default)
-
-(define-syntax (make-query-changed-behavior stx)
+; inner-changed-behavior
+(define-syntax (inner-changed-behavior stx)
   (syntax-parse stx
-    [(_ comp v1 (~optional
-                 (~seq #:found-core found-core)
-                 #:defaults ([found-core #'(lambda (w) (language-witness-context (first w)))]))) ; default projects out c1)
+    [(_ comp v1
+        bound-c1
+        bound-c2
+        found-core)                
      #'(let* ([source (compiler-source comp)]
               [target (compiler-target comp)]
-            [c1 (make-symbolic-var (language-context source))]
-            [c2 (make-symbolic-var (language-context target))]
+            [c1 (make-symbolic-var (language-context source) bound-c1)]
+            [c2 (make-symbolic-var (language-context target) bound-c2)]
             [source-evaluate (language-evaluate source)]
             [source-link (language-link source)]
             [p1 (source-link c1 v1)]
@@ -299,24 +326,17 @@
                           t)]))
 
 
-; make-query-emergent-computation :
-;     {r:comp} r.source.expression -> generator witness
-; Solve the following synthesis problem:
-; (\lambda v1).
-; Exists c2:r.t.context,
-;   Forall c1:r.s.context,
-;     r.context-relation(c1, c2) ->
-;       not (r.behavior-relation(r.s.apply(c1, v1), r.t.apply(c2, r.compile(v1))))
-; Returns a generator of concrete witness, each of which will have a different #:found-core (target context is default)
-(define-syntax (make-query-weird-computation stx)
+; inner-weird-computation
+(define-syntax (inner-weird-computation stx)
   (syntax-parse stx
-    [(_ comp v1 (~optional
-                    (~seq #:found-core found-core)
-                    #:defaults ([found-core #'(lambda (w) (language-witness-context (second w)))]))) ; default projects out c2
+    [(_ comp v1
+        bound-c1
+        bound-c2
+        found-core)                   
      #`(let* ([source (compiler-source comp)]
               [target (compiler-target comp)]
-              [c1 (make-symbolic-var (language-context source))]
-              [c2 (make-symbolic-var (language-context target))]
+              [c1 (make-symbolic-var (language-context source) bound-c1)]
+              [c2 (make-symbolic-var (language-context target) bound-c2)]
               [source-evaluate (language-evaluate source)] 
               [source-link (language-link source)]
               [target-evaluate (language-evaluate target)] 
@@ -384,29 +404,93 @@
 
 
 
-; make-query-changed-component: comp -> solution + failure
+; make-query-changed-behavior: {r:comp} r.source.expression -> generator witness
+; Solve the following synthesis problem:
+; (\lambda v1).
+; Exists c1:s.t.context c2:r.t.context,
+;    r.ctx-relation(c1, c2)
+;       not (r.behavior-relation(r.s.apply(c1, v1), r.t.apply(c2, r.compile(v1))))
+; Returns a generator of concrete witness, each of which will have a different source context
+(define-syntax (make-query-changed-behavior stx)
+  (syntax-parse stx
+    [(_ comp v1
+        (~seq
+         (~optional
+          (~seq #:source-context-bound bound-c1)
+          #:defaults ([bound-c1 #'#f]))
+         (~optional
+          (~seq #:target-context-bound bound-c2)
+          #:defaults ([bound-c2 #'#f]))))
+     #'(inner-changed-behavior comp v1 bound-c1 bound-c2 (lambda (w) (language-witness-context (first w))))]))
+
+; make-query-changed-component: {r:comp} generator witness
+; Solve the following synthesis problem:
 ; (\lambda r).
 ;   Exists v:r.s.expression
 ;     make-query-changed-behavior r v
+; Returns a generator of concrete witness, each of which will have a different source expression
 (define-syntax (make-query-changed-component stx)
   (syntax-parse stx
-    [(_ comp)
+    [(_ comp
+        (~seq
+         (~optional
+          (~seq #:source-expression-bound bound-v1)
+          #:defaults ([bound-v1 #'#f]))
+         (~optional
+          (~seq #:source-context-bound bound-c1)
+          #:defaults ([bound-c1 #'#f]))
+         (~optional
+          (~seq #:target-context-bound bound-c2)
+          #:defaults ([bound-c2 #'#f]))))
      #`(let* ([v (make-symbolic-var
-                  (language-expression (compiler-source comp)))])
-         (make-query-changed-behavior comp v #:found-core (lambda (w) (language-witness-expression (first w)))))]))
+                  (language-expression (compiler-source comp) bound-v1))])
+         (inner-changed-behavior comp v bound-c1 bound-c2 (lambda (w) (language-witness-expression (first w)))))]))
 
 
-; make-query-weird-component
-; make-query-weird-component: comp -> solution + failure
+
+; make-query-emergent-computation: {r:comp} r.source.expression -> generator witness
+; Solve the following synthesis problem:
+; (\lambda v1).
+; Exists c2:r.t.context,
+;   Forall c1:r.s.context,
+;     r.context-relation(c1, c2) ->
+;       not (r.behavior-relation(r.s.apply(c1, v1), r.t.apply(c2, r.compile(v1))))
+; Returns a generator of concrete witness, each of which will have a different target context
+(define-syntax (make-query-weird-computation stx)
+  (syntax-parse stx
+    [(_ comp v1 (~seq
+                 (~optional
+                  (~seq #:source-context-bound bound-c1)
+                  #:defaults ([bound-c1 #'#f]))
+                 (~optional
+                  (~seq #:target-context-bound bound-c2)
+                  #:defaults ([bound-c2 #'#f]))))
+     #`(inner-weird-computation comp v1 bound-c1 bound-c2 (lambda (w) (language-witness-context (second w))))]))
+
+
+
+
+; make-query-weird-component: {r:comp} -> generator witness
 ; (\lambda r).
 ;   Exists v:r.s.expression
-;     make-query-exploit r v
+;     make-query-weird-computation r v
+; Returns a generator of concrete witness, each of which will have a different source expression
 (define-syntax (make-query-weird-component stx)
   (syntax-parse stx
-    [(_ comp)
+    [(_ comp
+        (~seq
+         (~optional
+          (~seq #:source-expression-bound bound-v1)
+          #:defaults ([bound-v1 #'#f]))
+         (~optional
+          (~seq #:source-context-bound bound-c1)
+          #:defaults ([bound-c1 #'#f]))
+         (~optional
+          (~seq #:target-context-bound bound-c2)
+          #:defaults ([bound-c2 #'#f]))))
      #`(let* ([v (make-symbolic-var
-                  (language-expression (compiler-source comp)))])
-         (make-query-weird-computation comp v #:found-core (lambda (w) (language-witness-expression (first w)))))]))
+                  (language-expression (compiler-source comp) bound-v1))])
+         (inner-weird-computation comp v bound-c1 bound-c2 (lambda (w) (language-witness-expression (first w)))))]))
 
 
 ; show v1, c2 and b2
@@ -430,13 +514,20 @@
 ; Goal: find a format-str s.t. given a ctx (arg-list, acc), increment the acc. (input is Source, v-ctx:Context -> bool (in addition to the one in source), spec:Context -> behavior -> bool
 (define-syntax (make-query-gadget stx)
   (syntax-parse stx
-    [(_ lang valid-program specification)
-     #`(let* ([c1 (make-symbolic-var (language-context lang))]
-              [v1 (make-symbolic-var (language-expression lang))]
+    [(_ lang valid-program specification
+        (~seq
+         (~optional
+          (~seq #:expression-bound bound-v)
+          #:defaults ([bound-v #'#f]))
+         (~optional
+          (~seq #:context-bound bound-c)
+          #:defaults ([bound-c #'#f]))))
+     #`(let* ([c1 (make-symbolic-var (language-context lang) bound-c)]
+              [v1 (make-symbolic-var (language-expression lang) bound-v)]
               [p1 ((language-link lang) c1 v1)]
               [b1 ((language-evaluate lang) p1)]
               ; Creating a second context to return as example
-              [c2 (make-symbolic-var (language-context lang))]
+              [c2 (make-symbolic-var (language-context lang) bound-c)]
               [p2 ((language-link lang) c2 v1)]
               [b2 ((language-evaluate lang) p2)])
          (unsafe:generator
