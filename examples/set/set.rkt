@@ -248,14 +248,16 @@
          [witness (gen)])
     (display-weird-component witness displayln)))
 
-; takes as input a whole program and the resulting behavior
-; OS: expr and init-set were switched
+
+; a program prog (for concrete-two) is a pair of context (in this case, a
+; set/vallist) and an expression (in this case, a context).
+; res is a set
 (define (add1-concrete? prog res-set)
-  (printf "(add1-concrete? ~a ~a)~n" prog res-set)
   (match prog
-    [(cons expr init-set)
+    [(cons init-set _)
      (equal? (bonsai-ll-length res-set)
-             (+ 1 (bonsai-ll-length init-set)))]
+             (+ 1 (bonsai-ll-length init-set)))
+     ]
     [_ #f]
     ))
 
@@ -266,9 +268,9 @@
 (define (concrete-interpret-context context state)
   (match context
     [(set-api empty) state]
-    [(set-api ((insert v:value) r:interaction))
+    [(set-api ((insert v:value) r:context))
      (concrete-interpret-context r (concrete-insert state v))]
-    [(set-api ((remove v:value) r:interaction))
+    [(set-api ((remove v:value) r:context))
      (concrete-interpret-context r (concrete-remove state v))]))
 
 
@@ -276,21 +278,22 @@
   #:grammar set-api
   #:expression context #:size 4
   #:context    vallist     #:size 2 #:where valid-set?
-  #:link snoc
+  #:link snoc ; link is applied to the expression and then the context, so in
+              ; this case a program is (snoc context vallist) = (cons vallist context)
   #:evaluate (uncurry concrete-interpret-context))
 
 
 ; OS: Not working, it think there might be a problem with bonsai-ll-length?
 #;(begin
   (displayln "Trying to find a +1 gadget")
-  (let* ([gen (make-query-gadget concrete-two (lambda (v) #t) add1-concrete?)]
+  #;(let* ([gen (make-query-gadget concrete-two (lambda (v) #t) add1-concrete?)]
          [witness (gen)])
     (display-gadget witness displayln))
 
   #| Here I was trying to replicate/simplify the calls made by by
-     make-query-gadget to debug why the query is not working.
+     make-query-gadget to debug why the query is not working. |#
 
-  (define lang concrete)
+  (define lang concrete-two)
   (define specification add1-concrete?)
   (define c1 (make-symbolic-var (language-context lang)))
   (define v1 (make-symbolic-var (language-expression lang)))
@@ -305,8 +308,41 @@
                    #:forall c1
                    #:guarantee (assert (specification p1 b1))))
   sol
-  |#
+
   )
+
+(begin
+  (define v1 (set-api context 4))
+  #;(define v1 (set-api ((insert 0) empty)))
+
+  (define c1 (set-api vallist 3))
+  #;(define c1 (set-api nil))
+
+  #;(assert (valid-set? c1))
+  (define b1 (concrete-interpret-context v1 c1))
+  #;(displayln "b1...")
+  #;(displayln b1)
+  (define condition (add1-concrete? (snoc v1 c1) b1))
+  #;(displayln "condition...")
+  #;(displayln condition)
+  (define sol (synthesize
+               #:forall c1
+               #:guarantee (assert condition)
+               ))
+  (if (unsat? sol)
+      (displayln "Synthesis failed")
+      (begin
+        (displayln "Synthesis succeeded")
+        #;(define c2 (set-api vallist 3))
+        #;(define b2 (concrete-interpret-context v1 c2))
+        #;(define c2-concrete (set-api nil))
+        (define v-concrete (concretize v1 sol))
+        #;(define b2-concrete (concrete-interpret-context v-concrete c2-concrete))
+        (displayln "context...")
+        (displayln v-concrete)
+        )
+  ))
+
   
 
 (define (concrete-two-member-spec? prog res-set)
