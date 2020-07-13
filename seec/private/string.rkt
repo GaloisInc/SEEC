@@ -9,8 +9,13 @@
                   [string-append racket/string-append]
                   ))
 (require (only-in racket/base
+                  raise-user-error
                   raise-argument-error
                   raise-arguments-error))
+(require (only-in racket/base
+                  [log unsafe/log]))
+(require rosette/lib/value-browser)
+
 
 (provide char?
          string?
@@ -28,8 +33,11 @@
          digit->char
          string-append
          string
+         max-str-len
+         min-int
+         max-int
 
-         (rename-out [bv-max-width string/bv-max-width])
+         #;(rename-out [bv-max-width string/bv-max-width])
          )
 
 ;; A (printable, ASCII) character is just a number between 32 and 126
@@ -116,37 +124,102 @@
 ;; functions on strings ;;
 (define (string-length s) (length s))
 
-#;(define (string-equal? s1 s2)
-  (and (equal? (string-length s1) (string-length s2))
-       (andmap equal? s1 s2)))
-
-
 ;; given a number n between 0 and 9 inclusive,
 ;; output the character corresponding to n
 ;; (since 0 starts at 48, increase from there)
 (define (digit->char n)
-  (if (<= 0 n 9)
-      (+ n 48)
-      (raise-argument-error 'digit->char
-                            "digit between 0 and 9"
-                            n)))
+  (assert (<= 0 n 9))
+  (+ n 48)
+  )
 
-(define bv-max-width 32)
-; this is effectively unbounded for symbolic numbers.
+
+(define (max-int)
+  (cond
+    [(equal? (current-bitwidth) #f)
+     (raise-user-error "no current bitwidth set when calling max-int")]
+    [else
+     ; subtract exponent by 1 because of signed integers
+     (- (expt 2 (current-bitwidth)) 1)
+     ]
+  ))
+(define (min-int)
+  (cond
+    [(equal? (current-bitwidth) #f)
+     (raise-user-error "no current bitwidth set when calling min-int")]
+    [else
+     (* -1 (+ (max-int) 1))
+     ]
+  ))
+
+(define (nat->string+ x fuel)
+  (define res (cond
+    [(< fuel 0)    (raise-argument-error 'nat->string+ "ran out of fuel" fuel)]
+    [(negative? x) (raise-argument-error 'nat->string+ "natural?" x)]
+
+    [(<= 0 x 9)    (char->string (digit->char x))]
+    [(>= x 10)     (let* ([q (quotient x 10)]
+                          [r (remainder x 10)]
+                          [q-str (nat->string+ q (- fuel 1))]
+                          [r-str (char->string (digit->char r))]
+                          )
+                     (string-append q-str r-str))]
+    ))
+  res)
+
+(define (max-str-len)
+  (let* ([max-int+1 (expt 2 (current-bitwidth))]
+         ; unsafe/log is only safe when both arguments are concrete
+         [pos-str-len (ceiling (unsafe/log max-int+1 10))]
+         )
+    pos-str-len))
+
 (define (number->string n)
-  (define max-int (- (expt 2 bv-max-width) 1))
-  (define max-str-len (ceiling (/ max-int 10)))
-  #;(printf "max-str-len = ~a~n" max-str-len)
-  (define (to-str fuel x)
-    (cond
-      [(negative? n) (string-append (mk-string "-") (to-str (- fuel 1) (* -1 n)))]
-      [(<= 0 n 9) (char->string (digit->char n))]
-      [else
-       ;; n = 10*q + r
-       (let* ([q (quotient n 10)]
-              [r (remainder n 10)]
-              )
-         (string-append (to-str (- fuel 1) q) (char->string (digit->char r)))
-         )]))
-  (to-str max-str-len n))
+  (cond
 
+    [(negative? n)
+     (let* ([minus-x (* -1 n)]
+            ; replace minus-x by concrete max-int+1 if x was min-int
+            [pos-minus-x (if (negative? minus-x) (expt 2 (current-bitwidth)) minus-x)])
+
+           (string-append (string "-") (nat->string+ pos-minus-x (max-str-len))))]
+
+
+    [else (nat->string+ n (max-str-len))]
+  ))
+
+
+
+(define (test-number->string)
+  (current-bitwidth 64)
+  (printf "min-int: ~a~n" (min-int))
+  (printf "max-int: ~a~n" (max-int))
+  (define-symbolic x integer?)
+  (assert (equal? x (min-int)))
+  (define-symbolic x-len integer?)
+  (define s (number->string x))
+  (printf "string: ~a~n" s)
+  #;(render-value/window s)
+  (define s-len (string-length s))
+  (printf "string-length: ~a~n" s-len)
+  #;(render-value/window s-len)
+
+  (define sol (synthesize
+               #:forall '()
+               #:guarantee (assert (equal? s-len x-len))
+               ))
+  (if (unsat? sol)
+      (displayln "Synthesis failed")
+      (begin
+        (displayln "Synthesis succeeded")
+        (define complete-sol (complete-solution sol (symbolics x)))
+        (define x-instance (evaluate x complete-sol))
+        (define s-instance (evaluate s complete-sol))
+        (define x-len-instance (evaluate x-len complete-sol))
+        (printf "x: ~a~n" x-instance)
+        (printf "s: ~a~n" s-instance)
+        (printf "string-length: ~a~n" (evaluate (string-length s) complete-sol))
+        (printf "x-len: ~a~n" x-len-instance)
+        (printf "did synthesis succeed? ~a~n" (equal? (string-length s-instance) x-len-instance))
+        ))
+)
+#;(test-number->string)

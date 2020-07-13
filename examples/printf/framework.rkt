@@ -6,6 +6,8 @@
                   raise-argument-error
                   raise-arguments-error))
 
+(current-bitwidth 5)
+
 (define (spec-interpret p)
   (match p
     [(cons (printf-lang (args:arglist conf:config)) f)
@@ -135,6 +137,7 @@
   (let ([conf+ (behavior->config (interp-fmt-safe f args conf))])
     (equal? (conf->acc conf+) (+ c (conf->acc conf)))))
 
+; TODO: fix: this function doesn't currently actually use beh and instead re-calls intepr-fmt-safe
 (define (is-constant-add-spec prog beh)
     (match prog
     [(cons ctx f)
@@ -142,8 +145,75 @@
        [(printf-lang (args:arglist conf:config))
         (is-constant-add f 1 args conf)])]))
 
+
 (begin
   (displayln "Trying to make-query-add-constant using the framework")
   (let* ([gen (make-query-gadget printf-spec fmt-consistent-with-arglist?-uncurry is-constant-add-spec)]
          [witness (gen)])
-    (display-gadget witness displayln)));;
+    (display-gadget witness displayln)))
+
+(define (is-constant-add-positive f c args conf)
+  (let* ([conf+ (behavior->config (interp-fmt-safe f args conf))]
+         [acc   (conf->acc conf)]
+         [acc+  (conf->acc conf+)]
+        )
+    (equal? acc+ (+ (max c 0) acc))
+    ))
+
+(define (is-constant-add-positive-spec prog beh)
+  (match (cons beh prog)
+    [(cons (printf-lang (t:trace conf+:config))
+                 ; assume that the arglist has the form (cons x args+),
+                 ; where x is the value being added to the accumulator
+           (cons (printf-lang ((cons x:integer args+:arglist) conf:config))
+                 f))
+     (let ([acc+ (conf->acc conf+)]
+           [acc  (conf->acc conf)]
+           )
+         
+     (equal? acc+ (+ (max (bonsai->number x) 0) acc)))
+     ]
+    ))
+     
+
+
+#;(define (is-constant-add-link x-val ctx f)
+  (define args (match ctx
+                 [(printf-lang (args:arglist config)) args]
+                 ))
+  (define args+ (printf-lang arglist 3))
+  (assert (equal? args (ll-cons (bonsai-integer x-val) args+)))
+  (cons ctx f)
+  )
+
+
+
+(define (context-is-x config-size arg-size x-val)
+  (λ (ctx)
+    (match ctx
+      [(printf-lang (args:arglist conf:config))
+       (let ([c* (printf-lang config config-size)]
+             [a+ (printf-lang arglist (- arg-size 1))]
+             )
+         (and (equal? conf c*)
+              (equal? args (ll-cons (bonsai-integer x-val) a+))
+              ))])))
+      
+(begin 
+  (define-symbolic x-val integer?)
+  (define-language printf-is-constant-add
+    #:grammar printf-lang
+    #:expression fmt #:size 4
+    #:context context #:size 5 #:where (context-is-x 5 2 x-val)
+    #:link cons
+    #:evaluate spec-interpret
+    )
+
+  (displayln "Trying to find a format string that adds the value of a positive
+number x to the accumulator")
+  
+  (define sol (find-gadget printf-is-constant-add
+                               fmt-consistent-with-arglist?-uncurry
+                               (is-constant-add-positive-spec x-val)))
+  (display-gadget sol displayln)
+  )

@@ -415,6 +415,26 @@
                 '#,prods))
 
              (define-match-expander name
+               ; The first argument of the match-expander is the behavior used
+               ; with the `match` construct. That is, the match pattern
+               ;
+               ; (match e
+               ;    [(name pat) continuation]
+               ;    ...)
+               ;
+               ; will match against `e` provided:
+               ;
+               ; 1. `pat` is a member of the `term` syntax class for the grammar
+               ; `name`;
+               ;
+               ; 2. the function `syntax-match?` returns #t when applied to the
+               ; syntax-pattern associated with `pat` and the runtime representation of `e`;
+               ;
+               ; In that case, the match will expand to
+               ; (match e
+               ;    [pat.match-pattern continuation]
+               ;    ...)
+               ;
                (lambda (stx)
                  (syntax-parse stx
                    [(_ pat)
@@ -461,7 +481,7 @@
      #`(bonsai-list (list (make-concrete-term! lang pat) ...))]))
 
 (define-syntax (make-term! stx)
-  ;#(printf "make-term! ~a ~n" stx)
+  #;(printf "make-term! ~a ~n" stx)
   (syntax-parse stx
     [(_ lang:id pat depth:expr)
      #`(let ([tree (make-tree! depth (grammar-max-width lang))])

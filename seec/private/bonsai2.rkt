@@ -25,7 +25,9 @@
          nondet!
          capture-nondeterminism
          concretize
+         concretize+
          instantiate
+         expand-solution
          ; utilities
          andmap-indexed
          ; linked lists
@@ -51,9 +53,7 @@
 (require "string.rkt"
          "match.rkt")
 
-; moved definition of bonsai-width to string so it could be used in
-; number->string
-(define bonsai-width string/bv-max-width)
+(define bonsai-width 32)
 
 (define (bonsai-write b port mode)
   (case mode
@@ -320,6 +320,11 @@
     (if (unsat? sol)
         sol
         (concretize v sol))))
+
+(define (expand-solution sol expr-list)
+  (complete-solution sol (flatten (map symbolics expr-list))))
+(define (concretize+ v sol)
+  (evaluate v sol))
 
 ;;;;;;;;;;;;;;;;;;
 ;; Linked lists ;;
