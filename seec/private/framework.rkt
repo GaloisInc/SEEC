@@ -25,8 +25,6 @@
          evaluate
          link-and-evaluate
          compile
-
-         make-symbolic-var
          )
 
 (require (for-syntax syntax/parse)

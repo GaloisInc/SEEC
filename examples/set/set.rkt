@@ -1,7 +1,5 @@
 #lang seec
 
-(require seec/private/framework)
-
 ; Performance tweak: model integers using 4-bit bitvectors
 (current-bitwidth 4)
 
