@@ -16,7 +16,6 @@
   (trace       ::= list<boolean>)
   (method      ::= (insert integer) (remove integer) (member? integer) select)
   (interaction ::= list<method>)
-  (context     ::= empty ((insert integer) context) ((remove integer) context))
   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -277,21 +276,21 @@
   #:context-relation equal?
   #:compile id)
 
-#;(begin
+(begin
   (displayln "Trying to find a trace with weird behavior under buggy compilation")
   (let* ([trace (set-api interaction 4)]
          [gen (make-query-weird-computation abstract-to-buggyconcrete trace)]
          [witness (gen)])
     (display-weird-component witness displayln)))
 
-#;(begin
+(begin
   (displayln "Trying to find a trace with different behavior under compilation")
   (let* ([trace (set-api interaction 4)]
          [gen (make-query-changed-behavior abstract-to-concrete trace)]
          [witness (gen)])
     (display-changed-behavior witness displayln)))
 
-#;(begin
+(begin
   (displayln "Trying to find a trace with weird behavior under correct compilation")
   (let* ([trace (set-api interaction 4)]
          [gen (make-query-weird-computation abstract-to-concrete trace)]
@@ -303,7 +302,6 @@
 ; context), paired with a context (in this case, a set).
 ; res is a pair of a trace and a set
 (define (add1-concrete? prog res)
-  (printf "(add1-concrete ~a ~a)~n" prog res)
   (match (cons prog res)
     [(cons (cons _ init-set) (cons _ res-set))
      (equal? (bonsai-ll-length res-set)
@@ -368,7 +366,7 @@
         [member2 (concrete-member? res-set (bonsai-integer 2))])
     (and (bonsai->racket member1) (not (bonsai->racket member2)))))
 
-(define expected-context (set-api ((insert 1) ((remove 2) empty))))
+(define expected-context (set-api (cons (insert 1) (cons (remove 2) nil))))
 
 
 ; Trying to do something equivalent to concrete-two-member-spec with the concrete language (dealing with interactions)
