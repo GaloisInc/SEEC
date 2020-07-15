@@ -15,6 +15,7 @@
          (prefix-in unsafe:
                     (combine-in
                      (only-in racket
+                              raise-arguments-error
                               for
                               for/fold
                               for/hash
@@ -27,6 +28,8 @@
                               set-add
                               set-union
                               set-subtract
+                              set-intersect
+                              set-empty?
                               hash
                               hash-set
                               hash->list
@@ -58,33 +61,52 @@
 (begin-for-syntax
   (define builtin-nonterminals '(integer natural boolean char string any))
   (define builtin-nonterminal-functions '(list))
+  (define-literal-set builtin-terminals #:datum-literals (nil cons) ())
   (define builtins (append builtin-nonterminals builtin-nonterminal-functions))
 )
 (define builtin-nonterminals '(integer natural boolean char string any))
 (define builtin-nonterminal-functions '(list))
-(define builtins (append builtin-nonterminals builtin-nonterminal-functions))
+(define builtin-terminals '(nil cons))
+(define builtin-keywords (append builtin-nonterminal-functions builtin-terminals))
 
 ; OSTODO: properly populate the grammar for polymorphic types
 (define (make-grammar rules)
   (define-values (nonterminals metavars productions prod-max-width)
     (unsafe:for/fold ([nonterminals (unsafe:set)]
-                      [metavars     (unsafe:list->set builtins)]
+                      [metavars     (unsafe:list->set builtin-nonterminals)]
                       [productions  (unsafe:hash)]
                       [prod-width   0])
                      ([production (unsafe:in-list rules)])
                      (let* ([nt             (first production)]
                             [new-nts        (unsafe:set-add nonterminals nt)]
-                            [new-meta       (unsafe:set-union metavars (unsafe:list->set (flatten production)))]
+                            [new-meta       (unsafe:set-union metavars
+                                                              (unsafe:list->set (flatten production)))]
                             [new-prods      (unsafe:hash-set productions nt (rest production))]
                             [new-prod-width (apply max prod-width (map max-width (rest production)))])
                        (unsafe:values new-nts new-meta new-prods new-prod-width))))
-  (let* ([terminals (unsafe:set-subtract metavars nonterminals)])
-    (unsafe:for ([mv (unsafe:in-set metavars)])
-                (register-enum mv))
-    (grammar (unsafe:set->list nonterminals)
-              (unsafe:set->list terminals)
-              (unsafe:hash->list productions)
-              prod-max-width)))
+
+  (let* ([terminals (unsafe:set-subtract metavars nonterminals)]
+         [illegally-used-keywords (unsafe:set-intersect metavars
+                                                        (unsafe:list->set builtin-keywords))]
+         )
+    #;(displayln metavars)
+    (cond
+      ; if any of the metavars intersect with the builtin-terminals '(nil cons), throw an error
+      [(not (unsafe:set-empty? illegally-used-keywords))
+       (unsafe:raise-arguments-error 'make-grammar
+                                     "Illegal use of a reserved keyword"
+                                     "keywords" (unsafe:set->list illegally-used-keywords)
+                                     )]
+
+      [else
+       (unsafe:for ([mv (unsafe:in-set metavars)])
+                   (register-enum mv))
+       (grammar (unsafe:set->list nonterminals)
+                (unsafe:set->list terminals)
+                (unsafe:hash->list productions)
+                prod-max-width)
+       ]))
+  )
 
 
 
@@ -221,7 +243,7 @@
   ; `terminals`.
   (define-syntax-class (term lang-name terminals)
     #:attributes (match-pattern stx-pattern depth)
-    #:datum-literals (nil cons)
+    #:literal-sets (builtin-terminals)
     #:description (format "~a pattern ~a" lang-name terminals)
     #:opaque
     (pattern n:id
@@ -293,7 +315,7 @@
 
   (define-syntax-class (concrete-term lang-name terminals builtins)
     #:literals (unquote)
-    #:datum-literals (nil cons)
+    #:literal-sets (builtin-terminals)
     #:description (format "concrete ~a pattern ~a" lang-name terminals)
     #:opaque
     (pattern n:id
@@ -375,7 +397,6 @@
     #:description "production"
     #:attributes (terminals)
     #:opaque
-    #:datum-literals ,builtins
     (pattern ty:type
              #:attr terminals (attribute ty.type-terminals)
              )
@@ -459,7 +480,7 @@
 (define-syntax (make-concrete-term! stx)
   (syntax-parse stx
     #:literals (unquote)
-    #:datum-literals (nil cons)
+    #:literal-sets (builtin-terminals)
     [(_ lang:id nil)
      #'(bonsai-null)]
     [(_ lang:id (cons p-first p-rest))
