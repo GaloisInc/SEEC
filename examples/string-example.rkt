@@ -4,13 +4,12 @@
 (require (only-in racket/base integer->char))
 (require seec/private/bonsai2)
 
-(define-language constants
+(define-grammar constants
   (const ::= (BOOL boolean) num (STR string) (CHAR char))
   (num ::= (NAT natural))
 )
 
 
-#|
 (define b (constants (BOOL #f)))
 (define five (constants (NAT 5)))
 
@@ -25,7 +24,6 @@
 (match c-desired
   [(constants (CHAR c:char)) (displayln c)]
   )
-|#
 
 
 #|
