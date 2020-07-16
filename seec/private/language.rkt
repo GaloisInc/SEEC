@@ -406,7 +406,6 @@
             [nts           (list->set (syntax->datum #'(nt ...)))]
             [terminals     (prods->terminals prods)]
             )
-       #;(printf "terminals: ~a~n" terminals)
        (with-syntax ([terminalstx #`(apply set '(#,@(set->list terminals)))]
                      [ntstx       #`(apply set '(#,@(set->list nts)))])
          #`(begin
