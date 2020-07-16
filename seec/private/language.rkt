@@ -69,6 +69,7 @@
 (define builtin-terminals '(nil cons))
 (define builtin-keywords (append builtin-nonterminal-functions builtin-terminals))
 
+
 ; OSTODO: properly populate the grammar for polymorphic types
 (define (make-grammar rules)
   (define-values (nonterminals metavars productions prod-max-width)
@@ -86,26 +87,14 @@
                        (unsafe:values new-nts new-meta new-prods new-prod-width))))
 
   (let* ([terminals (unsafe:set-subtract metavars nonterminals)]
-         [illegally-used-keywords (unsafe:set-intersect metavars
-                                                        (unsafe:list->set builtin-keywords))]
          )
-    #;(displayln metavars)
-    (cond
-      ; if any of the metavars intersect with the builtin-terminals '(nil cons), throw an error
-      [(not (unsafe:set-empty? illegally-used-keywords))
-       (unsafe:raise-arguments-error 'make-grammar
-                                     "Illegal use of a reserved keyword"
-                                     "keywords" (unsafe:set->list illegally-used-keywords)
-                                     )]
-
-      [else
        (unsafe:for ([mv (unsafe:in-set metavars)])
                    (register-enum mv))
        (grammar (unsafe:set->list nonterminals)
                 (unsafe:set->list terminals)
                 (unsafe:hash->list productions)
                 prod-max-width)
-       ]))
+       )
   )
 
 
@@ -365,7 +354,7 @@
     #:description "nonterminal"
     #:opaque
     (pattern nt:id
-             #:when (not (member (syntax->datum #'nt) builtins))))
+             #:when (not (member (syntax->datum #'nt) builtin-nonterminals))))
 
   (define-syntax-class builtin
     #:description "built-in nonterminal"
@@ -427,13 +416,31 @@
             [nts           (list->set (syntax->datum #'(nt ...)))]
             [terminals     (prods->terminals prods)]
             )
-       #;(printf "terminals: ~a~n" terminals)
        (with-syntax ([terminalstx #`(apply set '(#,@(set->list terminals)))]
                      [ntstx       #`(apply set '(#,@(set->list nts)))])
          #`(begin
              (define lang-struct
-               (make-grammar
-                '#,prods))
+               (make-grammar '#,prods))
+
+             ; Throw an exception if any reserved keywords from
+             ; `builtin-keywords` occured in the grammar
+             (let ([keywords-in-nonterminals
+                    (unsafe:set-intersect (grammar-nonterminals lang-struct)
+                                          builtin-keywords)]
+                   [keywords-in-terminals
+                    (unsafe:set-intersect (grammar-terminals lang-struct)
+                                          builtin-keywords)]
+                   )
+               (cond
+                 [(not (unsafe:set-empty? (unsafe:set-union keywords-in-nonterminals
+                                                            keywords-in-terminals)))
+                  (unsafe:raise-arguments-error 'define-grammar
+                                                "Illegal use of reserved keywords"
+                                                "keywords used as nonterminals" keywords-in-nonterminals
+                                                "keywords used as terminals" keywords-in-terminals
+                                                )]
+                 ))
+
 
              (define-match-expander name
                ; The first argument of the match-expander is the behavior used
