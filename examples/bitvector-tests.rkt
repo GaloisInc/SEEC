@@ -18,10 +18,11 @@
 ; Experiments with bitvectors and overflow
 (define (overflow-tests)
 
-  ; I want bitvectors whose width is `current-bitwidth`.
-  (current-bitwidth 2)
-  (define bvw? (bitvector (current-bitwidth)))
-  (define (bvw n) (bv n (current-bitwidth)))
+  ; I want bitvectors whose width is `current-bitwidth-1`.
+  (current-bitwidth 32)
+  (define (current-bv-width) (- (current-bitwidth) 1))
+  (define bvw? (bitvector (current-bv-width)))
+  (define (bvw n) (bv n (current-bv-width)))
   ; in integer->bvw, n *may* be symbolic; see integer->bitvector
   (define (integer->bvw n) (integer->bitvector n bvw?))
 
@@ -31,13 +32,11 @@
 
   (define-symbolic x bvw?)
   #;(define x (bvw 0))
-  #;(define-symbolic n integer?)
-  #;(assert (>= n 0))
-  #;(printf "(integer? n): ~a~n" (integer? n))
-  #;(define y (integer->bvw n))
-  (define-symbolic y bvw?)
+  (define-symbolic n integer?)
+  (assert (>= n 0))
+  (define y (integer->bvw n))
+  #;(define-symbolic y bvw?)
 
-  #;(define sol (solve (assert (equal? (bvadd x y) (bvsub1 x)))))
   (define sol (synthesize #:forall x
                           #:guarantee (assert (equal? (bvadd x y) (bvsub1 x)))))
   #;(define sol (solve (assert (equal? (bvadd x y) (bvsub1 x)))))
@@ -53,9 +52,9 @@
              (define y-concrete (concretize y sol))
              (displayln "y...")
              (displayln y-concrete)
-             (define m-concrete (bitvector->natural y-concrete))
-             (displayln "m...")
-             (displayln m-concrete)
+             (define n-concrete (concretize n sol))
+             (displayln "n...")
+             (displayln n-concrete)
 
              (displayln "x+y...")
              (displayln (bvadd x-concrete y-concrete))
