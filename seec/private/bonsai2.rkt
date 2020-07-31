@@ -4,6 +4,7 @@
          (except-out (struct-out bonsai-null) bonsai-null)
          (except-out (struct-out bonsai-terminal) bonsai-terminal)
          (except-out (struct-out bonsai-boolean) bonsai-boolean)
+         (except-out (struct-out bonsai-bv) bonsai-bv)
          (except-out (struct-out bonsai-integer) bonsai-integer)
          (except-out (struct-out bonsai-char) bonsai-char)
          (except-out (struct-out bonsai-string) bonsai-string)
@@ -11,6 +12,7 @@
          (rename-out [match-bonsai-null bonsai-null]
                      [match-bonsai-terminal bonsai-terminal]
                      [match-bonsai-boolean bonsai-boolean]
+                     [match-bonsai-bv bonsai-bv]
                      [match-bonsai-integer bonsai-integer]
                      [match-bonsai-char bonsai-char]
                      [match-bonsai-string bonsai-string]
@@ -40,6 +42,11 @@
          bonsai-ll-length
          bonsai-ll-append
          bonsai->racket
+         ; bitvectors
+         integer->bvw
+         set-bvw
+         current-bv-width
+         bvw?
 
          bonsai-pretty
          )
@@ -109,6 +116,10 @@
   #:transparent
   #:methods gen:custom-write
   [(define write-proc bonsai-write)])
+(struct bonsai-bv bonsai (value)
+  #:transparent
+  #:methods gen:custom-write
+  [(define write-proc bonsai-write)])
 (struct bonsai-terminal bonsai (value)
   #:transparent
   #:methods gen:custom-write
@@ -126,6 +137,8 @@
      (out (print-string (bonsai-string-value b)))]
     [(bonsai-boolean? b)
      (out (bonsai-boolean-value b))]
+    [(bonsai-bv? b)
+     (out (bonsai-bv-value b))]
     [(bonsai-null? b)
      (out "*null*")]
     [(bonsai-list? b)
@@ -158,6 +171,10 @@
      (out "(bonsai-boolean ")
      (recur (bonsai-boolean-value b))
      (out ")")]
+    [(bonsai-bv? b)
+     (out "(bonsai-bv ")
+     (recur (bonsai-bv-value b))
+     (out ")")]
     [(bonsai-null? b)
      (out "(bonsai-null)")]
     [(bonsai-list? b)
@@ -183,6 +200,8 @@
     [(bonsai-boolean? b)
      (bonsai-boolean-value b)
      ]
+    [(bonsai-bv? b)
+     (bonsai-bv-value b)]
     [(bonsai-null? b) "-"]
     [(bonsai-list? b)
      (add-between (map bonsai-pretty (bonsai-list-nodes b)) " ")
@@ -216,6 +235,7 @@
     [(bonsai-null? b) #f]
     [(bonsai-terminal? b) (enum->symbol (bonsai-terminal-value b))]
     [(bonsai-boolean? b) (bonsai-boolean-value b)]
+    [(bonsai-bv? b) (bonsai-bv-value b)]
     [(bonsai-integer? b) (bonsai-integer-value b)]
     [(bonsai-list? b)
      (map bonsai->racket (filter (lambda (b) (not (bonsai-null? b)))
@@ -227,6 +247,23 @@
   (define-symbolic* nondet boolean?)
   (nondeterminism (cons nondet (nondeterminism)))
   nondet)
+
+(define bonsai-bv-width (cond
+                          [(equal? (current-bitwidth) #f) 32]
+                          [else (- (current-bitwidth) 1)]))
+(define (set-bvw w)
+  (assert (or (= #f (current-bitwidth))
+              (< w (current-bitwidth))))
+  (set! bonsai-bv-width w)
+  )
+(define (current-bv-width) bonsai-bv-width)
+
+; bvw? is a classifier of bitvectors of width (current-bv-width). For example,
+; use to create symbolic bitvectors with `(define-symbolic b bvw?)`.
+(define bvw? (bitvector (current-bv-width)))
+
+(define (integer->bvw n)
+  (integer->bitvector n bvw?))
 
 (define-syntax (capture-nondeterminism stx)
   (syntax-parse stx
@@ -243,6 +280,11 @@
 (define (new-boolean!)
   (define-symbolic* bool-val boolean?)
   (bonsai-boolean bool-val))
+
+(define (new-bv!)
+  (define-symbolic* bv-val bvw?)
+  (bonsai-bv bv-val)
+  )
 
 (define (new-integer!)
   (define-symbolic* int-val integer?)
@@ -307,6 +349,7 @@
     [(havoc!) (new-term!)]
     [(havoc!) (new-integer!)]
     [(havoc!) (new-boolean!)]
+    [(havoc!) (new-bv!)]
     [(havoc!) (new-natural!)]
     [(havoc!) (new-char!)]
     [(havoc!) (new-string! depth)]
@@ -418,6 +461,13 @@
        #'(? bonsai-boolean? (! bonsai-boolean-value pat))]))
   (make-rename-transformer #'bonsai-boolean))
 
+(define-match-expander match-bonsai-bv
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ pat)
+       #'(? bonsai-bv? (! bonsai-bv-value pat))]))
+  (make-rename-transformer #'bonsai-bv))
+
 (define-match-expander match-bonsai-integer
   (lambda (stx)
     (syntax-parse stx
@@ -457,6 +507,7 @@
   (define null (bonsai-null))
   (define term (bonsai-terminal (bv 2 32)))
   (define bool (bonsai-boolean #t))
+  (define bv+  (bonsai-bv (integer->bvw 4)))
   (define int  (bonsai-integer 5))
   (define char (bonsai-char 36))
   (define str  (bonsai-string (list 36 36 36)))
@@ -467,6 +518,7 @@
     (check-equal? null (match null [(? bonsai-null? x) x]))
     (check-equal? term (match term [(? bonsai-terminal? x) x]))
     (check-equal? bool (match bool [(? bonsai-boolean? x) x]))
+    (check-equal? bv+  (match bv+  [(? bonsai-bv? x) x]))
     (check-equal? int  (match int  [(? bonsai-integer? x) x]))
     (check-equal? char (match char [(? bonsai-char? x) x]))
     (check-equal? str  (match str  [(? bonsai-string? x) x]))
@@ -484,6 +536,9 @@
   (check-equal? (bonsai-boolean-value bool)
                 (match bool
                   [(bonsai-boolean v) v]))
+  (check-equal? (bonsai-bv-value bv+)
+                (match bv+
+                  [(bonsai-bv v) v]))
   (check-equal? (bonsai-integer-value int)
                 (match int
                   [(bonsai-integer v) v]))

@@ -59,14 +59,14 @@
     [else 0]))
 
 (begin-for-syntax
-  (define builtin-nonterminals '(integer natural boolean char string any))
+  (define builtin-nonterminals '(integer natural boolean bitvector char string any))
   (define builtin-nonterminal-functions '(list))
-  (define-literal-set builtin-terminals #:datum-literals (nil cons) ())
+  (define-literal-set builtin-terminals #:datum-literals (nil cons bvw) ())
   (define builtins (append builtin-nonterminals builtin-nonterminal-functions))
 )
-(define builtin-nonterminals '(integer natural boolean char string any))
+(define builtin-nonterminals '(integer natural boolean bitvector char string any))
 (define builtin-nonterminal-functions '(list))
-(define builtin-terminals '(nil cons))
+(define builtin-terminals '(nil cons bvw))
 (define builtin-keywords (append builtin-nonterminal-functions builtin-terminals))
 
 
@@ -164,6 +164,8 @@
          (bonsai-string? tree)]
         [(equal? 'boolean pattern)
          (bonsai-boolean? tree)]
+        [(equal? 'bitvector pattern)
+         (bonsai-bv? tree)]
         [(member pattern (grammar-nonterminals lang))
          (let ([productions (cdr (assoc pattern (grammar-productions lang)))])
            #;(printf "productions: ~a~n" productions)
@@ -279,6 +281,12 @@
              #:attr stx-pattern   #'boolean
              #:attr depth         #'1)
 
+    (pattern (bvw b)
+             #:declare b integer
+             #:when (set-member? terminals 'bitvector)
+             #:attr match-pattern #'(bonsai-bv (? (λ (v) (equal? b v)) _))
+             #:attr stx-pattern   #'bitvector
+             #:attr depth         #'1)
     (pattern nil
 ;             #:when (set-member? terminals 'list)
              #:attr match-pattern #'bonsai-null
@@ -322,6 +330,9 @@
              #:when (set-member? builtins 'string))
     (pattern b:boolean
              #:when (set-member? builtins 'boolean))
+    (pattern (bvw b:integer)
+             #:when (set-member? terminals 'bitvector)
+             )
     (pattern (unquote expr))
     (pattern nil
              #:when (set-member? builtins 'list)
@@ -492,6 +503,8 @@
      #'(bonsai-null)]
     [(_ lang:id (cons p-first p-rest))
      #`(bonsai-list (list (make-concrete-term! lang p-first) (make-concrete-term! lang p-rest)))]
+    [(_ lang:id (bvw b))
+     #`(bonsai-bv (integer->bvw b))]
 
     [(_ lang:id n:integer)
      #`(bonsai-integer n)]
@@ -561,7 +574,7 @@
   (require (for-syntax syntax/parse))
 
   (define-grammar test-grammar
-    (base     ::= integer natural boolean)
+    (base     ::= integer natural boolean bitvector)
     (op       ::= + - and or)
     (exp      ::= base (op exp exp))
     (prog     ::= list<exp>))
@@ -608,6 +621,10 @@
      (test-grammar #f)
      (test-grammar b:boolean)
      (not (bonsai-boolean-value b)))
+    (match-check
+     (test-grammar (bvw 3))
+     (test-grammar b:bitvector)
+     (eq? (integer->bvw 3) (bonsai-bv-value b)))
     (match-check
      (test-grammar (+ 5 #f))
      (test-grammar exp)
