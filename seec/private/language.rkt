@@ -331,7 +331,7 @@
     (pattern b:boolean
              #:when (set-member? builtins 'boolean))
     (pattern (bvw b:integer)
-             #:when (set-member? terminals 'bitvector)
+             #:when (set-member? builtins 'bitvector)
              )
     (pattern (unquote expr))
     (pattern nil
@@ -483,16 +483,16 @@
                (lambda (stx)
                  (syntax-parse stx
                    [n:id #'lang-struct]
-                   [(_ pat depth)
-                    #:declare pat (term #,(syntax->string #'name)
-                                        terminalstx)
-                    #'(make-term! name pat depth)]
                    [(_ pat)
                     #:declare pat (concrete-term
                                    #,(syntax->string #'name)
                                    (set-subtract terminalstx ntstx (list->set builtins))
                                    (set-intersect terminalstx (list->set builtins)))
                     #'(make-concrete-term! name pat)]
+                   [(_ pat depth)
+                    #:declare pat (term #,(syntax->string #'name)
+                                        terminalstx)
+                    #'(make-term! name pat depth)]
                    ))))))]))
 
 (define-syntax (make-concrete-term! stx)
@@ -621,6 +621,7 @@
      (test-grammar #f)
      (test-grammar b:boolean)
      (not (bonsai-boolean-value b)))
+    ; TODO: change bvw to to-bv ?
     (match-check
      (test-grammar (bvw 3))
      (test-grammar b:bitvector)

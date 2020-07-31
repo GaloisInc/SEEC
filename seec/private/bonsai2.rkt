@@ -248,6 +248,7 @@
   (nondeterminism (cons nondet (nondeterminism)))
   nondet)
 
+; TODO: make into racket parameter instead
 (define bonsai-bv-width (cond
                           [(equal? (current-bitwidth) #f) 32]
                           [else (- (current-bitwidth) 1)]))
