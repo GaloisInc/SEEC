@@ -61,12 +61,12 @@
 (begin-for-syntax
   (define builtin-nonterminals '(integer natural boolean bitvector char string any))
   (define builtin-nonterminal-functions '(list))
-  (define-literal-set builtin-terminals #:datum-literals (nil cons bvw) ())
+  (define-literal-set builtin-terminals #:datum-literals (nil cons bv) ())
   (define builtins (append builtin-nonterminals builtin-nonterminal-functions))
 )
 (define builtin-nonterminals '(integer natural boolean bitvector char string any))
 (define builtin-nonterminal-functions '(list))
-(define builtin-terminals '(nil cons bvw))
+(define builtin-terminals '(nil cons bv))
 (define builtin-keywords (append builtin-nonterminal-functions builtin-terminals))
 
 
@@ -281,7 +281,7 @@
              #:attr stx-pattern   #'boolean
              #:attr depth         #'1)
 
-    (pattern (bvw b)
+    (pattern (bv b)
              #:declare b integer
              #:when (set-member? terminals 'bitvector)
              #:attr match-pattern #'(bonsai-bv (? (λ (v) (equal? b v)) _))
@@ -330,7 +330,7 @@
              #:when (set-member? builtins 'string))
     (pattern b:boolean
              #:when (set-member? builtins 'boolean))
-    (pattern (bvw b:integer)
+    (pattern (bv b:integer)
              #:when (set-member? builtins 'bitvector)
              )
     (pattern (unquote expr))
@@ -503,8 +503,8 @@
      #'(bonsai-null)]
     [(_ lang:id (cons p-first p-rest))
      #`(bonsai-list (list (make-concrete-term! lang p-first) (make-concrete-term! lang p-rest)))]
-    [(_ lang:id (bvw b))
-     #`(bonsai-bv (integer->bvw b))]
+    [(_ lang:id (bv b))
+     #`(integer->bonsai-bv b)]
 
     [(_ lang:id n:integer)
      #`(bonsai-integer n)]
@@ -621,11 +621,11 @@
      (test-grammar #f)
      (test-grammar b:boolean)
      (not (bonsai-boolean-value b)))
-    ; TODO: change bvw to to-bv ?
+    ; TODO: change bv to to-bv ?
     (match-check
-     (test-grammar (bvw 3))
+     (test-grammar (bv 3))
      (test-grammar b:bitvector)
-     (eq? (integer->bvw 3) (bonsai-bv-value b)))
+     (eq? (integer->bonsai-bv 3) b))
     (match-check
      (test-grammar (+ 5 #f))
      (test-grammar exp)

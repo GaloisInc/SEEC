@@ -43,10 +43,8 @@
          bonsai-ll-append
          bonsai->racket
          ; bitvectors
-         integer->bvw
-         set-bvw
+         integer->bonsai-bv
          current-bv-width
-         bvw?
 
          bonsai-pretty
          )
@@ -248,23 +246,24 @@
   (nondeterminism (cons nondet (nondeterminism)))
   nondet)
 
-; TODO: make into racket parameter instead
-(define bonsai-bv-width (cond
-                          [(equal? (current-bitwidth) #f) 32]
-                          [else (- (current-bitwidth) 1)]))
-(define (set-bvw w)
-  (assert (or (= #f (current-bitwidth))
-              (< w (current-bitwidth))))
-  (set! bonsai-bv-width w)
-  )
-(define (current-bv-width) bonsai-bv-width)
+; current-bv-width is  a racket  parameter that holds  the width  of bonsai/seec
+; bitvectors. We  use a parameter  to store this instead  of letting it  vary by
+; use-site because otherwise make-tree! would need  to be a much larger union of
+; bitvectors of all possible sizes.
+(define current-bv-width
+  (let ([width-in-scope (λ (w) (or (equal? (current-bitwidth #f))
+                                   (< 0 w (current-bitwidth))))])
+    (make-parameter (if (equal? (current-bitwidth) #f)
+                        32
+                        (- (current-bitwidth) 1))
+                    (λ (w) (begin
+                             (assert (width-in-scope w))
+                             w))
+                    )))
 
-; bvw? is a classifier of bitvectors of width (current-bv-width). For example,
-; use to create symbolic bitvectors with `(define-symbolic b bvw?)`.
-(define bvw? (bitvector (current-bv-width)))
+(define (integer->bonsai-bv n)
+  (bonsai-bv (integer->bitvector n (bitvector (current-bv-width)))))
 
-(define (integer->bvw n)
-  (integer->bitvector n bvw?))
 
 (define-syntax (capture-nondeterminism stx)
   (syntax-parse stx
@@ -283,7 +282,7 @@
   (bonsai-boolean bool-val))
 
 (define (new-bv!)
-  (define-symbolic* bv-val bvw?)
+  (define-symbolic* bv-val (bitvector (current-bv-width)))
   (bonsai-bv bv-val)
   )
 
@@ -508,7 +507,7 @@
   (define null (bonsai-null))
   (define term (bonsai-terminal (bv 2 32)))
   (define bool (bonsai-boolean #t))
-  (define bv+  (bonsai-bv (integer->bvw 4)))
+  (define bv+  (integer->bonsai-bv 4))
   (define int  (bonsai-integer 5))
   (define char (bonsai-char 36))
   (define str  (bonsai-string (list 36 36 36)))
