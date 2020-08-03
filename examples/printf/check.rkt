@@ -10,7 +10,7 @@
   (define args (printf-lang arglist 5))
   (assert (< offset (bonsai-ll-length args)))
   (define sol
-    (verify (val? (lookup-offset offset args))))
+    (time (verify (val? (lookup-offset offset args)))))
   (if (unsat? sol)
       (displayln "Verified.")
       (begin
@@ -29,7 +29,7 @@
   (define l (printf-lang ident 1))
   (define v (printf-lang val 1))
   (assert (mem? m))
-  (define sol (verify (mem? (mem-update m l v))))
+  (define sol (time (verify (mem? (mem-update m l v)))))
   (if (unsat? sol)
       (displayln "Verified")
       (displayln "Counterexample found.")))
@@ -41,9 +41,9 @@
   (define args (printf-lang arglist 4))
   (define conf (printf-lang config 4))
   (assert (fmt-consistent-with-arglist? f args))
-  (define sol (verify (match (interp-fmt-safe f args conf)
-                        [(printf-lang (trace conf+:config)) (conf? conf+)]
-                        )))
+  (define sol (time (verify (match (interp-fmt-safe f args conf)
+                              [(printf-lang (trace conf+:config)) (conf? conf+)]
+                              ))))
   (if (unsat? sol)
       (displayln "Verified")
       (begin
@@ -72,9 +72,9 @@
     (match (interp-fmt-unsafe f args conf)
       [(printf-lang (trace conf+:config)) (conf? conf+)]
       [_ #f]))
-  (define sol (verify
+  (define sol (time (verify
                #:guarantee guarantee
-               ))
+               )))
   (if (unsat? sol)
       (displayln "Verified")
       (begin
@@ -94,7 +94,7 @@
         )))
 
 (define (find-exploit)
-  (current-bitwidth 16)
+  (current-bitwidth 3)
 
   (define f (printf-lang fmt 5))
   ;(assert (equal? f (printf-lang (cons (% (0 $) NONE d) nil))))
@@ -106,13 +106,13 @@
   (define safe-result (interp-fmt-safe f args conf))
   (define unsafe-result (interp-fmt-unsafe f args conf))
   #;(define conf+ (behavior->config (interp-fmt-unsafe f args conf)))
-  (define sol (synthesize
+  (define sol (time (synthesize
                #:forall '()
                #:guarantee (assert (and #;(not (fmt-consistent-with-arglist? f args))
                                         #;(equal? safe-result (printf-lang ERR))
                                         #;(conf? conf+)
                                         (not (equal? safe-result unsafe-result))
-                                        ))))
+                                        )))))
   #;(define sol (verify #:assume (assert (conf? conf+))
                       #:guarantee (assert (fmt-consistent-with-arglist? f args))
                       ))
@@ -209,6 +209,7 @@
 
 
 (define (find-add-constant)
+  (current-bitwidth 3)
   (define f (printf-lang fmt 5))
   (define acc0 (printf-lang integer 1))
   (define conf (printf-lang (,acc0 mnil)))
@@ -219,9 +220,9 @@
 
   (displayln "")
   (displayln "Searching for a format string that adds 1 to the accumulator")
-  (define sol (synthesize
+  (define sol (time (synthesize
                #:forall acc0
-               #:guarantee (assert (is-increment? f args conf))))
+               #:guarantee (assert (is-increment? f args conf)))))
   (displayln "")
   (if (unsat? sol)
       (displayln "Failed to synthesize")
@@ -255,18 +256,18 @@
   (* -1 (max-int)))
 
 (define (test-quantifier)
-  (current-bitwidth 5)
+  (current-bitwidth 3)
   (define-symbolic x integer?)
-  (define sol (synthesize
+  (define sol (time (synthesize
                #:forall x
-               #:guarantee (<= (min-int) x (max-int))))
+               #:guarantee (<= (min-int) x (max-int)))))
   sol
   )
 
 
 (define (find-add-argument-max)
 
-  (current-bitwidth 5)
+  (current-bitwidth 3)
   (define f-concrete (printf-lang (cons (% (0 $) (* 0) d) nil)))
   (define f (printf-lang fmt 5))
   #;(define f f-concrete)
@@ -423,12 +424,12 @@
   )
 
 (define (find-add-argument)
-  (current-bitwidth 5)
+  (current-bitwidth 3)
   (define f-concrete (printf-lang (cons (% (1 $) (* 0) s) nil)))
   (define f-bad (printf-lang (cons (% (1 $) 13 d) nil)))
   (define f-symbolic (printf-lang fmt 5))
 
-  (printf "Searching for a format string that adds the value of x to the accumulator")
+  (displayln "Searching for a format string that adds the value of x to the accumulator")
   (define sol (verify-add-argument f-symbolic))
   (if (unsat? sol)
       (printf "Failed to synthesize~n")
@@ -444,7 +445,7 @@
 
 #;(define (find-add-argument)
 
-  (current-bitwidth 5)
+  (current-bitwidth 3)
   (define f-concrete (printf-lang (cons (% (1 $) (* 0) s) nil)))
   (define f (printf-lang fmt 5))
   #;(define f f-concrete)
@@ -556,20 +557,33 @@
   )
 
 
-
+#|
 (test-lookup-offset)
+(displayln "")
+(clear-asserts!)
 (displayln "")
 (test-mem-update)
 (displayln "")
+(clear-asserts!)
+(displayln "")
 (test-interp-fmt-safe)
 (displayln "")
+(displayln "")
+(clear-asserts!)
 (test-interp-fmt-unsafe)
 (displayln "")
 (find-exploit)
 (displayln "")
+(clear-asserts!)
+(displayln "")
+|#
 (find-add-constant)
 (displayln "")
+(clear-asserts!)
+(displayln "")
 (find-add-argument-max)
+(displayln "")
+(clear-asserts!)
 (displayln "")
 (find-add-argument)
 
