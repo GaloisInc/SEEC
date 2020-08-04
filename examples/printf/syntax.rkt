@@ -33,7 +33,6 @@
          val?
          arglist?
          mem?
-         conf?
          fmt-consistent-with-arglist?
 
          ll-singleton
@@ -108,7 +107,7 @@
   (printf-lang (cons ,x ,xs)))
 
 (define (debug stmt)
-  (stmt)
+  #;(stmt)
   (void)
   )
 
@@ -131,12 +130,6 @@
     [_ #f]
     ))
 
-(define/contract (conf? conf)
-  (-> any/c boolean?)
-  (match conf
-    [(printf-lang (i:integer m:mem)) (mem? m)] 
-    [_ #f]
-    ))
 (define/contract (trace? t)
   (-> any/c boolean?)
   (match t
@@ -248,12 +241,12 @@
     [(printf-lang (LOC x:ident)) x]
     ))
 (define/contract (conf->mem c)
-  (-> conf? mem?)
+  (-> config? mem?)
   (match c
     [(printf-lang (bvint m:mem)) m]
     ))
 (define/contract (conf->acc c)
-  (-> conf? bv?)
+  (-> config? bv?)
   (match c
     [(printf-lang (acc:bvint mem)) (bonsai->bv acc)]
     [_ (raise-argument-error 'conf->acc "conf" c)]
@@ -355,7 +348,7 @@
   (debug (thunk (printf "(constant-length ~a)~n" c)))
   (define res (match c
     [(printf-lang s:string)   (string-length (bonsai-string-value s))]
-    [(printf-lang n:integer)  (string-length (number->string n))]
+    [(printf-lang n:integer)  (string-length (number->string (bonsai->number n)))]
     [(printf-lang (pad-by n:natural)) (bonsai->number n)]
     ))
   (debug (thunk (printf "Computed constant-length: ~a~n" res)))
@@ -459,7 +452,7 @@
 ; INPUT: a format string, an argument list, and a configuration
 ; OUTPUT: an outputted string and a configuration OR ERR
 (define/contract (interp-fmt-elt-safe f args conf)
-  (-> fmt-elt? arglist? config? (or/c err? config?))
+  (-> fmt-elt? arglist? config? (or/c err? behavior?))
   (debug (thunk (printf "(interp-fmt-elt-safe ~a ~a ~a)~n" f args conf)))
   (define res (match f
     [(printf-lang s:string)
