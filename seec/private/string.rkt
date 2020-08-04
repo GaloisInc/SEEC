@@ -31,6 +31,7 @@
          string-length
          number->string
          digit->char
+         char->string
          string-append
          string
          max-str-len

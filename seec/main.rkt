@@ -29,6 +29,12 @@
          bonsai-integer?
          bonsai-integer-value
 
+         bonsai-bv
+         bonsai-bv?
+         bonsai-bv-value
+         integer->bonsai-bv
+         current-bv-width
+
          bonsai-string
          bonsai-string?
          bonsai-string-value

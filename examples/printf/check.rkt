@@ -557,7 +557,6 @@
   )
 
 
-#|
 (test-lookup-offset)
 (displayln "")
 (clear-asserts!)
@@ -576,7 +575,6 @@
 (displayln "")
 (clear-asserts!)
 (displayln "")
-|#
 (find-add-constant)
 (displayln "")
 (clear-asserts!)
