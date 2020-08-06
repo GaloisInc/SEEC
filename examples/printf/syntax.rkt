@@ -33,6 +33,9 @@
          val?
          arglist?
          mem?
+         trace?
+         const?
+         behavior?
          fmt-consistent-with-arglist?
 
          ll-singleton
@@ -204,7 +207,7 @@
   (match x
     [(printf-lang ERR) #t]
     [_ #f]))
-(define/contract (constant? x)
+(define/contract (const? x)
   (-> any/c boolean?)
   (match x
     [(printf-lang constant) #t]
@@ -344,7 +347,7 @@
 ; If the constant is an integer (represented by a bitvector) give the length of
 ; the string representing the number.
 (define/contract (constant-length c)
-  (-> constant? integer?)
+  (-> const? integer?)
   (debug (thunk (printf "(constant-length ~a)~n" c)))
   (define res (match c
     [(printf-lang s:string)   (string-length (bonsai-string-value s))]
@@ -358,7 +361,7 @@
 ; INPUT: a config OR behavior conf-or-behav and constant c
 ; OUTPUT: a behavior consisting of the trace containing n and the upated configuration
 (define/contract (print-constant conf-or-behav c)
-  (-> (or/c config? behavior?) constant? behavior?)
+  (-> (or/c config? behavior?) const? behavior?)
   (debug (thunk (printf "(print-constant ~a ~a)~n" conf-or-behav c)))
   (define res (match conf-or-behav
     [(printf-lang conf:config)
@@ -399,8 +402,8 @@
 ; OUTPUT: an updated configuration that assigns l the value of the accumulator.
 (define/contract (print-n-loc conf l)
   (-> config? ident? config?)
-  (debug (thunk (printf "(print-n-loc ~a): ~a~n" l)))
-  (let* ([acc (bonsai-integer (conf->acc conf))]
+  (debug (thunk (printf "(print-n-loc ~a)~n" l)))
+  (let* ([acc (bonsai-bv (conf->acc conf))]
          [new-mem (mem-update (conf->mem conf) l acc)]
          )
     (printf-lang (,acc ,new-mem))
@@ -418,7 +421,7 @@
 ; returns the contant to be printed, or ERR
 ; expects ftype to not be equal to `n`
 (define/contract (fmt->constant ftype param args)
-  (-> fmt-type? parameter? arglist? (or/c err? constant?))
+  (-> fmt-type? parameter? arglist? (or/c err? const?))
   (debug (thunk (printf "(fmt->constant ~a ~a ~a)~n" ftype param args)))
   (define res
     (match (cons ftype (lookup-offset (param->offset param) args))
@@ -437,7 +440,7 @@
 ; TODO: do we need to use bitvectors to keep track of potential overflow? Right
 ; now both the constant lengths and widths are integers, rather than bitvectors.
 (define/contract (pad-constant c w)
-  (-> constant? natural? trace?)
+  (-> const? natural? trace?)
   (debug (thunk (printf "(pad-constant ~a ~a)~n" c w)))
   (define res (let* ([c-len (constant-length c)]
          )
@@ -469,25 +472,28 @@
 
     ; otherwise, for the 's' and 'd' format types:
     [(printf-lang (% p:parameter NONE ftype:fmt-type))
-     (print-constant conf (fmt->constant ftype p args))]
+     (match (fmt->constant ftype p args)
+       [(printf-lang c:constant)
+        (print-constant conf (fmt->constant ftype p args))]
+       [(printf-lang ERR)
+        (printf-lang ERR)]
+       )]
 
     [(printf-lang (% p:parameter w:natural ftype:fmt-type))
-     (let* ([c (fmt->constant ftype p args)]
-            [t (pad-constant c (bonsai->number w))]
-            )
-       (print-trace conf t))
-     ]
+     (match (fmt->constant ftype p args)
+       [(printf-lang c:constant)
+        (print-trace conf (pad-constant c (bonsai->number w)))]
+       [(printf-lang ERR) (printf-lang ERR)]
+       )]
 
     [(printf-lang (% p:parameter (* o:offset) ftype:fmt-type))
-     (match (lookup-offset (bonsai->number o) args)
-       [(printf-lang w:bvint)
-        (let* ([c (fmt->constant ftype p args)]
-               [t (pad-constant c (bvint->number w))]
-               )
-          (print-trace conf t))]
+     (match (list (lookup-offset (bonsai->number o) args)
+                  (fmt->constant ftype p args))
+       [(list (printf-lang w:bvint)
+              (printf-lang c:constant))
+        (print-trace conf (pad-constant c (bvint->number w)))]
        [_ (printf-lang ERR)]
-       )
-     ]
+       )]
 
     [_ (raise-argument-error 'interp-fmt-elt-safe "(printf-lang fmt-elt)" f)]
     ))
@@ -497,7 +503,7 @@
 
 
 (define/contract (interp-fmt-safe f args conf)
-  (-> fmt? arglist? config? behavior?)
+  (-> fmt? arglist? config? (or/c err? behavior?))
   (debug (thunk (printf "(interp-fmt-safe ~a ~a ~a)~n" f args conf)))
   (define res (match f
     [(printf-lang nil) (printf-lang (nil ,conf))]
@@ -529,7 +535,8 @@
 
 (define/contract (unsafe:val->integer v)
   (-> val? integer?)
-  (match v
+  (debug (thunk (printf "(unsafe:val->integer ~a)~n" v)))
+  (define res (match v
     [(printf-lang n:bvint)       (bvint->number n)]
     ; if the value is a location, we interpret the location as an integer
     [(printf-lang (LOC l:ident)) (bonsai->number l)]
@@ -538,27 +545,40 @@
     ; integer is just the integer value of the first character in the string.
     [(printf-lang s:string)      (first (bonsai-string-value s))]
     ))
+  (debug (thunk (printf "result of unsafe:val->integer: ~a~n" res)))
+  res)
+
 
 (define/contract (unsafe:val->string v)
   (-> val? string?)
-  (match v
+  (debug (thunk (printf "(unsafe:val->string ~a)~n" v)))
+  (define (unsafe:char->string x)
+    (cond
+      [(char? x) (char->string x)]
+      [else      (string "")]
+      ))
+  (define res (match v
     [(printf-lang s:string) (bonsai-string-value s)]
     ; for an integer or location, interpret the integer as a character. In
     ; actuality C would expect a null-terminated string in memory, so it would
     ; actually not stop at the single value, but we aren't modeling that for
     ; now.
-    [(printf-lang n:bvint)       (char->string (bvint->number n))]
-    [(printf-lang (LOC l:ident)) (char->string (bonsai->number l))]
+    [(printf-lang n:bvint)       (unsafe:char->string (bvint->number n))]
+    [(printf-lang (LOC l:ident)) (unsafe:char->string (bonsai->number l))]
     ))
+  (debug (thunk (printf "result of unsafe:val->string: ~a~n" res)))
+  res)
 
 (define/contract (unsafe:fmt->constant ftype param args)
-  (-> fmt-type? parameter? arglist? (or/c err? constant?))
+  (-> fmt-type? parameter? arglist? (or/c err? const?))
+  (debug (thunk (printf "(unsafe:fmt->constant ~a ~a ~a)~n" ftype param args)))
   (match (lookup-offset (param->offset param) args)
     [(printf-lang ERR) (printf-lang ERR)]
     [(printf-lang v:val)
      (match ftype
        ; if ftype = 'd', interpret the argument as an integer
-       [(printf-lang d) (bonsai-integer (unsafe:val->integer v))]
+       [(printf-lang d) (bonsai-integer (unsafe:val->integer
+ v))]
        ; if ftype = 's', interpret the argument as a string
        [(printf-lang s) (bonsai-string (unsafe:val->string v))]
        ; if ftype = 'n', interpret the argument as a location aka an integer
@@ -572,7 +592,8 @@
 ; OUTPUT: an outputted trace and a configuration
 (define/contract (interp-fmt-elt-unsafe f args conf)
   (-> fmt-elt? arglist? config? behavior?)
-  (match f
+  (debug (thunk (printf "(interp-fmt-elt-unsafe ~a ~a ~a)~n" f args conf)))
+  (define res (match f
 
     [(printf-lang s:string)
      (print-constant conf s)
@@ -588,7 +609,7 @@
     ; for d and n format types, we will first calculate the constant associated
     ; with the format type, and then pad it by the appropriate amount
     [(printf-lang (% p:parameter NONE ftype:fmt-type))
-     (match (unsafe:fmt->constant (printf-lang n) p args)
+     (match (unsafe:fmt->constant ftype p args)
        [(printf-lang ERR)        (printf-lang (nil ,conf))]
        [(printf-lang c:constant) (print-constant conf c)]
        )]
@@ -614,9 +635,13 @@
 
     [_ (raise-argument-error 'interp-fmt-elt-unsafe "(printf-lang fmt-elt)" f)]
     ))
+  (debug (thunk (printf "result of interp-fmt-elt-unsafe: ~a~n" res)))
+  res
+  )
 (define/contract (interp-fmt-unsafe f args conf)
   (-> fmt? arglist? config? behavior?)
-  (match f
+  (debug (thunk (printf "(interp-fmt-unsafe ~a ~a ~a)~n" f args conf)))
+  (define res (match f
     [(printf-lang nil) (printf-lang (nil ,conf))]
 
     [(printf-lang (cons f1:fmt-elt f+:fmt))
@@ -628,6 +653,8 @@
        (printf-lang (,t+ ,(behavior->config b2))))
      ]
     ))
+  (debug (thunk (printf "result of interp-fmt-unsafe: ~a~n" res)))
+  res)
 
 
 #|||||||||||||||||||||||||||||||||||||#
