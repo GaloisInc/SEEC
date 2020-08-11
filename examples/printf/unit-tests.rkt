@@ -35,7 +35,9 @@
   (list->bonsai-ll (map racket->constant l)))
           
 
-(current-bitwidth 5)
+(current-bitwidth 64)
+(current-bv-width 32)
+
 
 (define fmt-d-1 (ll-singleton (printf-lang (% (0 $) NONE d))))
 (define fmt-s-1 (ll-singleton (printf-lang (% (0 $) NONE s))))
@@ -43,12 +45,16 @@
 (define fmt-d-n (ll-cons      (printf-lang "foo ")
                 (ll-cons      (printf-lang (% (0 $) NONE d))
                 (ll-singleton (printf-lang (% (1 $) NONE n))))))
+(define bv-neg-1 (bitvector->natural (bonsai-bv-value (integer->bonsai-bv -1))))
+(define fmt-decrement (ll-singleton (printf-lang (% (0 $) ,(bonsai-integer bv-neg-1) s))))
 
 (define arglist-0   (printf-lang nil))
 (define arglist-d-1 (ll-singleton (printf-lang (bv 32))))
 (define arglist-s-1 (ll-singleton (printf-lang "hi")))
 (define arglist-n-1 (ll-singleton (printf-lang (LOC 0))))
 (define arglist-d-n (bonsai-ll-append arglist-d-1 arglist-n-1))
+(define arglist-s-0 (ll-singleton (printf-lang "")))
+
 
 (test-case "safe-correct"
   ; printf("%0$d",32)
@@ -93,12 +99,18 @@
                                           32))
                           6
                           (printf-lang (mcons 0 (bv 6) mnil))))
-                                       
+
+  ; printf("%0$Xs,"") ==> add X=fmt-decrement (aka -1) to the accumulator
+  (check-equal? (behavior->config (interp-fmt-safe fmt-decrement
+                                                   arglist-s-0
+                                                   (mk-config-triv 2)))
+                (mk-config-triv 1))
   )
 
 ; TODO: add test cases for padding
 
 (test-case "unsafe-correct"
+
 
   ; printf("%0$d","hi") 
   ; note: the character h is encoded as the number 104

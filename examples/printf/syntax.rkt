@@ -37,6 +37,7 @@
          const?
          behavior?
          config?
+         err?
          fmt-consistent-with-arglist?
 
          ll-singleton

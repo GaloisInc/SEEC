@@ -215,7 +215,7 @@
         #;(printf "s: ~a~n" s-instance)
         ))
   )
-#;(synthesize-string)
+#;(synthesize-define)
 
 
 
@@ -260,6 +260,8 @@
         (displayln (behavior->config (interp-fmt-safe f-instance args conf-instance)))
         ))
   )
+
+
 
 (define (max-int)
   ; subtract exponent by 1 because of signed integers
@@ -459,6 +461,62 @@
         ))
   )
 
+(define (verify-decrement f)
+
+  (define-symbolic* acc0-val integer?)
+  (define conf (printf-lang config 2))
+  (define (conf-constraint acc0-val conf)
+    (match conf
+      [(printf-lang (acc:bvint mem)) (equal? (integer->bonsai-bv acc0-val) acc)]))
+  #;(define acc0-val 2)
+  #;(define conf (printf-lang (,(integer->bonsai-bv acc0-val) mnil)))
+
+  (define args (printf-lang arglist 3))
+  #;(define args (printf-lang (cons "" nil)))
+
+  (define (is-decrement? f args conf)
+    (let* ([conf+ (behavior->config (interp-fmt-safe f args conf))]
+           )
+      (equal? (conf->acc conf+) (bvsub1 (conf->acc conf))))
+      )
+
+
+  (assert (conf-constraint acc0-val conf))
+  #;(assert (fmt-consistent-with-arglist? f args))
+  (define res (interp-fmt-safe f args conf))
+  (define (synthesis-goal) (and (not (err? res))
+                                (is-decrement? f args conf)))
+
+  (define sol (time (synthesize
+                     #:forall (list acc0-val)
+                     #:guarantee (assert (synthesis-goal))
+               )))
+  sol
+  )
+
+(define (find-decrement)
+  (current-bitwidth 4) ; TODO: should setting current-bitwidth also update current-bv-width?
+  (current-bv-width 3)
+  (define f-concrete (printf-lang (cons (% (0 $) 7 s) nil)))
+  (define f-symbolic (printf-lang fmt 5))
+
+  (displayln "Searching for a format string that decrements the acumulator by 1")
+  (define sol (verify-decrement f-symbolic))
+  (if (unsat? sol)
+      (printf "Failed to synthesize~n")
+      (begin
+        (define f-synthesized (concretize f-symbolic sol))
+        #;(define f-synthesized f-concrete)
+        (printf "Synthesis succeeded: ~a~n" f-synthesized)
+        (define f-result (interp-fmt-safe f-synthesized
+                                          (printf-lang (cons "" nil))
+                                          (printf-lang ((bv 4) mnil))))
+        (printf "(printf ~a, ~a)~n == ~a~n" f-synthesized "" f-result)
+        ))
+  )
+
+
+
 #;(define (find-add-argument)
 
   (current-bitwidth 3)
@@ -571,7 +629,6 @@
 
 
   )
-
 (test-lookup-offset)
 (displayln "")
 (clear-asserts!)
@@ -600,3 +657,7 @@
 (clear-asserts!)
 (displayln "")
 (find-add-argument)
+(displayln "")
+(clear-asserts!)
+(displayln "")
+(find-decrement)
