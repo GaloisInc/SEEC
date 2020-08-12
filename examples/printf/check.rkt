@@ -461,6 +461,64 @@
         ))
   )
 
+(define (verify-write-argument f)
+
+  (define-symbolic* acc0-val integer?)
+  #;(define acc0-val 2)
+  (define acc0 (integer->bonsai-bv acc0-val))
+  (define conf (printf-lang config 2))
+  #;(define conf (printf-lang (,acc0 mnil)))
+  (define (conf-constraint acc0-val conf)
+    (match conf
+      [(printf-lang (acc:bvint mem)) (equal? (integer->bonsai-bv acc0-val) acc)]))
+
+  (define-symbolic* x-val integer?)
+  #;(define x-val 3)
+  (define x (bonsai-integer x-val))
+  (define l (printf-lang (LOC ,x)))
+  (define args (printf-lang arglist 3))
+  (define args+ (printf-lang arglist 2))
+  #;(define args (printf-lang (cons ,l nil)))
+  #;(define args+ (printf-lang nil))
+  (define (args-constraint x-val args args+)
+    (equal? args (ll-cons (printf-lang (LOC ,(bonsai-integer x-val))) args+))
+    )
+
+  (define res (interp-fmt-safe f args conf))
+
+  (define (synthesis-goal) (match res
+                             [(printf-lang ERR) #f]
+                             [(printf-lang (trace (bvint m:mem)))
+                              (equal? (lookup-loc x m)
+                                      acc0)]
+                             ))
+
+  (assert (conf-constraint acc0-val conf))
+  (assert (args-constraint x-val args args+))
+
+  (define sol (time (synthesize
+                     #:forall (list acc0-val x-val)
+                     #:guarantee (assert (synthesis-goal))
+               )))
+
+  sol
+  )
+
+(define (find-write-argument)
+  (define f-concrete (ll-singleton (printf-lang (% (0 $) NONE n))))
+  (define f-symbolic (printf-lang fmt 5))
+
+  (displayln "Searching for a format string that writes the value of the accumulator to memory")
+  (define sol (verify-write-argument f-symbolic))
+  (if (unsat? sol)
+      (printf "Failed to synthesize~n")
+      (begin
+        (define f-synthesized (concretize f-symbolic sol))
+        (printf "Synthesis succeeded: ~a~n" f-synthesized)
+        ))
+  )
+
+
 (define (verify-decrement f)
 
   (define-symbolic* acc0-val integer?)
@@ -629,6 +687,7 @@
 
 
   )
+
 (test-lookup-offset)
 (displayln "")
 (clear-asserts!)
@@ -661,3 +720,7 @@
 (clear-asserts!)
 (displayln "")
 (find-decrement)
+(displayln "")
+(clear-asserts!)
+(displayln "")
+(find-write-argument)

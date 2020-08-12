@@ -303,6 +303,7 @@
 ; OUTPUT: the value mapped to by the identifier
 (define/contract (lookup-loc l m)
   (-> ident? mem? (or/c err? val?))
+  (debug (thunk (printf "(lookup-loc ~a ~a)~n" l m)))
   (match m
     [(printf-lang mnil) (printf-lang ERR)]
     [(printf-lang (mcons l0:ident v0:val m0:mem))
