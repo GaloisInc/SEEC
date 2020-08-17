@@ -3,7 +3,9 @@
 (require rackunit)
 (require rackunit/text-ui)
 (require (prefix-in set:
-                    (file "set/set.rkt")))
+                    (combine-in
+                     (file "set/set.rkt")
+                     (file "set/query.rkt"))))
 (require (prefix-in linked-list:
                     (combine-in
                      (file "list/query.rkt")
@@ -15,10 +17,17 @@
 ; set
 (define set-tests
   (test-suite "Set"
-              (test-case "Working compiler"
-                )
-              (test-case "Buggy concrete language"
-                )))
+              (test-case "find-changed-component, testing #:count argument"
+                  (check-pred (lambda (l) (equal? (length l) 3)) (set:ex1) "Expected 3 witnesses returned"))
+              (test-case "find-weird-component, testing -bound arguments"
+                  (check-not-false (set:ex2) "Behaviors can be introduced by buggy concrete implementation")
+                  (check-false (set:ex3) "Behaviors should be preserved through abstract->concrete compilation"))
+              (test-case "find-gadget"                 
+                  (check-pred (lambda (lw)
+                                (let* ([uw (unpack-language-witness (first lw))]
+                                       [prog (third uw)]
+                                       [res (fourth uw)])
+                                  (set:add1-concrete? prog res))) (set:ex4) "Returned gadget should respect provided predicate"))))
 
 ; linked list
 (define ll-tests 
