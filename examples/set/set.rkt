@@ -274,25 +274,28 @@
   #:context-relation equal?
   #:compile id)
 
-(begin
-  (displayln "Trying to find a trace with weird behavior under buggy compilation")
-  (let* ([trace (set-api interaction 4)]
-         [gen (make-query-weird-computation abstract-to-buggyconcrete trace)]
-         [witness (gen)])
-    (display-weird-component witness displayln)))
 
 (begin
   (displayln "Trying to find a trace with different behavior under compilation")
-  (let* ([trace (set-api interaction 4)]
-         [gen (make-query-changed-behavior abstract-to-concrete trace)]
-         [witness (gen)])
-    (display-changed-behavior witness displayln)))
+  (let* ([witnesses (time (find-changed-component abstract-to-concrete #:count 3))])
+    (for-each (lambda (w) (begin
+                            (displayln "Found witness: ")
+                            (display-changed-behavior w displayln))) witnesses)))
+
+
+(begin
+  (displayln "Trying to find a trace with weird behavior under buggy compilation")
+  (let* ([witness (find-weird-component
+                   abstract-to-buggyconcrete
+                   #:source-context-bound 2
+                   #:target-context-bound 2)])
+    (display-weird-component witness displayln)))
 
 (begin
   (displayln "Trying to find a trace with weird behavior under correct compilation")
-  (let* ([trace (set-api interaction 4)]
-         [gen (make-query-weird-computation abstract-to-concrete trace)]
-         [witness (gen)])
+  (let* ([witness (find-weird-component abstract-to-concrete
+                                            #:source-context-bound 2
+                                            #:target-context-bound 2)])
     (display-weird-component witness displayln)))
 
 
@@ -322,10 +325,8 @@
 
 (begin
   (displayln "Trying to find a +1 gadget")
-  (let* ([gen (make-query-gadget concrete-with-state (lambda (v) #t) add1-concrete?)]
-         [witness (gen)])
-    (display-gadget witness displayln))
-  )
+  (let* ([witness (find-gadget concrete-with-state (lambda (v) #t) add1-concrete?)])
+    (display-gadget witness displayln)))
 
 #;(begin
   #;(define v1 (set-api interaction 4))
@@ -402,8 +403,7 @@
 (displayln witness))
 #;(begin
   (displayln "Trying to find a concrete-member-spec gadget")
-  (let* ([gen (make-query-gadget concrete-two (lambda (v) #t) concrete-member-spec?)]
-         [witness (gen)])
+  (let* ([witness (find-gadget concrete-two (lambda (v) #t) concrete-member-spec?)])
     (display-gadget witness displayln)))
      
 
