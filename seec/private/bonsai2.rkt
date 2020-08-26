@@ -251,15 +251,15 @@
 ; use-site because otherwise make-tree! would need  to be a much larger union of
 ; bitvectors of all possible sizes.
 (define current-bv-width
-  (let ([width-in-scope (λ (w) (or (equal? (current-bitwidth) #f)
-                                   (< 0 w (current-bitwidth))))])
-    (make-parameter (if (equal? (current-bitwidth) #f)
-                        32
-                        (- (current-bitwidth) 1))
-                    (λ (w) (begin
-                             (assert (width-in-scope w))
-                             w))
-                    )))
+  (make-parameter (if (equal? (current-bitwidth) #f)
+                      32
+                      (- (current-bitwidth) 1))
+                  (λ (w) (cond
+                           [(equal? (current-bitwidth) #f) w]
+                           [(< 0 w (current-bitwidth)) w]
+                           [else (- (current-bitwidth) 1)]
+                           ))
+                  ))
 
 (define (integer->bonsai-bv n)
   (bonsai-bv (integer->bitvector n (bitvector (current-bv-width)))))
