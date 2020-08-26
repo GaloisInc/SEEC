@@ -6,17 +6,19 @@
          define-compiler
          (struct-out language)
          (struct-out compiler)
-         make-query-changed-behavior
-         make-query-changed-component
-         make-query-weird-computation
-         make-query-weird-component
+         find-changed-behavior
+         find-changed-behavior-inc
+         find-changed-component
+         find-changed-component-inc
+         find-weird-computation
+         find-weird-component
+         find-gadget
          (struct-out solution)
-         concretize-witness
-         ;enumerate-witness
-         run-query
+         unpack-language-witness
          display-changed-behavior
+         display-changed-component
+         display-weird-behavior
          display-weird-component
-         make-query-gadget
          display-gadget
          display-list
          seec-add
@@ -25,10 +27,13 @@
          evaluate
          link-and-evaluate
          compile
+         clear-all-queries
          )
 
 (require (for-syntax syntax/parse)
+         (for-syntax racket/syntax)
          racket/stxparam
+
          (prefix-in unsafe:
                     (combine-in
                      (only-in racket
@@ -55,18 +60,18 @@
    1) Create language structures
       > define-language ...
       > define-compiler ...
-   2) Create query
-      > make-query-X ...
-   3) Run the query n times
-      > run-query #:count n
-   4) Display the concrete witnesses returned by the query
+   2) Search for witnesses of X
+      > find-X ...
+      or
+      > find-X ... #:count n 
+   3) Display the concrete witnesses returned at step 2
       > display-X
 
 
  TODO: change rel to be
   Eq (use the same symbolic var)
   Fn 
-TODO, can use solve+ instead of verify for some queries?
+TODO: Get inc-changed-behavior to work
 
 
 
@@ -272,48 +277,123 @@ TODO, can use solve+ instead of verify for some queries?
 ; inner-changed-behavior
 (define-syntax (inner-changed-behavior stx)
   (syntax-parse stx
-    [(_ comp v1
+    [(_ comp
+        v
+        bound-v1
         bound-c1
         bound-c2
+        where-vars
         found-core)                
-     #'(let* ([source (compiler-source comp)]
+     #'(unsafe:generator
+        ()
+        (let*
+            ([source (compiler-source comp)]
+             [target (compiler-target comp)]
+             [v1 (if v
+                     v
+                     (let* ([v* (make-symbolic-var (language-expression source) bound-v1)])
+;                       (assert (where-v1 v*))
+                       v*))]
+               [c1 (make-symbolic-var (language-context source) bound-c1)]                
+               [c2 (make-symbolic-var (language-context target) bound-c2)]
+               [source-evaluate (language-evaluate source)]
+               [source-link (language-link source)]
+               [p1 (source-link c1 v1)]
+               [b1 (source-evaluate p1)]
+               [target-evaluate (language-evaluate target)]
+               [target-link (language-link target)]
+               [compile (compiler-compile comp)]
+               [v2 (compile v1)]
+               [p2 (target-link c2 v2)]
+               [b2 (target-evaluate p2)]
+               [context-relation (compiler-context-relation comp)]
+               [ccomp (if context-relation
+                          (context-relation c1 c2)
+                          #t)]
+               [behavior-relation (compiler-behavior-relation comp)]
+               [equality (with-asserts-only (assert (behavior-relation b1 b2)))]
+               [language-witnesses (list (language-witness v1 c1 p1 b1) (language-witness v2 c2 p2 b2))]
+               [sym-core (found-core language-witnesses)])
+         (let loop ([found (list)])
+          (let* 
+              ([tmpsol (verify
+                        #:assume (assert (and ccomp
+                                              (where-vars v1 v2 c1 c2 b1 b2)
+                                              (not (ormap (lambda (t) (equal? sym-core t)) found))))
+                        #:guarantee (assert (apply && equality)))])
+            (if (unsat? tmpsol)
+                #f
+                (let* ([symbolic-witness (changed-behavior-solution language-witnesses tmpsol)]                    
+                       [witness (concretize-witness symbolic-witness)]
+                       [core (found-core witness)])
+                  (unsafe:yield witness)
+                  (loop (cons core found))))))))]))
+
+; incremental version of inner-changed-behavior + run-query
+(define-syntax (inc-changed-behavior stx)
+  (syntax-parse stx
+    [(_ comp
+        v
+        bound-v1
+        where-v1
+        bound-c1
+        where-c1
+        bound-c2
+        where-c2
+        found-core)                
+     #'(lambda (num-sol)
+         (let*
+             ([assert-store (asserts)] ; save assertions on entry
+              [source (compiler-source comp)]
               [target (compiler-target comp)]
-            [c1 (make-symbolic-var (language-context source) bound-c1)]
-            [c2 (make-symbolic-var (language-context target) bound-c2)]
-            [source-evaluate (language-evaluate source)]
-            [source-link (language-link source)]
-            [p1 (source-link c1 v1)]
-            [b1 (source-evaluate p1)]
-            [target-evaluate (language-evaluate target)]
-            [target-link (language-link target)]
-            [compile (compiler-compile comp)]
-            [v2 (compile v1)]
-            [p2 (target-link c2 v2)]
-            [b2 (target-evaluate p2)]
-            [context-relation (compiler-context-relation comp)]
-            [ccomp (if context-relation
-                       (context-relation c1 c2)
-                       #t)]
-            [behavior-relation (compiler-behavior-relation comp)]
-            [equality (with-asserts-only (assert (behavior-relation b1 b2)))]
-            [language-witnesses (list (language-witness v1 c1 p1 b1) (language-witness v2 c2 p2 b2))]
-            [sym-core (found-core language-witnesses)])
-         (unsafe:generator
-          ()
-          (let loop ([found (list)])
-            (let* (
-                   [tmpsol (verify
-                                     #:assume (assert (and ccomp
-                                                           (not (ormap (lambda (t) (equal? sym-core t)) found))))
-                                     #:guarantee (assert (apply && equality)))])
-                       (if (unsat? tmpsol)
-                           #f
-                           (let* ([symbolic-witness (changed-behavior-solution language-witnesses tmpsol)]
-                                 
-                                  [witness (concretize-witness symbolic-witness)]
-                                  [core (found-core witness)]) 
-                             (unsafe:yield witness)
-                             (loop (cons core found))))))))]))
+              [v1 (if v
+                      v
+                      (let* ([v* (make-symbolic-var (language-expression source) bound-v1)])
+                        (assert (where-v1 v*))
+                        v*))]
+              [c1 (make-symbolic-var (language-context source) bound-c1)]                
+              [c2 (make-symbolic-var (language-context target) bound-c2)]
+              [source-evaluate (language-evaluate source)]
+              [source-link (language-link source)]
+              [p1 (source-link c1 v1)]
+              [b1 (source-evaluate p1)]
+              [target-evaluate (language-evaluate target)]
+              [target-link (language-link target)]
+              [compile (compiler-compile comp)]
+              [v2 (compile v1)]
+              [p2 (target-link c2 v2)]
+              [b2 (target-evaluate p2)]
+              [context-relation (compiler-context-relation comp)]
+              [behavior-relation (compiler-behavior-relation comp)]
+              [equality (with-asserts-only (assert (behavior-relation b1 b2)))]
+              [language-witnesses (list (language-witness v1 c1 p1 b1) (language-witness v2 c2 p2 b2))]
+              [sym-core (found-core language-witnesses)])
+           (assert (and ; ccomp
+                    (if context-relation
+                        (context-relation c1 c2)
+                        #t)
+                    (where-c1 v1 c1)
+                    (where-c2 v1 c2)))
+           (assert (apply || (map ! equality))) ; inequality of behavior
+           (let ([inc (solve+)])
+             (let loop ([witnesses (list)]
+                        [cur-num num-sol]
+                        [last-found #t])
+               (if (equal? cur-num 0)
+                   (begin 
+                     ; Shutdown the solver, restore assertion state to pre-query and return the list of witnesses
+                     (inc 'shutdown)
+                     (clear-asserts!)
+                     (for-each (lambda (arg) (assert arg)) assert-store)
+                     witnesses)                 
+                   (let* 
+                       ([tmpsol (inc (not (equal? sym-core last-found)))])
+                     (if (unsat? tmpsol)
+                           (loop witnesses 0) ; shortcut to end of loop)                           
+                         (let* ([symbolic-witness (changed-behavior-solution language-witnesses tmpsol)]                    
+                                [witness (concretize-witness symbolic-witness)]
+                                [core (found-core witness)])
+                           (loop (cons witness witnesses) (- cur-num 1) core)))))))))]))
 
 
 (define-syntax (run-query stx)
@@ -321,35 +401,47 @@ TODO, can use solve+ instead of verify for some queries?
     [(_ (~optional (~seq #:count max:expr)
                    #:defaults ([max #'#f]))
          gen)
-     #'(unsafe:for/list ([i (unsafe:in-range max)]
-                           [t (unsafe:in-producer gen #f)])
-                          t)]))
+     #'(if max
+           (let* ([witness-list (unsafe:for/list ([i (unsafe:in-range max)]
+                                                 [t (unsafe:in-producer gen #f)])
+                                                t)])
+             witness-list)
+           (gen))]))
+
 
 
 ; inner-weird-computation
 (define-syntax (inner-weird-computation stx)
   (syntax-parse stx
-    [(_ comp v1
+    [(_ comp
+        v
+        bound-v1
         bound-c1
         bound-c2
-        found-core)                   
-     #`(let* ([source (compiler-source comp)]
-              [target (compiler-target comp)]
-              [c1 (make-symbolic-var (language-context source) bound-c1)]
-              [c2 (make-symbolic-var (language-context target) bound-c2)]
-              [source-evaluate (language-evaluate source)] 
-              [source-link (language-link source)]
-              [target-evaluate (language-evaluate target)] 
-              [target-link (language-link target)]
-              [compile (compiler-compile comp)]
-              [context-relation  (compiler-context-relation comp)]
-              [ccomp (if context-relation
-                         (context-relation c1 c2)
-                         #t)]
-              [behavior-relation (compiler-behavior-relation comp)]
-              [v2 (compile v1)]
-              [p1 (source-link c1 v1)]
-              [p2 (target-link c2 v2)])
+        where-vars
+        found-core)
+     #`(let*
+           ([source (compiler-source comp)]
+            [target (compiler-target comp)]
+            [v1 (if v
+                    v
+                    (let* ([v* (make-symbolic-var (language-expression source) bound-v1)])
+                      v*))]
+            [c1 (make-symbolic-var (language-context source) bound-c1)]
+            [c2 (make-symbolic-var (language-context target) bound-c2)]
+            [source-evaluate (language-evaluate source)] 
+            [source-link (language-link source)]
+            [target-evaluate (language-evaluate target)] 
+            [target-link (language-link target)]
+            [compile (compiler-compile comp)]
+            [context-relation  (compiler-context-relation comp)]
+            [ccomp (if context-relation
+                       (context-relation c1 c2)
+                       #t)]
+            [behavior-relation (compiler-behavior-relation comp)]
+            [v2 (compile v1)]
+            [p1 (source-link c1 v1)]
+            [p2 (target-link c2 v2)])
          (let*-values ([(b1 nondet1) (capture-nondeterminism (source-evaluate p1))] ; capture nondet
                        [(b2 nondet2) (capture-nondeterminism (target-evaluate p2))])
            (let* ([equality (with-asserts-only (assert (behavior-relation b1 b2)))]
@@ -361,15 +453,15 @@ TODO, can use solve+ instead of verify for some queries?
                 (let ([tmpsol (synthesize
                                #:forall (cons c1 (cons nondet1 nondet2)) ; quantify over nondet
                                #:assume (assert (and ccomp
+                                                     (where-vars v1 v2 c1 c2 b1 b2)
                                                      (not (ormap (lambda (t) (equal? sym-core t)) found))))
                                #:guarantee (assert (! (apply && equality))))])
                   (if (unsat? tmpsol)
                       #f
-                      (let* ([symbolic-witness (weird-component-solution language-witnesses tmpsol)]
-                             
+                      (let* ([symbolic-witness (weird-component-solution language-witnesses tmpsol)]                             
                              [witness (concretize-witness symbolic-witness)]
                              ; Projecting c2 out of the concrete witness
-                             [core (found-core witness)]) 
+                             [core (found-core witness)])                        
                         (unsafe:yield witness)
                         (loop (cons core found))))))))))]))
 
@@ -388,30 +480,39 @@ TODO, can use solve+ instead of verify for some queries?
 
 ; show (c1, v1) ~> b1 and (c2, v2) ~> b2
 (define (display-changed-behavior vars out)
-  (let* ([source-vars (first vars)]
-         [target-vars (second vars)])
-    (begin 
-      (out (format
-            "Expression ~a~n has behavior ~a~n in source-level context ~a~n"
-            (language-witness-expression source-vars)
-            (language-witness-behavior source-vars)
-            (language-witness-context source-vars)))
-      (out (format
-            "Compiles to ~a~n with emergent behavior ~a~n in target-level context ~a~n"
-            (language-witness-expression target-vars)
-            (language-witness-behavior target-vars)
-            (language-witness-context target-vars))))))
+  (cond
+    [(equal? vars #f) (out (format "No changed behavior found~n"))]
+    [else
+     (let* ([source-vars (first vars)]
+            [target-vars (second vars)])
+       (begin 
+         (out (format
+               "Expression ~a~n has behavior ~a~n in source-level context ~a~n"
+               (language-witness-expression source-vars)
+               (language-witness-behavior source-vars)
+               (language-witness-context source-vars)))
+         (out (format
+               "Compiles to ~a~n with emergent behavior ~a~n in target-level context ~a~n"
+               (language-witness-expression target-vars)
+               (language-witness-behavior target-vars)
+               (language-witness-context target-vars)))))]))
+
+; alias display-changed-behavior
+(define (display-changed-component vars out)
+  (display-changed-behavior vars out))
 
 
-
-; make-query-changed-behavior: {r:comp} r.source.expression -> generator witness
+; Find changed behavior: {r:comp} r.source.expression -> concrete witness 
+; 1) Create a generator for changed behavior
+; 2) Run generator n times (if count argument is provided, in which case a list of witness is provided)
+; 3) Restore assertion state to pre-query
 ; Solve the following synthesis problem:
 ; (\lambda v1).
 ; Exists c1:s.t.context c2:r.t.context,
 ;    r.ctx-relation(c1, c2)
 ;       not (r.behavior-relation(r.s.apply(c1, v1), r.t.apply(c2, r.compile(v1))))
-; Returns a generator of concrete witness, each of which will have a different source context
-(define-syntax (make-query-changed-behavior stx)
+; Returns a list of concrete witness, each of which will have a different source context
+(define-syntax (find-changed-behavior stx)
   (syntax-parse stx
     [(_ comp v1
         (~seq
@@ -419,17 +520,72 @@ TODO, can use solve+ instead of verify for some queries?
           (~seq #:source-context-bound bound-c1)
           #:defaults ([bound-c1 #'#f]))
          (~optional
+          (~seq #:source-context-where where-c1)
+          #:defaults ([where-c1 #'(lambda (v1 c1) #t)]))
+         (~optional
           (~seq #:target-context-bound bound-c2)
-          #:defaults ([bound-c2 #'#f]))))
-     #'(inner-changed-behavior comp v1 bound-c1 bound-c2 (lambda (w) (language-witness-context (first w))))]))
+          #:defaults ([bound-c2 #'#f]))
+         (~optional
+          (~seq #:target-context-where where-c2)
+          #:defaults ([where-c2 #'(lambda (v1 c2) #t)])))
+        (~optional
+         (~seq #:source-behavior-where where-b1)
+         #:defaults ([where-b1 #'(lambda (v1 c1 c2 b1) #t)]))
+        (~optional
+         (~seq #:target-behavior-where where-b2)
+         #:defaults ([where-b2 #'(lambda (v1 c1 c2 b2) #t)]))
+        (~optional
+         (~seq #:count witness-count)
+         #:defaults ([witness-count #'#f])))
+     #'(let*
+           ([assert-store (asserts)] ; save assertions on entry
+            [where-vars (lambda (v1 v2 c1 c2 b1 b2) (and (where-c1 v1 c1)
+                                                         (where-c2 v1 c2)
+                                                         (where-b1 v1 c1 c2 b1)
+                                                         (where-b2 v1 c1 c2 b2)))]
+            [gen (inner-changed-behavior comp v1 #f #f bound-c1 bound-c2 where-vars (lambda (w) (language-witness-context (first w))))]
+            [witness (run-query #:count witness-count gen)])
+         (clear-asserts!)
+         (for-each (lambda (arg) (assert arg)) assert-store) ; restore entry assertions
+         witness)]))
 
-; make-query-changed-component: {r:comp} generator witness
+(define-syntax (find-changed-behavior-inc stx)
+  (syntax-parse stx
+    [(_ comp v1
+        (~seq
+         (~optional
+          (~seq #:source-context-bound bound-c1)
+          #:defaults ([bound-c1 #'#f]))
+         (~optional
+          (~seq #:source-context-where where-c1)
+          #:defaults ([where-c1 #'(lambda (v1 c1) #t)]))
+         (~optional
+          (~seq #:target-context-bound bound-c2)
+          #:defaults ([bound-c2 #'#f]))
+         (~optional
+          (~seq #:target-context-where where-c2)
+          #:defaults ([where-c2 #'(lambda (v1 c2) #t)])))
+        (~optional
+         (~seq #:source-behavior-where where-b1)
+         #:defaults ([where-b1 #'(lambda (v1 c1 c2 b1) #t)]))
+        (~optional
+         (~seq #:target-behavior-where where-b2)
+         #:defaults ([where-b2 #'(lambda (v1 c1 c2 b2) #t)]))
+         (~optional
+          (~seq #:count witness-count)
+          #:defaults ([witness-count #'1])))        
+     #'((inc-changed-behavior comp v1 #f #f bound-c1 where-c1 bound-c2 where-c2 where-b1 where-b2 (lambda (w) (language-witness-context (first w)))) witness-count)]))
+
+
+                
+; find-changed-component: {r:comp} concrete witness
+; Returns a list of witness if #:count is used
 ; Solve the following synthesis problem:
 ; (\lambda r).
 ;   Exists v:r.s.expression
-;     make-query-changed-behavior r v
-; Returns a generator of concrete witness, each of which will have a different source expression
-(define-syntax (make-query-changed-component stx)
+;     find-changed-behavior r v
+; Returns a list of concrete witness, each of which will have a different source expression
+(define-syntax (find-changed-component stx)
   (syntax-parse stx
     [(_ comp
         (~seq
@@ -437,45 +593,125 @@ TODO, can use solve+ instead of verify for some queries?
           (~seq #:source-expression-bound bound-v1)
           #:defaults ([bound-v1 #'#f]))
          (~optional
+          (~seq #:source-expression-where where-v1)
+          #:defaults ([where-v1 #'(lambda (v1) #t)]))
+         (~optional
           (~seq #:source-context-bound bound-c1)
           #:defaults ([bound-c1 #'#f]))
          (~optional
+          (~seq #:source-context-where where-c1)
+          #:defaults ([where-c1 #'(lambda (v1 c1) #t)]))
+         (~optional
           (~seq #:target-context-bound bound-c2)
-          #:defaults ([bound-c2 #'#f]))))
-     #`(let* ([v (make-symbolic-var
-                  (language-expression (compiler-source comp) bound-v1))])
-         (inner-changed-behavior comp v bound-c1 bound-c2 (lambda (w) (language-witness-expression (first w)))))]))
+          #:defaults ([bound-c2 #'#f]))
+         (~optional
+          (~seq #:target-context-where where-c2)
+          #:defaults ([where-c2 #'(lambda (v1 c2) #t)]))
+         (~optional
+          (~seq #:source-behavior-where where-b1)
+          #:defaults ([where-b1 #'(lambda (v1 c1 c2 b1) #t)]))
+         (~optional
+          (~seq #:target-behavior-where where-b2)
+          #:defaults ([where-b2 #'(lambda (v1 c1 c2 b2) #t)]))
+         (~optional
+          (~seq #:count witness-count)
+          #:defaults ([witness-count #'#f]))))
+     #`(let*
+           ([assert-store (asserts)] ; save assertions on entry
+            [where-vars (lambda (v1 v2 c1 c2 b1 b2) (and (where-v1 v1)
+                                                         (where-c1 v1 c1)                                                         
+                                                         (where-c2 v1 c2)
+                                                         (where-b1 v1 c1 c2 b1)
+                                                         (where-b2 v1 c1 c2 b2)))]
+            [gen (inner-changed-behavior comp #f bound-v1 bound-c1 bound-c2 where-vars (lambda (w) (language-witness-expression (first w))))]
+            [witness (run-query #:count witness-count gen)])
+         (clear-asserts!)
+         (for-each (lambda (arg) (assert arg)) assert-store) ; restore assertion state to what it was on entry
+         witness)]))
+
+(define-syntax (find-changed-component-inc stx)
+  (syntax-parse stx
+    [(_ comp
+        (~seq
+         (~optional
+          (~seq #:source-expression-bound bound-v1)
+          #:defaults ([bound-v1 #'#f]))
+         (~optional
+          (~seq #:source-expression-where where-v1)
+          #:defaults ([where-v1 #'(lambda (v1) #t)]))
+         (~optional
+          (~seq #:source-context-bound bound-c1)
+          #:defaults ([bound-c1 #'#f]))
+         (~optional
+          (~seq #:source-context-where where-c1)
+          #:defaults ([where-c1 #'(lambda (v1 c1) #t)]))
+         (~optional
+          (~seq #:target-context-bound bound-c2)
+          #:defaults ([bound-c2 #'#f]))
+         (~optional
+          (~seq #:target-context-where where-c2)
+          #:defaults ([where-c2 #'(lambda (v1 c2) #t)]))
+         (~optional
+          (~seq #:count witness-count)
+          #:defaults ([witness-count #'1]))))
+     #`(let ([query (inc-changed-behavior comp #f bound-v1 where-v1 bound-c1 where-c1 bound-c2 where-c2 (lambda (w) (language-witness-expression (first w))))])
+         (query witness-count))]))
 
 
 
-; make-query-emergent-computation: {r:comp} r.source.expression -> generator witness
+; find-weird-computation: {r:comp} r.source.expression -> list witness
 ; Solve the following synthesis problem:
 ; (\lambda v1).
 ; Exists c2:r.t.context,
 ;   Forall c1:r.s.context,
 ;     r.context-relation(c1, c2) ->
 ;       not (r.behavior-relation(r.s.apply(c1, v1), r.t.apply(c2, r.compile(v1))))
-; Returns a generator of concrete witness, each of which will have a different target context
-(define-syntax (make-query-weird-computation stx)
+; Returns a list of concrete witness, each of which will have a different target context
+(define-syntax (find-weird-computation stx)
   (syntax-parse stx
     [(_ comp v1 (~seq
                  (~optional
                   (~seq #:source-context-bound bound-c1)
                   #:defaults ([bound-c1 #'#f]))
                  (~optional
+                  (~seq #:source-context-where where-c1)
+                  #:defaults ([where-c1 #'(lambda (v1 c1) #t)]))
+                 (~optional
                   (~seq #:target-context-bound bound-c2)
-                  #:defaults ([bound-c2 #'#f]))))
-     #`(inner-weird-computation comp v1 bound-c1 bound-c2 (lambda (w) (language-witness-context (second w))))]))
+                  #:defaults ([bound-c2 #'#f]))
+                 (~optional
+                  (~seq #:target-context-where where-c2)
+                  #:defaults ([where-c2 #'(lambda (v1 c2) #t)]))
+                 (~optional
+                  (~seq #:source-behavior-where where-b1)
+                  #:defaults ([where-b1 #'(lambda (v1 c1 c2 b1) #t)]))
+                 (~optional
+                  (~seq #:target-behavior-where where-b2)
+                  #:defaults ([where-b2 #'(lambda (v1 c1 c2 b2) #t)]))                          
+                 (~optional
+                  (~seq #:count witness-count)
+                  #:defaults ([witness-count #'#f]))))
+     #`(let*
+           ([assert-store (asserts)] ; save assertions on entry
+            [where-vars (lambda (v1 v2 c1 c2 b1 b2) (and (where-v1 v1)
+                                                         (where-c1 v1 c1)                                                         
+                                                         (where-c2 v1 c2)
+                                                         (where-b1 v1 c1 c2 b1)
+                                                         (where-b2 v1 c1 c2 b2)))]
+            [gen (inner-weird-computation comp v1 #f #f bound-c1 bound-c2 where-vars (lambda (w) (language-witness-context (second w))))]
+            [witness (run-query #:count witness-count gen)])
+         (clear-asserts!)
+         (for-each (lambda (arg) (assert arg)) assert-store) ; restore entry assertions
+         witness)]))
 
 
 
-
-; make-query-weird-component: {r:comp} -> generator witness
+; find-weird-component: {r:comp} -> list witness
 ; (\lambda r).
 ;   Exists v:r.s.expression
-;     make-query-weird-computation r v
-; Returns a generator of concrete witness, each of which will have a different source expression
-(define-syntax (make-query-weird-component stx)
+;     find-weird-computation r v
+; Returns a list of concrete witness, each of which will have a different source expression
+(define-syntax (find-weird-component stx)
   (syntax-parse stx
     [(_ comp
         (~seq
@@ -483,20 +719,47 @@ TODO, can use solve+ instead of verify for some queries?
           (~seq #:source-expression-bound bound-v1)
           #:defaults ([bound-v1 #'#f]))
          (~optional
+          (~seq #:source-expression-where where-v1)
+          #:defaults ([where-v1 #'(lambda (v1) #t)]))
+         (~optional
           (~seq #:source-context-bound bound-c1)
           #:defaults ([bound-c1 #'#f]))
          (~optional
+          (~seq #:source-context-where where-c1)
+          #:defaults ([where-c1 #'(lambda (v1 c1) #t)]))
+         (~optional
           (~seq #:target-context-bound bound-c2)
-          #:defaults ([bound-c2 #'#f]))))
-     #`(let* ([v (make-symbolic-var
-                  (language-expression (compiler-source comp) bound-v1))])
-         (inner-weird-computation comp v bound-c1 bound-c2 (lambda (w) (language-witness-expression (first w)))))]))
+          #:defaults ([bound-c2 #'#f]))
+         (~optional
+          (~seq #:target-context-where where-c2)
+          #:defaults ([where-c2 #'(lambda (v1 c2) #t)]))
+         (~optional
+          (~seq #:source-behavior-where where-b1)
+          #:defaults ([where-b1 #'(lambda (v1 c1 c2 b1) #t)]))
+         (~optional
+          (~seq #:target-behavior-where where-b2)
+          #:defaults ([where-b2 #'(lambda (v1 c1 c2 b2) #t)]))
+         (~optional
+          (~seq #:count witness-count)
+          #:defaults ([witness-count #'#f]))))
+          #`(let*
+                ([assert-store (asserts)] ; save assertions on entry
+                 [where-vars (lambda (v1 v2 c1 c2 b1 b2) (and (where-v1 v1)
+                                                              (where-c1 v1 c1)                                                         
+                                                              (where-c2 v1 c2)
+                                                              (where-b1 v1 c1 c2 b1)
+                                                              (where-b2 v1 c1 c2 b2)))]
+                 [gen (inner-weird-computation comp #f bound-v1 bound-c1 bound-c2 where-vars (lambda (w) (language-witness-expression (first w))))]
+                 [witness (run-query #:count witness-count gen)])
+         (clear-asserts!)
+         (for-each (lambda (arg) (assert arg)) assert-store) ; restore entry assertion state
+         witness)]))
 
 
 ; show v1, c2 and b2
 (define (display-weird-component vars out)
   (cond
-    [(equal? vars #f) (out (format "No weird components found~n"))]
+    [(equal? vars #f) (out (format "No weird behavior found~n"))]
     [else
      (let* ([source-vars (first vars)]
             [target-vars (second vars)])
@@ -507,7 +770,9 @@ TODO, can use solve+ instead of verify for some queries?
              (language-witness-context target-vars))))
        ]))
 
-
+; alias (display-weird-component)
+(define (display-weird-behavior vars out)
+  (display-weird-component vars out))
 
 
 ; Source: format-str, (arg-list x acc), cons, run
@@ -515,29 +780,25 @@ TODO, can use solve+ instead of verify for some queries?
 (define-syntax (make-query-gadget stx)
   (syntax-parse stx
     [(_ lang valid-program specification
-        (~seq
-         (~optional
-          (~seq #:expression-bound bound-v)
-          #:defaults ([bound-v #'#f]))
-         (~optional
-          (~seq #:context-bound bound-c)
-          #:defaults ([bound-c #'#f]))))
-     #`(let* ([c1 (make-symbolic-var (language-context lang) bound-c)]
-              [v1 (make-symbolic-var (language-expression lang) bound-v)]
-              [p1 ((language-link lang) c1 v1)]
-              [b1 ((language-evaluate lang) p1)]
-              ; Creating a second context to return as example
-              [c2 (make-symbolic-var (language-context lang) bound-c)]
-              [p2 ((language-link lang) c2 v1)]
-              [b2 ((language-evaluate lang) p2)])
-         (unsafe:generator
-          ()
+        bound-v
+        bound-c)
+     #`(unsafe:generator
+        ()
+        (let*
+            ([c1 (make-symbolic-var (language-context lang) bound-c)]
+                 [v1 (make-symbolic-var (language-expression lang) bound-v)]
+                 [p1 ((language-link lang) c1 v1)]
+                 [b1 ((language-evaluate lang) p1)]
+                 ; Creating a second context to return as example
+                 [c2 (make-symbolic-var (language-context lang) bound-c)]
+                 [p2 ((language-link lang) c2 v1)]
+                 [b2 ((language-evaluate lang) p2)])
           (let loop ([found (list)])
-            (let ([tmpsol (synthesize
-                           #:forall c1
-                           #:assume (assert (and (valid-program p1)
-                                                 (not (ormap (lambda (t) (equal? v1 t)) found))))
-                           #:guarantee (assert (specification p1 b1)))])
+            (let* ([tmpsol (synthesize
+                     #:forall c1
+                     #:assume (assert (and (valid-program p1)
+                                           (not (ormap (lambda (t) (equal? v1 t)) found))))
+                     #:guarantee (assert (specification p1 b1)))])
               (if (unsat? tmpsol)
                   #f
                   (let* ([symbolic-witness (solution (list (language-witness v1 c2 p2 b2)) tmpsol)]
@@ -547,6 +808,29 @@ TODO, can use solve+ instead of verify for some queries?
                          [core (language-witness-expression (first witness))])
                     (unsafe:yield witness)
                     (loop (cons core found))))))))]))
+
+(define-syntax (find-gadget stx)
+    (syntax-parse stx
+    [(_ lang valid-program specification
+        (~seq
+         (~optional
+          (~seq #:expression-bound bound-v)
+          #:defaults ([bound-v #'#f]))
+         (~optional
+          (~seq #:context-bound bound-c)
+          #:defaults ([bound-c #'#f]))
+         (~optional
+          (~seq #:count witness-count)
+          #:defaults ([witness-count #'#f]))))
+     #`(let*
+           ([assert-store (asserts)] ; save assertions on entry
+            [gen (make-query-gadget lang valid-program specification bound-v bound-c)]
+            [witness (run-query #:count witness-count gen)])
+         (clear-asserts!)
+         (for-each (lambda (arg) (assert arg)) assert-store) ; restore entry assertions
+         witness)]))
+
+
 
 (define (display-gadget vars out)
   (cond
@@ -571,3 +855,9 @@ TODO, can use solve+ instead of verify for some queries?
 (define (seec-subtract n1 n2)
   (bonsai-integer (- (bonsai-integer-value n1)
                      (bonsai-integer-value n2))))
+
+
+(define (clear-all-queries)
+  (begin
+    (clear-asserts!)
+    (clear-terms!)))

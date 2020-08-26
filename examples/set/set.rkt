@@ -1,4 +1,5 @@
 #lang seec
+(provide (all-defined-out))
 
 ; Performance tweak: model integers using 4-bit bitvectors
 (current-bitwidth 4)
@@ -274,39 +275,6 @@
   #:context-relation equal?
   #:compile id)
 
-(begin
-  (displayln "Trying to find a trace with weird behavior under buggy compilation")
-  (let* ([trace (set-api interaction 4)]
-         [gen (make-query-weird-computation abstract-to-buggyconcrete trace)]
-         [witness (gen)])
-    (display-weird-component witness displayln)))
-
-(begin
-  (displayln "Trying to find a trace with different behavior under compilation")
-  (let* ([trace (set-api interaction 4)]
-         [gen (make-query-changed-behavior abstract-to-concrete trace)]
-         [witness (gen)])
-    (display-changed-behavior witness displayln)))
-
-(begin
-  (displayln "Trying to find a trace with weird behavior under correct compilation")
-  (let* ([trace (set-api interaction 4)]
-         [gen (make-query-weird-computation abstract-to-concrete trace)]
-         [witness (gen)])
-    (display-weird-component witness displayln)))
-
-
-; a program prog (for concrete-two) is a pair of an expression (in this case, a
-; context), paired with a context (in this case, a set).
-; res is a pair of a trace and a set
-(define (add1-concrete? prog res)
-  (match (cons prog res)
-    [(cons (cons _ init-set) (cons _ res-set))
-     (equal? (bonsai-ll-length res-set)
-             (+ 1 (bonsai-ll-length init-set)))
-     ]
-    [_ #f]
-    ))
 
 ; OS: Concrete doesn't work here since concrete-interpret returns a trace as behavior, which doesn't witness the length of the list underlying the set
 ; JP: Changing evaluate to concrete-context which makes behavior := trace * vallist
@@ -319,13 +287,6 @@
               ; this case a program is (snoc vallist context) = (cons context vallist)
   #:evaluate (uncurry concrete-interpret-with-state))
 
-
-(begin
-  (displayln "Trying to find a +1 gadget")
-  (let* ([gen (make-query-gadget concrete-with-state (lambda (v) #t) add1-concrete?)]
-         [witness (gen)])
-    (display-gadget witness displayln))
-  )
 
 #;(begin
   #;(define v1 (set-api interaction 4))
@@ -382,123 +343,4 @@
             (and mem1 (not mem2))]
          [ _ #f]))]))
 
-#;(begin
-  (define lang concrete-two)
-  (define specification concrete-member-spec?)
-  (define c1 (make-symbolic-var (language-context lang)))
-  (define v1 (make-symbolic-var (language-expression lang)))
-  (define p1 ((language-link lang) c1 v1))
-  (define b1 ((language-evaluate lang) p1))
-  ; Creating a second context to return as example
-  (define c2 (make-symbolic-var (language-context lang)))
-  (define p2 ((language-link lang) c2 v1))
-  (define b2 ((language-evaluate lang) p2))
 
-  (define sol (synthesize
-                   #:forall c1
-                   #:guarantee (assert (specification p1 b1))))
-
-(define witness (sol))
-(displayln witness))
-#;(begin
-  (displayln "Trying to find a concrete-member-spec gadget")
-  (let* ([gen (make-query-gadget concrete-two (lambda (v) #t) concrete-member-spec?)]
-         [witness (gen)])
-    (display-gadget witness displayln)))
-     
-
-
-
-
-
-#|
-
-(define (set-context-experiment buggy)
-  (define test-interpret
-    (if buggy
-        buggy-concrete-interpret
-        concrete-interpret))
-  (displayln "Building symbolic interaction traces of size 6... ")
-  (define trace (time (set-api interaction 6)))
-  (displayln "Building symbolic initial set of size 2 for concrete execution...")
-  (define concrete-set
-    (time (let ([s (set-api vallist 2)])
-            (assert (valid-set? s))
-            s)))
-  (displayln "Building symbolic initial set of size 2 for concrete execution...")
-  (define abstract-set
-    (time (let ([s (set-api vallist 2)])
-            (assert (valid-set? s))
-            s)))
-  (newline)
-  (displayln "Symbolically executing with the abstract implementation...")
-  (define-values (abstract nondet)
-    (capture-nondeterminism (time (abstract-interpret trace abstract-set))))
-  (displayln "Symbolically executing with the concrete implementation...")
-  (define concrete
-    (time (test-interpret trace concrete-set)))
-  (newline)
-  (displayln "Generating equality assertion...")
-  (define equality-assertions (with-asserts-only (time (assert (equal? abstract concrete)))))
-  (newline)
-  (displayln "Solving for trace with different behavior...")
-  (define sol
-    (time (verify #:assume (assert (equal? concrete-set abstract-set))
-                  #:guarantee (assert (apply && equality-assertions)))))
-  (if (unsat? sol)
-      (displayln "Synthesis failed")
-      (begin
-        (displayln "Found initial set with divergent traces...")
-        (define trace-instance (concretize trace sol))
-        (define concrete-set-instance (concretize concrete-set sol))
-        (displayln trace-instance)
-        (displayln concrete-set-instance)
-        (printf "Abstract interpretation: ~a~n"
-                (instantiate
-                    (abstract-interpret
-                     trace-instance
-                     concrete-set-instance)))
-        (printf "Concrete interpretation: ~a~n"
-                (instantiate
-                    (test-interpret
-                     trace-instance
-                     concrete-set-instance)))))
-  (newline)
-  #;(displayln "Solving for trace with different behavior under all contexts...")
-  #;(define universal-sol
-    (time (synthesize #:forall (cons abstract-set nondet)
-                      #:guarantee (assert (! (apply && equality-assertions))))))
-  #;(if (unsat? universal-sol)
-      (displayln "Synthesis failed")
-      (begin
-        (displayln "Found initial set with divergent traces...")
-        (define trace-instance (concretize trace universal-sol))
-        (define concrete-set-instance (concretize concrete-set universal-sol))
-        (displayln trace-instance)
-        (displayln concrete-set-instance)
-        (printf "Abstract interpretation: ~a~n"
-                (instantiate
-                    (abstract-interpret
-                     trace-instance
-                     concrete-set-instance)))
-        (printf "Concrete interpretation: ~a~n"
-                (instantiate
-                    (test-interpret
-                     trace-instance
-                     concrete-set-instance)))))
-  (newline))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Attempt to synthesis weird behavior in the buggy concrete implementation
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(displayln "Experiment with incorrect concrete interpretation...")
-(set-context-experiment #t)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Attempt to synthesis weird behavior in the buggy concrete implementation
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(displayln "Experiment with correct concrete interpretation...")
-(set-context-experiment #f)
-|#
