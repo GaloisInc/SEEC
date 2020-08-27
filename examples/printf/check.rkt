@@ -95,7 +95,7 @@
         )))
 
 (define (find-exploit)
-  (current-bitwidth 3)
+  (set-bitwidth 3)
 
   (define f (printf-lang fmt 5))
   #;(define f (printf-lang (cons (% (0 $) NONE d) nil)))
@@ -220,7 +220,7 @@
 
 
 (define (find-add-constant)
-  (current-bitwidth 3)
+  (set-bitwidth 3)
   (define f (printf-lang fmt 5))
   #;(define f (printf-lang (cons " " nil)))
   (define acc0 (printf-lang bvint 1))
@@ -262,16 +262,8 @@
   )
 
 
-
-(define (max-int)
-  ; subtract exponent by 1 because of signed integers
-  (- (expt 2 (- (current-bitwidth) 1)) 1)
-  )
-(define (min-int)
-  (* -1 (max-int)))
-
 (define (test-quantifier)
-  (current-bitwidth 3)
+  (set-bitwidth 3)
   (define-symbolic x integer?)
   (define sol (time (synthesize
                #:forall x
@@ -282,7 +274,7 @@
 
 (define (find-add-argument-max)
 
-  (current-bitwidth 3)
+  (set-bitwidth 3)
   (define f-concrete (printf-lang (cons (% (0 $) (* 0) d) nil)))
   (define f (printf-lang fmt 5))
   #;(define f f-concrete)
@@ -442,7 +434,7 @@
   )
 
 (define (find-add-argument)
-  (current-bitwidth 3)
+  (set-bitwidth 3)
   (define f-concrete (printf-lang (cons (% (1 $) (* 0) s) nil)))
   (define f-bad (printf-lang (cons (% (1 $) 13 d) nil)))
   (define f-symbolic (printf-lang fmt 5))
@@ -553,8 +545,7 @@
   )
 
 (define (find-decrement)
-  (current-bitwidth 4) ; TODO: should setting current-bitwidth also update current-bv-width?
-  (current-bv-width 3)
+  (set-bitwidth 4 3)
   (define f-concrete (printf-lang (cons (% (0 $) 7 s) nil)))
   (define f-symbolic (printf-lang fmt 5))
 
@@ -577,7 +568,7 @@
 
 #;(define (find-add-argument)
 
-  (current-bitwidth 3)
+  (set-bitwidth 3)
   (define f-concrete (printf-lang (cons (% (1 $) (* 0) s) nil)))
   (define f (printf-lang fmt 5))
   #;(define f f-concrete)
@@ -687,7 +678,6 @@
 
 
   )
-
 (test-lookup-offset)
 (displayln "")
 (clear-asserts!)

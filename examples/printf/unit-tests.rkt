@@ -33,11 +33,8 @@
 (define/contract (mk-trace l)
   (-> (listof (or/c integer? string?)) trace?)
   (list->bonsai-ll (map racket->constant l)))
-          
 
-(current-bitwidth 64)
-(current-bv-width 32)
-
+(set-bitwidth 64 32)
 
 (define fmt-d-1 (ll-singleton (printf-lang (% (0 $) NONE d))))
 (define fmt-s-1 (ll-singleton (printf-lang (% (0 $) NONE s))))

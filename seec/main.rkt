@@ -6,7 +6,9 @@
          "private/string.rkt"
          "private/framework.rkt")
 
-(provide (all-from-out rosette/safe)
+(provide (except-out (all-from-out rosette/safe)
+                     current-bitwidth
+                     )
          
          (all-from-out "private/string.rkt")
 
@@ -33,7 +35,7 @@
          bonsai-bv?
          bonsai-bv-value
          integer->bonsai-bv
-         current-bv-width
+         set-bitwidth
 
          bonsai-string
          bonsai-string?

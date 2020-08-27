@@ -44,7 +44,7 @@
          bonsai->racket
          ; bitvectors
          integer->bonsai-bv
-         current-bv-width
+         set-bitwidth
 
          bonsai-pretty
          )
@@ -55,6 +55,10 @@
                   parameterize
                   write-string
                   values))
+(require (only-in racket/base
+                  raise-argument-error
+                  raise-arguments-error))
+
 (require "string.rkt"
          "match.rkt")
 
@@ -260,6 +264,28 @@
                            [else (- (current-bitwidth) 1)]
                            ))
                   ))
+(define set-bitwidth
+
+  (lambda (int-width [bv-width (- int-width 1)])
+    (cond
+      [(not (positive? bv-width))
+       (raise-argument-error 'set-bitwidth
+                             "positive?" bv-width)]
+
+      [(not (or (positive? int-width) (equal? int-width #f)))
+       (raise-argument-error 'set-bitwidth
+                             "(or/c positive? #f)" int-width)]
+
+      [(and (positive? int-width) (not (< bv-width int-width)))
+       (raise-arguments-error 'set-bitwidth
+                              "bv-width argument should be strictly less than int-width argument"
+                              "int-width" int-width
+                              "bv-width" bv-width)]
+
+      [else (begin
+              (current-bitwidth int-width)
+              (current-bv-width bv-width))]
+      )))
 
 (define (integer->bonsai-bv n)
   (bonsai-bv (integer->bitvector n (bitvector (current-bv-width)))))

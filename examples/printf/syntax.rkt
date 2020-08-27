@@ -230,6 +230,9 @@
 (define/contract (bvint->number n)
   (-> bonsai-bv? integer?)
   (bitvector->integer (bonsai->bv n)))
+(define/contract (bvint->natural n)
+  (-> bonsai-bv? natural?)
+  (bitvector->natural (bonsai->bv n)))
 (define/contract (number->bvint n)
   (-> integer? bonsai-bv?)
   (integer->bonsai-bv n))
@@ -443,7 +446,7 @@
 ; TODO: do we need to use bitvectors to keep track of potential overflow? Right
 ; now both the constant lengths and widths are integers, rather than bitvectors.
 (define/contract (pad-constant c w)
-  (-> const? natural? trace?)
+  (-> const? integer? trace?)
   (debug (thunk (printf "(pad-constant ~a ~a)~n" c w)))
   (define res (let* ([c-len (constant-length c)]
          )
