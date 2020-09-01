@@ -15,7 +15,7 @@
 (require (only-in racket/base
                   [log unsafe/log]))
 (require rosette/lib/value-browser)
-
+(require racket/contract)
 
 (provide char?
          string?
@@ -31,6 +31,7 @@
          string-length
          number->string
          digit->char
+         char->string
          string-append
          string
          max-str-len
@@ -48,7 +49,7 @@
                          (andmap char? s)))
 
 (define (symbolic-string? s)
-  (ormap term? s))
+  (and (list? s) (ormap term? s)))
 
 (define string-append append)
 
@@ -122,12 +123,15 @@
 
   
 ;; functions on strings ;;
-(define (string-length s) (length s))
+(define/contract (string-length s)
+  (-> string? integer?)
+  (length s))
 
 ;; given a number n between 0 and 9 inclusive,
 ;; output the character corresponding to n
 ;; (since 0 starts at 48, increase from there)
-(define (digit->char n)
+(define/contract (digit->char n)
+  (-> integer? char?)
   (assert (<= 0 n 9))
   (+ n 48)
   )
@@ -167,15 +171,22 @@
   res)
 
 (define (max-str-len)
-  (let* ([max-int+1 (expt 2 (current-bitwidth))]
-         ; unsafe/log is only safe when both arguments are concrete
-         [pos-str-len (ceiling (unsafe/log max-int+1 10))]
-         )
-    pos-str-len))
+  (cond
+    [(equal? (current-bitwidth) #f)
+     (raise-user-error "no current bitwidth set when calling max-str-length")]
+    [else
+     (let* ([max-int+1 (expt 2 (current-bitwidth))]
+            ; unsafe/log is only safe when both arguments are concrete
+            [pos-str-len (ceiling (unsafe/log max-int+1 10))]
+            )
+       pos-str-len)]
+    ))
 
 (define (number->string n)
   (cond
 
+    [(and (term? n) (equal? (current-bitwidth) #f))
+     (raise-user-error "no current bitwidth set when calling number->string on symbolic argument")]
     [(negative? n)
      (let* ([minus-x (* -1 n)]
             ; replace minus-x by concrete max-int+1 if x was min-int

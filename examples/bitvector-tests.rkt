@@ -7,7 +7,7 @@
 
 ; Integers don't handle overflow well, even when current-bitwidth is finite
 (define (overflow-tests-int)
-  (current-bitwidth 2)
+  (set-bitwidth 2)
   (define-symbolic x integer?)
   (define sol (solve (assert #;(and (= x 0) (= x 4)) (equal? x (+ x 4)))))
   sol
@@ -16,7 +16,7 @@
 
 
 ; Experiments with bitvectors and overflow
-(define (overflow-tests)
+#;(define (overflow-tests)
 
   ; I want bitvectors whose width is `current-bitwidth-1`.
   (current-bitwidth 32)
@@ -62,5 +62,5 @@
              (displayln (bvsub1 x-concrete))
              ))
   )
-(overflow-tests)
+#;(overflow-tests)
 

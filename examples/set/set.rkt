@@ -2,7 +2,7 @@
 (provide (all-defined-out))
 
 ; Performance tweak: model integers using 4-bit bitvectors
-(current-bitwidth 4)
+(set-bitwidth 4)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Define a language of API calls for a set datastructure
