@@ -22,6 +22,7 @@
          conf->mem
          behavior->trace
          behavior->config
+         context->config
          lookup-offset
          lookup-loc
          config-add
@@ -37,6 +38,7 @@
          const?
          behavior?
          config?
+         context?
          err?
          fmt-consistent-with-arglist?
 
@@ -275,6 +277,17 @@
   (-> behavior? config?)
   (match b
     [(printf-lang (trace c:config)) c]
+    ))
+
+(define (context? ctx)
+  (match ctx
+    [(printf-lang context) #t]
+    [_ #f]
+    ))
+(define/contract (context->config ctx)
+  (-> context? config?)
+  (match ctx
+    [(printf-lang (args:arglist cfg:config)) cfg]
     ))
 
 (define/contract (bonsai-string-append s1 s2)

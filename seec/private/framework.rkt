@@ -28,6 +28,8 @@
          link-and-evaluate
          compile
          clear-all-queries
+
+         make-symbolic-var
          )
 
 (require (for-syntax syntax/parse)
@@ -809,6 +811,15 @@ TODO: Get inc-changed-behavior to work
                     (unsafe:yield witness)
                     (loop (cons core found))))))))]))
 
+; Usage: find-gadget lang valid spec
+;                    (#:expression-bound bound-v)
+;                    (#:context-bound bound-c)
+;                    (#:count num)
+; where
+; - [lang] is a SEEC language
+; - [valid] is a predicate characterizing valid [lang] programs (pairs of
+;     expressions and contexts)
+; - [spec] is the desired property that should hold of the generated program
 (define-syntax (find-gadget stx)
     (syntax-parse stx
     [(_ lang valid-program specification
