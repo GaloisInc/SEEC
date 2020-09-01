@@ -139,13 +139,26 @@
         )))
 
 
+
+(define/contract (bv-add-integer b x)
+  (-> bv? integer? bv?)
+  #;(printf "(bv-add-integer ~a ~a)~n" b x)
+  (bvadd b (bonsai-bv-value (integer->bonsai-bv x)))
+  )
+
 (define (is-constant-add f c args conf)
-  (let* ([conf+ (behavior->config (interp-fmt-safe f args conf))]
+  #;(printf "(is-constant-add: ~a ~a ~a ~a)~n" f c args conf)
+  (let* ([conf+ (behavior->config (interp-fmt-unsafe f args conf))]
          [acc   (conf->acc conf)]
          [acc+  (conf->acc conf+)]
+         [acc+c (bv-add-integer acc c)]
         )
-    (equal? acc+ (+ c acc))
-    ))
+    (begin
+      #;(printf "acc: ~a~n" acc)
+      #;(printf "acc+: ~a~n" acc+)
+      #;(printf "acc+c: ~a~n" acc+c)
+    (equal? acc+ acc+c)
+    )))
 (define (is-increment? f args conf)
   (let* ([conf+ (behavior->config (interp-fmt-safe f args conf))]
          [acc   (conf->acc conf)]
@@ -154,34 +167,38 @@
     (equal? acc+ (bvadd1 acc))
     ))
 
-(define/contract (bv-add-integer b x)
-  (-> bv? integer? bv?)
-  (bvadd b (bonsai-bv-value (integer->bonsai-bv x)))
-  )
-
 (define/contract (is-constant-add-positive f c args conf)
   (-> fmt? integer? arglist? config? boolean?)
-  (let* ([conf+ (behavior->config (interp-fmt-safe f args conf))]
+  (printf "(is-constant-add-positive ~a ~a ~a ~a)~n" f c args conf)
+  (let* ([conf+ (behavior->config (interp-fmt-unsafe f args conf))]
          [acc   (conf->acc conf)]
          [acc+  (conf->acc conf+)]
         )
+    (begin
+      (printf "acc: ~a~n" acc)
+      (printf "acc+: ~a~n" acc+)
     (equal? acc+ (bv-add-integer acc (max c 0)))
-    ))
+    )))
 
 
 ; a refinement of is-constant-add where the result is the max of (acc+c) and (acc+length(c))
 (define/contract (is-constant-add-max f c args conf)
   (-> fmt? integer? arglist? config? boolean?)
-  #;(printf "(is-constant-add-max ~a ~a ~a ~a)~n" f c args conf)
+  (printf "(is-constant-add-max ~a ~a ~a ~a)~n" f c args conf)
   (let* ([b+ (interp-fmt-safe f args conf)]
          [conf+ (behavior->config b+)]
          [acc   (conf->acc conf)]
          [acc+  (conf->acc conf+)]
          [c-length (string-length (number->string c))]
+         [acc+c (bv-add-integer acc (max c c-length))]
         )
-    (equal? acc+ (bv-add-integer acc (max c c-length)))
+    (begin
+      (printf "acc: ~a~n" acc)
+      (printf "acc+: ~a~n" acc+)
+      (printf "acc + c: ~a~n" acc+c)
+    (equal? acc+ acc+c)
     #;(equal? (conf->acc conf+) (+ c (conf->acc conf)))
-    ))
+    )))
 
 
 
@@ -272,16 +289,16 @@
   )
 
 
-(define (find-add-argument-max)
+#;(define (find-add-argument-max)
 
-  (set-bitwidth 3)
+  (set-bitwidth 3 2)
   (define f-concrete (printf-lang (cons (% (0 $) (* 0) d) nil)))
-  (define f (printf-lang fmt 5))
-  #;(define f f-concrete)
+  #;(define f (printf-lang fmt 5))
+  (define f f-concrete)
   #;(assert (equal? f f-concrete))
 
-  (define-symbolic* acc0-val integer?)
-  #;(define acc0-val 0)
+  #;(define-symbolic* acc0-val integer?)
+  (define acc0-val 0)
   (define acc0 (integer->bonsai-bv acc0-val))
   (define conf (printf-lang (,acc0 mnil)))
 
@@ -290,20 +307,22 @@
   ;; not if we assert x = 16 and add a forall quantifier over x. Maybe add the
   ;; assertions to the query instead of the context?
 
-  (define-symbolic x-val integer?)
+  #;(define-symbolic x-val integer?)
+  (define x-val 8)
+  #;(assert (= x-val 8))
   (printf "min-int: ~a ~n max-int: ~a~n" (min-int) (max-int))
   (define x (integer->bonsai-bv x-val))
   (define args (printf-lang (cons ,x nil)))
 
   #;(define result (interp-fmt-safe f args conf))
   #;(printf "Defined result: ~a~n" result)
-  #;(printf "(is-constant-add f x args conf): ~a~n"
+  (printf "(is-constant-add-max f x args conf): ~a~n"
           (is-constant-add-max f x-val args conf))
 
 
   (displayln "Searching for a format string that adds the value of x to the accumulator")
   ; doesn't work when I quantify over x-val...
-  (define sol (time (synthesize
+  #;(define sol (time (synthesize
                      #:forall (list acc0-val x-val)
                      #:guarantee (assert (is-constant-add-max f x-val args conf))
                )))
@@ -314,7 +333,7 @@
                )))
 
 
-  (if (unsat? sol)
+  #;(if (unsat? sol)
       (displayln "Failed to synthesize")
       (begin
         (displayln "Synthesis succeeded.")
@@ -345,39 +364,6 @@
   )
 
 
-(define (verify-add-argument f)
-
-  (define-symbolic* acc0-val integer?)
-  (define conf (printf-lang config 2))
-  #;(define acc0 (match conf
-                 [(printf-lang (acc:bvint mem)) acc]))
-
-  (define (conf-constraint acc0-val conf)
-    (match conf
-      [(printf-lang (acc:bvint mem)) (equal? (integer->bonsai-bv acc0-val) acc)]))
-  
-  (define-symbolic* x-val integer?)
-  (define args (printf-lang arglist 3))
-  (define args+ (printf-lang arglist 2))
-  (define (args-constraint x-val args args+)
-    (equal? args (ll-cons (integer->bonsai-bv x-val) args+))
-    #;(match args
-      [(printf-lang (cons x:val arglist))
-       (equal? x (bonsai-integer x-val))])
-    )
-
-  (define (synthesis-goal) (is-constant-add-positive f x-val args conf))
-  (assert (conf-constraint acc0-val conf))
-  (assert (args-constraint x-val args args+))
-  (define res (interp-fmt-safe f args conf))
-
-  (define sol (time (synthesize
-                     #:forall (list acc0-val x-val)
-                     #:guarantee (assert (synthesis-goal))
-               )))
-
-  sol
-  )
 
 (define (debug-add-argument f)
 
@@ -400,7 +386,7 @@
 
   (define sol (time (optimize
                #:minimize (list x-val)
-               #:guarantee (assert (not (is-constant-add-positive f x-val args conf)))
+               #:guarantee (assert (not (is-constant-add f x-val args conf)))
                )))
 
   (if (unsat? sol)
@@ -429,27 +415,55 @@
                        (printf-lang (6 mnil))
                        )
   ))
-
+  sol
 
   )
 
+
+(define (verify-add-argument f)
+
+  (define-symbolic* acc0-val integer?)
+  (define conf (printf-lang config 2))
+
+  (define (conf-constraint acc0-val conf)
+    (match conf
+      [(printf-lang (acc:bvint mem)) (equal? (integer->bonsai-bv acc0-val) acc)]))
+  
+  (define-symbolic* x-val integer?)
+  (define args (printf-lang arglist 3))
+  (define args+ (printf-lang arglist 2))
+  (define (args-constraint x-val args args+)
+    (equal? args (ll-cons (integer->bonsai-bv x-val) args+))
+    )
+
+  (define (synthesis-goal) (is-constant-add f x-val args conf))
+  (assert (conf-constraint acc0-val conf))
+  (assert (args-constraint x-val args args+))
+  (assert (fmt-consistent-with-arglist? f args))
+  (define res (interp-fmt-unsafe f args conf))
+
+  (define sol (time (synthesize
+                     #:forall (list acc0-val x-val)
+                     #:guarantee (assert (synthesis-goal))
+               )))
+
+  sol
+  )
+
 (define (find-add-argument)
-  (set-bitwidth 3)
+  (set-bitwidth 3 2)
   (define f-concrete (printf-lang (cons (% (1 $) (* 0) s) nil)))
   (define f-bad (printf-lang (cons (% (1 $) 13 d) nil)))
   (define f-symbolic (printf-lang fmt 5))
 
   (displayln "Searching for a format string that adds the value of x to the accumulator")
+
   (define sol (verify-add-argument f-symbolic))
   (if (unsat? sol)
       (printf "Failed to synthesize~n")
       (begin
         (define f-synthesized (concretize f-symbolic sol))
-        (define f-sol (verify-add-argument f-synthesized))
-        (if (unsat? sol)
-            (printf "Synthesized bogus result: ~a~n" f-synthesized)
-            (printf "Synthesis succeeded: ~a~n" f-synthesized)
-            )
+        (printf "synthesis succeeded: ~a~n" f-synthesized)
         ))
   )
 
@@ -514,12 +528,12 @@
 (define (verify-decrement f)
 
   (define-symbolic* acc0-val integer?)
-  (define conf (printf-lang config 2))
-  (define (conf-constraint acc0-val conf)
+  #;(define conf (printf-lang config 2))
+  #;(define (conf-constraint acc0-val conf)
     (match conf
       [(printf-lang (acc:bvint mem)) (equal? (integer->bonsai-bv acc0-val) acc)]))
   #;(define acc0-val 2)
-  #;(define conf (printf-lang (,(integer->bonsai-bv acc0-val) mnil)))
+  (define conf (printf-lang (,(integer->bonsai-bv acc0-val) mnil)))
 
   (define args (printf-lang arglist 3))
   #;(define args (printf-lang (cons "" nil)))
@@ -531,7 +545,7 @@
       )
 
 
-  (assert (conf-constraint acc0-val conf))
+  #;(assert (conf-constraint acc0-val conf))
   #;(assert (fmt-consistent-with-arglist? f args))
   (define res (interp-fmt-safe f args conf))
   (define (synthesis-goal) (and (not (err? res))
@@ -678,6 +692,7 @@
 
 
   )
+
 (test-lookup-offset)
 (displayln "")
 (clear-asserts!)
@@ -698,10 +713,6 @@
 (clear-asserts!)
 (displayln "")
 (find-add-constant)
-(displayln "")
-(clear-asserts!)
-(displayln "")
-(find-add-argument-max)
 (displayln "")
 (clear-asserts!)
 (displayln "")

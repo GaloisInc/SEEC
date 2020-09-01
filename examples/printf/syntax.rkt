@@ -392,7 +392,6 @@
 (define/contract (print-trace conf t)
   (-> config? (or/c err? trace?) (or/c err? behavior?))
   (debug (thunk (printf "(print-trace ~a ~a)~n" conf t)))
-  #;(debug (thunk (printf "    (trace? ~a): ~a~n" t (trace? t))))
   (define res (match t
     [(printf-lang ERR) (printf-lang ERR)]
     [(printf-lang nil) (printf-lang (nil ,conf))]
@@ -539,11 +538,27 @@
 ; empty string and proceed silently.                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
 (define/contract (unsafe:val->integer v)
   (-> val? integer?)
   (debug (thunk (printf "(unsafe:val->integer ~a)~n" v)))
   (define res (match v
     [(printf-lang n:bvint)       (bvint->number n)]
+    ; if the value is a location, we interpret the location as an integer
+    [(printf-lang (LOC l:ident)) (bonsai->number l)]
+    ; for strings, `s` is a boxed string from string.rkt, aka a list of
+    ; characters, aka a list of integers. Therefore, interpreting a string as an
+    ; integer is just the integer value of the first character in the string.
+    [(printf-lang s:string)      (first (bonsai-string-value s))]
+    ))
+  (debug (thunk (printf "result of unsafe:val->integer: ~a~n" res)))
+  res)
+
+(define/contract (unsafe:val->natural v)
+  (-> val? integer?)
+  (debug (thunk (printf "(unsafe:val->integer ~a)~n" v)))
+  (define res (match v
+    [(printf-lang n:bvint)       (bvint->natural n)]
     ; if the value is a location, we interpret the location as an integer
     [(printf-lang (LOC l:ident)) (bonsai->number l)]
     ; for strings, `s` is a boxed string from string.rkt, aka a list of
@@ -635,7 +650,9 @@
         (match (unsafe:fmt->constant ftype p args)
           [(printf-lang ERR) (printf-lang (nil ,conf))]
           [(printf-lang c:constant)
-           (print-trace conf (pad-constant c (unsafe:val->integer v)))]
+           ; if c is a negative signed bitvector: interpret the bitvector as
+           ; overflow???? is this right?
+           (print-trace conf (pad-constant c (unsafe:val->natural v)))]
           )]
        )]
 
