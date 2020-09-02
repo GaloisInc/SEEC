@@ -30,6 +30,8 @@
          clear-all-queries
 
          make-symbolic-var
+         (struct-out language-witness)
+         concretize-witness
          )
 
 (require (for-syntax syntax/parse)
@@ -819,7 +821,8 @@ TODO: Get inc-changed-behavior to work
 ; - [lang] is a SEEC language
 ; - [valid] is a predicate characterizing valid [lang] programs (pairs of
 ;     expressions and contexts)
-; - [spec] is the desired property that should hold of the generated program
+; - [spec] is the desired property that takes two arguments: the program and the
+;     behavior resulting from evaluating the program
 (define-syntax (find-gadget stx)
     (syntax-parse stx
     [(_ lang valid-program specification

@@ -23,6 +23,7 @@
          behavior->trace
          behavior->config
          context->config
+         context->arglist
          lookup-offset
          lookup-loc
          config-add
@@ -289,6 +290,12 @@
   (match ctx
     [(printf-lang (args:arglist cfg:config)) cfg]
     ))
+(define/contract (context->arglist ctx)
+  (-> context? arglist?)
+  (match ctx
+    [(printf-lang (args:arglist cfg:config)) args]
+    ))
+
 
 (define/contract (bonsai-string-append s1 s2)
   (-> bonsai-string? bonsai-string? bonsai-string?)

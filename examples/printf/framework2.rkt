@@ -39,51 +39,99 @@
 (define (valid-printf-spec-program? f args cfg)
   (fmt-consistent-with-arglist? f args))
 
-
-(define/contract (increment-spec p res)
-  (-> (cons/c context? fmt?) behavior? boolean?)
-  ((printf-uncurry (λ (f args cfg)
-                     (let* ([acc (conf->acc cfg)]
-                            [acc+ (conf->acc (behavior->config res))]
-                            )
-                       (equal? acc+ (bvadd1 acc)))))
-                  p))
-(define (find-increment-gadget)
-  (set-bitwidth 16 8)
-  ; no matter what accumulator we start with, add 1 to the accumulator
-
-  (define g (find-gadget printf-spec
-                         (printf-uncurry valid-printf-spec-program?)
-                         increment-spec
-                         ))
-  (display-gadget g displayln)
-  )
-(find-increment-gadget)
 (define (printf-program? p)
   (and (pair? p)
        (context? (car p))
        (fmt? (cdr p))
        ))
-
-#;(define (find-increment-gadget-manual)
-  (set-bitwidth 16 8)
-
-  (define c1 (make-symbolic-var (language-context printf-spec) 5))
-  (define v1 (make-symbolic-var (language-expression printf-spec) 3))
-  #;(assert (equal? v1 (printf-lang (cons " " nil))))
-  (define p1 ((language-link printf-spec) c1 v1))
-  (define b1 ((language-evaluate printf-spec) p1))
-  
-  #;(printf "spec: ~a~n" (increment-spec p1 b1))
-
-  (define sol (synthesize
-               #:forall c1
-               #:assume (assert ((printf-uncurry valid-printf-spec-program?) p1))
-               #:guarantee (assert (increment-spec p1 b1))
-               ))
-  (if (unsat? sol)
-      (displayln "Synthesis failed")
-      (printf "Synthesis succeeded: ~a~n" (concretize v1 sol))
-      )
+(define/contract (program->fmt p)
+  (-> printf-program? fmt?)
+  (cdr p))
+(define/contract (program->config p)
+  (-> printf-program? config?)
+  (context->config (car p)))
+(define/contract (bv-add-integer b x)
+  (-> bv? integer? bv?)
+  #;(printf "(bv-add-integer ~a ~a)~n" b x)
+  (bvadd b (bonsai-bv-value (integer->bonsai-bv x)))
   )
-#;(find-increment-gadget-manual)
+
+
+
+
+(define/contract (add-constant-spec c p res)
+  (-> integer? printf-program? behavior? boolean?)
+  (printf "(add-constant-spec ~a ~a ~a)~n" c p res)
+  (let* ([acc (conf->acc (program->config p))]
+         [acc+ (conf->acc (behavior->config res))]
+         )
+    (equal? acc+ (bv-add-integer acc c))
+    ))
+
+
+
+(define find-gadget-custom
+  (λ (lang ; SEEC langauge
+      #:valid [valid-program (λ (p) #t)]
+      spec ; program -> behavior -> boolean
+      #:expr-bound    [bound-e #f]
+      #:context-bound [bound-c #f]
+      #:context [ctx (make-symbolic-var (language-context lang) bound-c)]
+      #:context-constraint [ctx-constraint (λ (x) #t)] ; (-> context? boolean?)
+      #:expr    [e   (make-symbolic-var (language-expression lang) bound-e)]
+      #:expr-constraint [e-constraint (λ (x) #t)] ; (-> expr? boolean?)
+      #:forall  [vars ctx] ; any term containing symbolic variables to be quantified over
+      )
+    (let*
+        ([p ((language-link lang) ctx e)]
+         [b ((language-evaluate lang) p)]
+         ; creating second context to return as example
+         [ctx-witness (make-symbolic-var (language-context lang) bound-c)]
+         [p-witness ((language-link lang) ctx-witness e)]
+         [b-witness ((language-evaluate lang) p-witness)]
+         [sol (synthesize #:forall vars
+                          #:assume (assert (and (valid-program p)
+                                                (ctx-constraint ctx)
+                                                (e-constraint e)))
+                          #:guarantee (assert (spec p b)))]
+         )
+      (if (unsat? sol)
+          #f
+          (let* ([symbolic-witness (solution (list (language-witness e ctx-witness p-witness b-witness))
+                                             sol)]
+                 [witness (concretize-witness symbolic-witness)]
+                 [core (language-witness-expression (first witness))]
+                 )
+            witness))
+      )))
+      
+
+
+(define (find-increment-gadget)
+  (define g (find-gadget-custom printf-spec
+                         ((curry add-constant-spec) 1)
+                         ))
+  (display-gadget g displayln)
+  )
+#;(find-increment-gadget)
+
+
+
+(define (find-add-constant-gadget c)
+  #;(set-bitwidth 4 3)
+  (define g (find-gadget-custom printf-spec
+                         ((curry add-constant-spec) c)
+;                         #:expr-bound 3
+;                         #:expr (printf-lang (cons (% (0 $) 5 s) nil))
+                         #:expr-constraint (λ (fmt) (equal? fmt
+                                                            (printf-lang (cons (% (0 $) 5 s) nil))))
+;                         #:context (printf-lang ((cons "" nil)
+;                                                 ((bv 0)
+;                                                  mnil)))
+                         #:context-constraint (λ (ctx)
+                            (equal? (context->arglist ctx) (printf-lang (cons "" nil))))
+                         #:forall '()
+                         ))
+  (display-gadget g displayln)
+  )
+(find-add-constant-gadget 5)
