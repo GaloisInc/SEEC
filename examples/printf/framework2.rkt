@@ -3,6 +3,8 @@
 (require racket/contract)
 (require seec/private/framework)
 
+(require rosette/lib/value-browser) ; debugging
+
 (require (only-in racket/base
                   raise-argument-error
                   raise-arguments-error))
@@ -20,7 +22,7 @@
 ; three arguments: a format string, an argument list, and a configuration. This
 ; function converts such a function into one that accepts a [printf-lang]
 ; program, consisting of the same parts in a different order.
-(define/contract (printf-uncurry f)
+#;(define/contract (printf-uncurry f)
   (-> (-> fmt? arglist? config? any)
       (-> (cons/c context? fmt?) any))
   (λ (p)
@@ -33,23 +35,12 @@
   #:expression fmt #:size 3
   #:context context #:size 5
   #:link cons
-  #:evaluate (printf-uncurry interp-fmt-safe)
+  #:evaluate (λ (p) (interp-fmt-safe (program->fmt p) (program->arglist p) (program->config p)))
   )
 
 (define (valid-printf-spec-program? f args cfg)
   (fmt-consistent-with-arglist? f args))
 
-(define (printf-program? p)
-  (and (pair? p)
-       (context? (car p))
-       (fmt? (cdr p))
-       ))
-(define/contract (program->fmt p)
-  (-> printf-program? fmt?)
-  (cdr p))
-(define/contract (program->config p)
-  (-> printf-program? config?)
-  (context->config (car p)))
 (define/contract (bv-add-integer b x)
   (-> bv? integer? bv?)
   #;(printf "(bv-add-integer ~a ~a)~n" b x)
@@ -61,7 +52,7 @@
 
 (define/contract (add-constant-spec c p res)
   (-> integer? printf-program? behavior? boolean?)
-  (printf "(add-constant-spec ~a ~a ~a)~n" c p res)
+  ;(printf "(add-constant-spec ~a ~a ~a)~n" c p res)
   (let* ([acc (conf->acc (program->config p))]
          [acc+ (conf->acc (behavior->config res))]
          )
@@ -72,15 +63,15 @@
 
 (define find-gadget-custom
   (λ (lang ; SEEC langauge
-      #:valid [valid-program (λ (p) #t)]
+      #:valid              [valid-program (λ (p) #t)]
       spec ; program -> behavior -> boolean
-      #:expr-bound    [bound-e #f]
-      #:context-bound [bound-c #f]
-      #:context [ctx (make-symbolic-var (language-context lang) bound-c)]
+      #:expr-bound         [bound-e #f]
+      #:context-bound      [bound-c #f]
+      #:context            [ctx (make-symbolic-var (language-context lang) bound-c)]
       #:context-constraint [ctx-constraint (λ (x) #t)] ; (-> context? boolean?)
-      #:expr    [e   (make-symbolic-var (language-expression lang) bound-e)]
-      #:expr-constraint [e-constraint (λ (x) #t)] ; (-> expr? boolean?)
-      #:forall  [vars ctx] ; any term containing symbolic variables to be quantified over
+      #:expr               [e (make-symbolic-var (language-expression lang) bound-e)]
+      #:expr-constraint    [e-constraint (λ (x) #t)] ; (-> expr? boolean?)
+      #:forall             [vars ctx] ; any term containing symbolic variables to be quantified over
       )
     (let*
         ([p ((language-link lang) ctx e)]
@@ -91,7 +82,10 @@
          [b-witness ((language-evaluate lang) p-witness)]
          [sol (synthesize #:forall vars
                           #:assume (assert (and (valid-program p)
+                                                ; we need to constraint both the
+                                                ; ctx and the ctx-witness
                                                 (ctx-constraint ctx)
+                                                (ctx-constraint ctx-witness) 
                                                 (e-constraint e)))
                           #:guarantee (assert (spec p b)))]
          )
@@ -118,20 +112,23 @@
 
 
 (define (find-add-constant-gadget c)
-  #;(set-bitwidth 4 3)
+
   (define g (find-gadget-custom printf-spec
                          ((curry add-constant-spec) c)
-;                         #:expr-bound 3
-;                         #:expr (printf-lang (cons (% (0 $) 5 s) nil))
-                         #:expr-constraint (λ (fmt) (equal? fmt
-                                                            (printf-lang (cons (% (0 $) 5 s) nil))))
-;                         #:context (printf-lang ((cons "" nil)
-;                                                 ((bv 0)
-;                                                  mnil)))
-                         #:context-constraint (λ (ctx)
-                            (equal? (context->arglist ctx) (printf-lang (cons "" nil))))
-                         #:forall '()
+                         #:expr-bound 5
+                         #:context-bound 3
+                         ; NOTE: will not find gadget without this context-constraint. WHY????
+                         #:context-constraint (λ (ctx) (match (context->arglist ctx)
+                                                         [(printf-lang (cons s:string arglist))
+                                                          ; need to compare the
+                                                          ; string via equal?
+                                                          ; because pattern
+                                                          ; matching against
+                                                          ; string literals does
+                                                          ; not work currently
+                                                          (equal? s (printf-lang ""))]
+                                                         [_ #f]))
                          ))
   (display-gadget g displayln)
   )
-(find-add-constant-gadget 5)
+(find-add-constant-gadget 100)

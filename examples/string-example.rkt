@@ -4,6 +4,8 @@
 (require (only-in racket/base integer->char))
 (require seec/private/bonsai2)
 
+(require rosette/lib/value-browser) ; debugging
+
 (define-grammar constants
   (const ::= (BOOL boolean) num (STR string) (CHAR char))
   (num ::= (NAT natural))
@@ -16,12 +18,12 @@
 
 (define hi-desired (constants (STR "hi")))
 (define c-desired (constants (CHAR #\x)))
-(displayln hi-desired)
-(displayln c-desired)
-(match hi-desired
+#;(displayln hi-desired)
+#;(displayln c-desired)
+#;(match hi-desired
   [(constants (STR s:string)) (print-string (bonsai-string-value s))]
   )
-(match c-desired
+#;(match c-desired
   [(constants (CHAR c:char)) (displayln c)]
   )
 
@@ -103,7 +105,7 @@
         (displayln instance)
         ))
   )
-(synthesize-string-in-lang)
+#;(synthesize-string-in-lang)
 
 
 
@@ -134,3 +136,23 @@
   (displayln #t)
   )
 #;(more-tests)
+
+(define (pattern-matching-tests)
+  (define t (constants string 1))
+  (define t-constant (constants ""))
+  (define (do-match s)
+    (match s
+      [(constants "") #t]
+      [_ #f]))
+  (define (do-equal s)
+    (equal? s (constants "")))
+
+  #;(render-value/window t-equal)
+  #;(displayln (do-equal t))
+
+  (define b (constants boolean 1))
+  (match b
+    [(constants #t) #t]
+    [_ #f])
+  )
+(pattern-matching-tests)

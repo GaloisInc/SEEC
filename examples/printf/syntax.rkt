@@ -24,6 +24,10 @@
          behavior->config
          context->config
          context->arglist
+         printf-program?
+         program->fmt
+         program->arglist
+         program->config
          lookup-offset
          lookup-loc
          config-add
@@ -295,6 +299,22 @@
   (match ctx
     [(printf-lang (args:arglist cfg:config)) args]
     ))
+; a printf-program is a racket pair of a context and a format string
+(define (printf-program? p)
+  (and (pair? p)
+       (context? (car p))
+       (fmt? (cdr p))
+       ))
+(define/contract (program->fmt p)
+  (-> printf-program? fmt?)
+  (cdr p))
+(define/contract (program->arglist p)
+  (-> printf-program? arglist?)
+  (context->arglist (car p)))
+(define/contract (program->config p)
+  (-> printf-program? config?)
+  (context->config (car p)))
+
 
 
 (define/contract (bonsai-string-append s1 s2)
