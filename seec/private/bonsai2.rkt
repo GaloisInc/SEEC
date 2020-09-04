@@ -4,6 +4,7 @@
          (except-out (struct-out bonsai-null) bonsai-null)
          (except-out (struct-out bonsai-terminal) bonsai-terminal)
          (except-out (struct-out bonsai-boolean) bonsai-boolean)
+         (except-out (struct-out bonsai-bv) bonsai-bv)
          (except-out (struct-out bonsai-integer) bonsai-integer)
          (except-out (struct-out bonsai-char) bonsai-char)
          (except-out (struct-out bonsai-string) bonsai-string)
@@ -11,6 +12,7 @@
          (rename-out [match-bonsai-null bonsai-null]
                      [match-bonsai-terminal bonsai-terminal]
                      [match-bonsai-boolean bonsai-boolean]
+                     [match-bonsai-bv bonsai-bv]
                      [match-bonsai-integer bonsai-integer]
                      [match-bonsai-char bonsai-char]
                      [match-bonsai-string bonsai-string]
@@ -40,6 +42,9 @@
          bonsai-ll-length
          bonsai-ll-append
          bonsai->racket
+         ; bitvectors
+         integer->bonsai-bv
+         set-bitwidth
 
          bonsai-pretty
          )
@@ -50,6 +55,10 @@
                   parameterize
                   write-string
                   values))
+(require (only-in racket/base
+                  raise-argument-error
+                  raise-arguments-error))
+
 (require "string.rkt"
          "match.rkt")
 
@@ -109,6 +118,10 @@
   #:transparent
   #:methods gen:custom-write
   [(define write-proc bonsai-write)])
+(struct bonsai-bv bonsai (value)
+  #:transparent
+  #:methods gen:custom-write
+  [(define write-proc bonsai-write)])
 (struct bonsai-terminal bonsai (value)
   #:transparent
   #:methods gen:custom-write
@@ -126,6 +139,8 @@
      (out (print-string (bonsai-string-value b)))]
     [(bonsai-boolean? b)
      (out (bonsai-boolean-value b))]
+    [(bonsai-bv? b)
+     (out (bonsai-bv-value b))]
     [(bonsai-null? b)
      (out "*null*")]
     [(bonsai-list? b)
@@ -158,6 +173,10 @@
      (out "(bonsai-boolean ")
      (recur (bonsai-boolean-value b))
      (out ")")]
+    [(bonsai-bv? b)
+     (out "(bonsai-bv ")
+     (recur (bonsai-bv-value b))
+     (out ")")]
     [(bonsai-null? b)
      (out "(bonsai-null)")]
     [(bonsai-list? b)
@@ -183,6 +202,8 @@
     [(bonsai-boolean? b)
      (bonsai-boolean-value b)
      ]
+    [(bonsai-bv? b)
+     (bonsai-bv-value b)]
     [(bonsai-null? b) "-"]
     [(bonsai-list? b)
      (add-between (map bonsai-pretty (bonsai-list-nodes b)) " ")
@@ -216,6 +237,7 @@
     [(bonsai-null? b) #f]
     [(bonsai-terminal? b) (enum->symbol (bonsai-terminal-value b))]
     [(bonsai-boolean? b) (bonsai-boolean-value b)]
+    [(bonsai-bv? b) (bonsai-bv-value b)]
     [(bonsai-integer? b) (bonsai-integer-value b)]
     [(bonsai-list? b)
      (map bonsai->racket (filter (lambda (b) (not (bonsai-null? b)))
@@ -227,6 +249,47 @@
   (define-symbolic* nondet boolean?)
   (nondeterminism (cons nondet (nondeterminism)))
   nondet)
+
+; current-bv-width is  a racket  parameter that holds  the width  of bonsai/seec
+; bitvectors. We  use a parameter  to store this instead  of letting it  vary by
+; use-site because otherwise make-tree! would need  to be a much larger union of
+; bitvectors of all possible sizes.
+(define current-bv-width
+  (make-parameter (if (equal? (current-bitwidth) #f)
+                      32
+                      (- (current-bitwidth) 1))
+                  (λ (w) (cond
+                           [(equal? (current-bitwidth) #f) w]
+                           [(< 0 w (current-bitwidth)) w]
+                           [else (- (current-bitwidth) 1)]
+                           ))
+                  ))
+(define set-bitwidth
+
+  (lambda (int-width [bv-width (- int-width 1)])
+    (cond
+      [(not (positive? bv-width))
+       (raise-argument-error 'set-bitwidth
+                             "positive?" bv-width)]
+
+      [(not (or (positive? int-width) (equal? int-width #f)))
+       (raise-argument-error 'set-bitwidth
+                             "(or/c positive? #f)" int-width)]
+
+      [(and (positive? int-width) (not (< bv-width int-width)))
+       (raise-arguments-error 'set-bitwidth
+                              "bv-width argument should be strictly less than int-width argument"
+                              "int-width" int-width
+                              "bv-width" bv-width)]
+
+      [else (begin
+              (current-bitwidth int-width)
+              (current-bv-width bv-width))]
+      )))
+
+(define (integer->bonsai-bv n)
+  (bonsai-bv (integer->bitvector n (bitvector (current-bv-width)))))
+
 
 (define-syntax (capture-nondeterminism stx)
   (syntax-parse stx
@@ -243,6 +306,11 @@
 (define (new-boolean!)
   (define-symbolic* bool-val boolean?)
   (bonsai-boolean bool-val))
+
+(define (new-bv!)
+  (define-symbolic* bv-val (bitvector (current-bv-width)))
+  (bonsai-bv bv-val)
+  )
 
 (define (new-integer!)
   (define-symbolic* int-val integer?)
@@ -307,6 +375,7 @@
     [(havoc!) (new-term!)]
     [(havoc!) (new-integer!)]
     [(havoc!) (new-boolean!)]
+    [(havoc!) (new-bv!)]
     [(havoc!) (new-natural!)]
     [(havoc!) (new-char!)]
     [(havoc!) (new-string! depth)]
@@ -418,6 +487,13 @@
        #'(? bonsai-boolean? (! bonsai-boolean-value pat))]))
   (make-rename-transformer #'bonsai-boolean))
 
+(define-match-expander match-bonsai-bv
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ pat)
+       #'(? bonsai-bv? (! bonsai-bv-value pat))]))
+  (make-rename-transformer #'bonsai-bv))
+
 (define-match-expander match-bonsai-integer
   (lambda (stx)
     (syntax-parse stx
@@ -457,6 +533,7 @@
   (define null (bonsai-null))
   (define term (bonsai-terminal (bv 2 32)))
   (define bool (bonsai-boolean #t))
+  (define bv+  (integer->bonsai-bv 4))
   (define int  (bonsai-integer 5))
   (define char (bonsai-char 36))
   (define str  (bonsai-string (list 36 36 36)))
@@ -467,6 +544,7 @@
     (check-equal? null (match null [(? bonsai-null? x) x]))
     (check-equal? term (match term [(? bonsai-terminal? x) x]))
     (check-equal? bool (match bool [(? bonsai-boolean? x) x]))
+    (check-equal? bv+  (match bv+  [(? bonsai-bv? x) x]))
     (check-equal? int  (match int  [(? bonsai-integer? x) x]))
     (check-equal? char (match char [(? bonsai-char? x) x]))
     (check-equal? str  (match str  [(? bonsai-string? x) x]))
@@ -484,6 +562,9 @@
   (check-equal? (bonsai-boolean-value bool)
                 (match bool
                   [(bonsai-boolean v) v]))
+  (check-equal? (bonsai-bv-value bv+)
+                (match bv+
+                  [(bonsai-bv v) v]))
   (check-equal? (bonsai-integer-value int)
                 (match int
                   [(bonsai-integer v) v]))

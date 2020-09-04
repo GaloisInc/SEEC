@@ -11,7 +11,8 @@
                             (display-changed-behavior w displayln))) witnesses)))
 
 
-(define (ex2) (find-weird-component
+(define (ex2)
+  (find-weird-component
                    abstract-to-buggyconcrete
                    #:source-context-bound 2
                    #:target-context-bound 2))
