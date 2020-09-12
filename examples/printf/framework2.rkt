@@ -131,4 +131,42 @@
                          ))
   (display-gadget g displayln)
   )
-(find-add-constant-gadget 100)
+#;(find-add-constant-gadget 100)
+
+
+
+
+(define (find-load-gadget)
+
+  ; load a location given by the identifier [l] into the accumulator
+  (define/contract (load-spec l p res)
+    (-> ident? printf-program? behavior? boolean?)
+    (let* ([m (conf->mem (program->config p))]
+           [v (lookup-loc l m)]
+           [acc+ (conf->acc (behavior->config res))]
+           )
+      (equal? (bonsai-bv acc+) v)
+      ))
+
+  (define l (printf-lang ident 1))
+
+  ; assert that l occurs in the domain of [ctx]'s memory
+  (define (domain-constraint ctx)
+    (let* ([m (conf->mem (context->config ctx))])
+      (bonsai-bv? (lookup-loc l m))))
+  ; assert that [*l] occurs in the argument list of [ctx]
+  (define (arglist-constraint ctx)
+    (match (context->arglist ctx)
+      [(printf-lang (cons (* l+:ident) arglist))
+       (equal? l+ l)]
+      [_ #f]
+      ))
+
+  (display-gadget (find-gadget-custom
+                   printf-spec
+                   ((curry load-spec) l)
+                   #:expr-bound 5
+                   #:context-bound 5
+                   #:context-constraint (λ (ctx) )))
+                   ))
+  )
