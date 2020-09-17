@@ -7,7 +7,9 @@
 
 (require (only-in racket/base
                   raise-argument-error
-                  raise-arguments-error))
+                  raise-arguments-error
+                  parameterize))
+
 
 (set-bitwidth 16 8)
 
@@ -60,6 +62,8 @@
     ))
 
 
+(define (symbolic? e)
+  (not (equal? (symbolics e) (list ))))
 
 (define find-gadget-custom
   (λ (lang ; SEEC langauge
@@ -71,23 +75,37 @@
       #:context-constraint [ctx-constraint (λ (x) #t)] ; (-> context? boolean?)
       #:expr               [e (make-symbolic-var (language-expression lang) bound-e)]
       #:expr-constraint    [e-constraint (λ (x) #t)] ; (-> expr? boolean?)
-      #:forall             [vars ctx] ; any term containing symbolic variables to be quantified over
+
+      #:fresh-witness      [fresh #t] ; set to false if we should NOT generate a
+                                      ; fresh witness context, e.g. if you are
+                                      ; providing an argument for the context
+      #:debug              [debug #f] ; if debug is set, then we will attempt to
+                                      ; synthesize an expression that violates the specification
+      #:forall             [vars (if debug
+                                     (list ) ; no quantifiers for debugging
+                                     ctx)]   ; any term containing symbolic variables to be quantified over
       )
     (let*
         ([p ((language-link lang) ctx e)]
          [b ((language-evaluate lang) p)]
-         ; creating second context to return as example
-         [ctx-witness (make-symbolic-var (language-context lang) bound-c)]
+         ; creating second context to return as example if the first is symbolic
+         [ctx-witness (if fresh
+                          (make-symbolic-var (language-context lang) bound-c)
+                          ctx
+                          )]
          [p-witness ((language-link lang) ctx-witness e)]
          [b-witness ((language-evaluate lang) p-witness)]
          [sol (synthesize #:forall vars
                           #:assume (assert (and (valid-program p)
+                                                (valid-program p-witness)
                                                 ; we need to constraint both the
                                                 ; ctx and the ctx-witness
                                                 (ctx-constraint ctx)
                                                 (ctx-constraint ctx-witness) 
                                                 (e-constraint e)))
-                          #:guarantee (assert (spec p b)))]
+                          #:guarantee (assert (if debug
+                                                  (not (spec p b))
+                                                  (spec p b))))]
          )
       (if (unsat? sol)
           #f
@@ -143,9 +161,22 @@
     (-> ident? printf-program? behavior? boolean?)
     (let* ([m (conf->mem (program->config p))]
            [v (lookup-loc l m)]
+           [acc  (conf->acc (program->config p))]
            [acc+ (conf->acc (behavior->config res))]
            )
-      (equal? (bonsai-bv acc+) v)
+      #;(printf "acc: ~a~n" acc)
+      #;(printf "v: ~a~n" v)
+      #;(printf "acc+v: ~a~n" (bvadd acc (bonsai-bv-value v)))
+      #;(printf "acc+: ~a~n" acc+)
+      ; want to check that acc+=acc+v
+      (match v
+        [(printf-lang n:bvint)
+         (let* ([acc+v (bvadd acc (bonsai-bv-value n))])
+           (begin 
+             #;(printf "acc+v again: ~a~n" acc+v)
+             #;(printf "result: ~a~n" (equal? acc+v acc+))
+             (equal? acc+v acc+)))]
+        [_ #f])
       ))
 
   (define l (printf-lang ident 1))
@@ -154,6 +185,12 @@
   (define (domain-constraint ctx)
     (let* ([m (conf->mem (context->config ctx))])
       (bonsai-bv? (lookup-loc l m))))
+  (define (strong-domain-constraint ctx)
+    (let* ([m (conf->mem (context->config ctx))])
+      (match m
+        [(printf-lang (mcons l+:ident bvint mnil))
+         (equal? l+ l)]
+        [_ #f])))
   ; assert that [*l] occurs in the argument list of [ctx]
   (define (arglist-constraint ctx)
     (match (context->arglist ctx)
@@ -163,23 +200,48 @@
       ))
 
   (define concrete-fmt  (ll-singleton (printf-lang (% (0 $) (* 0) d))))
-  (define concrete-args (list->bonsai-ll (list (printf-lang (* (LOC ,l)))
-                                        (printf-lang ""))))
-  (define/contract concrete-m
-      mem?
+  (define (concrete-args l) (list->bonsai-ll (list (printf-lang (* (LOC ,l)))
+                                                   (printf-lang ""))))
+  (define/contract (concrete-m l)
+      (-> ident? mem?)
       (printf-lang (mcons ,l (bv 3) mnil))
       )
-  (define/contract concrete-ctx context? (printf-lang (,concrete-args ((bv 0) ,concrete-m))))
+  (define/contract concrete-ctx context? (printf-lang (,(concrete-args l) ((bv 0) ,(concrete-m l)))))
+
+  (define l-concrete (printf-lang 7))
+  (define bad-conf (printf-lang ((bv 0) ,(concrete-m l-concrete))))
+  ; TODO: use this code to debug a specific instance
+  #;(parameterize ([debug? #f])
+    (printf "result: ~a~n" (load-spec
+                            l-concrete 
+                            (make-program    concrete-fmt (concrete-args l-concrete) bad-conf)
+                            (interp-fmt-safe concrete-fmt (concrete-args l-concrete) bad-conf)
+                            )))
 
   (display-gadget (find-gadget-custom
                    printf-spec
                    ((curry load-spec) l)
                    #:expr-bound 5
                    #:context-bound 5
-;                   #:context-constraint (λ (ctx) (and (domain-constraint ctx)
-;                                                      (arglist-constraint)))
-                   #:context concrete-ctx
+                   #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
+                                                                (program->context p)))
+                   #:context-constraint (λ (ctx) (and (domain-constraint ctx)
+                                                      (arglist-constraint ctx)
+                                                      #;(equal? (context->arglist ctx)
+                                                                (concrete-args l))
+                                                      #;(equal? (conf->acc (context->config ctx))
+                                                              (bonsai-bv-value (integer->bonsai-bv 0)))
+                                                      ; TODO: try to remove this constraint
+                                                      (equal? (conf->mem (context->config ctx))
+                                                              (concrete-m l))
+                                                      (strong-domain-constraint ctx)
+                                                      #;(equal? ctx concrete-ctx)
+                                                      ))
+;                   #:context concrete-ctx
                    #:expr concrete-fmt
-                   ))
+;                   #:expr-constraint (λ (f) (equal? f concrete-fmt))
+;                   #:fresh-witness #f
+                   )
+                  displayln)
   )
 (find-load-gadget)

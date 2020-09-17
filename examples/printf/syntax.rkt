@@ -28,8 +28,10 @@
          context->arglist
          printf-program?
          program->fmt
+         program->context
          program->arglist
          program->config
+         make-program
          lookup-offset
          lookup-loc
          config-add
@@ -320,12 +322,18 @@
 (define/contract (program->fmt p)
   (-> printf-program? fmt?)
   (cdr p))
+(define/contract (program->context p)
+  (-> printf-program? context?)
+  (car p))
 (define/contract (program->arglist p)
   (-> printf-program? arglist?)
   (context->arglist (car p)))
 (define/contract (program->config p)
   (-> printf-program? config?)
   (context->config (car p)))
+(define/contract (make-program f args conf)
+  (-> fmt? arglist? config? printf-program?)
+  (cons (printf-lang (,args ,conf)) f))
 
 
 
