@@ -22,13 +22,6 @@
 (define (mk-behav-triv t n)
   (printf-lang (,t ,(mk-config-triv n))))
 
-(define/contract (list->bonsai-ll l)
-  (-> (listof bonsai?) bonsai-linked-list?)
-  (cond
-    [(empty? l) (printf-lang nil)]
-    [else (ll-cons (first l) (list->bonsai-ll (rest l)))]
-    ))
-
 (define/contract (racket->constant x)
   (-> (or/c integer? string?) const?)
   (cond
@@ -120,17 +113,21 @@
   (test-case "add argument from memory"
     (define/contract l ident?
       (printf-lang 1))
-    (define fmt (ll-singleton (printf-lang (% (0 $) (* 0) d))))
-    (define args (ll-cons (printf-lang (* (LOC ,l)))
-                 (ll-singleton (printf-lang ""))))
-    (define/contract m mem?
-      (printf-lang (mcons ,l (bv 1) mnil)))
+    (define fmt  (ll-singleton (printf-lang (% (0 $) (* 0) d))))
+    (define args (list->bonsai-ll (list (printf-lang (* (LOC ,l)))
+                                        (printf-lang ""))))
+    (define/contract m
+      mem?
+      (printf-lang (mcons ,l (bv 3) mnil))
+      )
     (define behav (interp-fmt-safe fmt
                                    args
-                                   (mk-config 0 m)))
+                                   (mk-config 1 m)))
     (check-equal? (behavior->config behav)
-                  (mk-config 1 m))
+                  (mk-config 4 m))
     )
+
+
                                                      
 )
 ; TODO: add test cases for padding

@@ -157,16 +157,29 @@
   ; assert that [*l] occurs in the argument list of [ctx]
   (define (arglist-constraint ctx)
     (match (context->arglist ctx)
-      [(printf-lang (cons (* l+:ident) arglist))
+      [(printf-lang (cons (* (LOC l+:ident)) arglist))
        (equal? l+ l)]
       [_ #f]
       ))
+
+  (define concrete-fmt  (ll-singleton (printf-lang (% (0 $) (* 0) d))))
+  (define concrete-args (list->bonsai-ll (list (printf-lang (* (LOC ,l)))
+                                        (printf-lang ""))))
+  (define/contract concrete-m
+      mem?
+      (printf-lang (mcons ,l (bv 3) mnil))
+      )
+  (define/contract concrete-ctx context? (printf-lang (,concrete-args ((bv 0) ,concrete-m))))
 
   (display-gadget (find-gadget-custom
                    printf-spec
                    ((curry load-spec) l)
                    #:expr-bound 5
                    #:context-bound 5
-                   #:context-constraint (λ (ctx) )))
+;                   #:context-constraint (λ (ctx) (and (domain-constraint ctx)
+;                                                      (arglist-constraint)))
+                   #:context concrete-ctx
+                   #:expr concrete-fmt
                    ))
   )
+(find-load-gadget)

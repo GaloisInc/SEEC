@@ -59,6 +59,10 @@
          bonsai-ll-tail
          bonsai-ll-length
          bonsai-ll-append
+         ll-cons
+         ll-singleton
+         list->bonsai-ll
+
 
          make-tree!
 

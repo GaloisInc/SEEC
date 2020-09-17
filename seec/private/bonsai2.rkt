@@ -41,6 +41,9 @@
          bonsai-ll-tail
          bonsai-ll-length
          bonsai-ll-append
+         ll-cons
+         ll-singleton
+         list->bonsai-ll
          bonsai->racket
          ; bitvectors
          integer->bonsai-bv
@@ -58,6 +61,7 @@
 (require (only-in racket/base
                   raise-argument-error
                   raise-arguments-error))
+(require racket/contract)
 
 (require "string.rkt"
          "match.rkt")
@@ -436,7 +440,7 @@
 
 
 (define (bonsai-cons? tree)
-  (bonsai-cons-match? (λ (x) #t) (λ (x) #t) tree))
+  (bonsai-cons-match? (λ (x) (bonsai? x)) (λ (x) (bonsai? x)) tree))
 (define (bonsai-ll-head tree)
   (first (bonsai-list-nodes tree)))
 (define (bonsai-ll-tail tree)
@@ -445,6 +449,18 @@
   (or (bonsai-null? tree)
       (and (bonsai-cons? tree)
            (bonsai-linked-list? (bonsai-ll-tail tree)))))
+(define/contract (ll-cons x xs)
+  (-> bonsai? bonsai-linked-list? bonsai-linked-list?)
+  (bonsai-list (list x xs)))
+(define/contract (ll-singleton x)
+  (-> bonsai? bonsai-linked-list?)
+  (ll-cons x (bonsai-null)))
+(define/contract (list->bonsai-ll l)
+  (-> (listof bonsai?) bonsai-linked-list?)
+  (cond
+    [(empty? l) (bonsai-null)]
+    [else (ll-cons (first l) (list->bonsai-ll (rest l)))]
+    ))
 
 
 
@@ -550,6 +566,13 @@
     (check-equal? str  (match str  [(? bonsai-string? x) x]))
     (check-equal? blst (match blst [(? bonsai-list? x) x])))
 
+  (define ll (list->bonsai-ll (list str bool)))
+  (test-case
+      "linked list"
+    (check-equal? #t (bonsai-linked-list? ll))
+    (check-equal? 2 (bonsai-ll-length ll))
+    )
+
 (test-case
     "Match expanders"
   (check-equal? #t
@@ -576,4 +599,6 @@
                   [(bonsai-string v) v]))
   (check-equal? (bonsai-list-nodes blst)
                 (match blst
-                  [(bonsai-list x y) (list x y)]))))
+                  [(bonsai-list x y) (list x y)]))
+  )
+)

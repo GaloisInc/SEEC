@@ -50,8 +50,8 @@
          debug?
          fmt-consistent-with-arglist?
 
-         ll-singleton
-         ll-cons
+;         ll-singleton
+;         ll-cons
          )
 
 ; We aim to eventually support all or most of the syntax for printf formats:
@@ -115,10 +115,10 @@
   #;(behavior ::= (string config))
 
 
-(define/contract (ll-singleton x)
+#;(define/contract (ll-singleton x)
   (-> bonsai? bonsai-linked-list?)
   (printf-lang (cons ,x nil)))
-(define/contract (ll-cons x xs)
+#;(define/contract (ll-cons x xs)
   (-> bonsai? bonsai-linked-list? bonsai-linked-list?)
   (printf-lang (cons ,x ,xs)))
 
