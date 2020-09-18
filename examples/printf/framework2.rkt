@@ -39,6 +39,14 @@
   #:link cons
   #:evaluate (λ (p) (interp-fmt-safe (program->fmt p) (program->arglist p) (program->config p)))
   )
+(define-language printf-impl
+  #:grammar printf-lang
+  #:expression fmt #:size 3
+  #:context context #:size 5
+  #:link cons
+  #:evaluate (λ (p) (interp-fmt-unsafe (program->fmt p) (program->arglist p) (program->config p)))
+  )
+
 
 (define (valid-printf-spec-program? f args cfg)
   (fmt-consistent-with-arglist? f args))
@@ -49,12 +57,9 @@
   (bvadd b (bonsai-bv-value (integer->bonsai-bv x)))
   )
 
-
-
-
 (define/contract (add-constant-spec c p res)
   (-> integer? printf-program? behavior? boolean?)
-  ;(printf "(add-constant-spec ~a ~a ~a)~n" c p res)
+  #;(printf "(add-constant-spec ~a ~a ~a)~n" c p res)
   (let* ([acc (conf->acc (program->config p))]
          [acc+ (conf->acc (behavior->config res))]
          )
@@ -96,7 +101,7 @@
                           )]
          [p-witness ((language-link lang) ctx-witness e)]
          [b-witness ((language-evaluate lang) p-witness)]
-         [sol (synthesize #:forall (append vars vars-extra)
+         [sol (synthesize #:forall (cons vars vars-extra)
                           #:assume (assert (and (valid-program p)
                                                 (valid-program p-witness)
                                                 ; we need to constrain both the
@@ -152,6 +157,54 @@
   )
 #;(find-add-constant-gadget 100)
 
+(define (find-add-argument-gadget)
+
+  (define/contract f-concrete fmt?
+    (printf-lang (cons (% (0 $) (* 1) s) nil)))
+  (define/contract (args-concrete y-val) (-> integer? arglist?)
+    (printf-lang (cons "" (cons ,(integer->bonsai-bv y-val) nil))))
+  (define/contract (context-concrete y-val)
+    (-> integer? context?)
+    (printf-lang (,(args-concrete y-val)
+                  ((bv 0) mnil))))
+
+  #;(parameterize ([debug? #t])
+    (define res (interp-fmt-unsafe f-concrete (args-concrete 128) (printf-lang ((bv 0) mnil))))
+    (define spec (add-constant-spec 128 (make-program f-concrete (args-concrete 128)
+                                                 (printf-lang ((bv 0) mnil)))
+                                    res))
+    (printf "spec: ~a~n" spec)
+    )
+
+  (define-symbolic x-val integer?)
+  (define-symbolic acc-val integer?)
+  (display-gadget
+   (find-gadget-custom printf-impl
+                       ((curry add-constant-spec) x-val)
+                       #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
+                                                                    (program->context p)))
+                       #:expr-bound 5
+                       #:context-bound 4 ; must be at least 4
+                       #:context-constraint (λ (ctx) 
+                                              (and (match (context->arglist ctx)
+                                                     ; NOTE: don't want to
+                                                     ; quantify over the entire
+                                                     ; context, since we want to
+                                                     ; figure out what x and s should be!
+                                                     [(printf-lang (cons s:string
+                                                                   (cons x:bvint arglist)))
+                                                      (equal? x (integer->bonsai-bv x-val))
+                                                      ]
+                                                     [_ #f])
+                                                   (equal? (integer->bonsai-bv acc-val)
+                                                    (bonsai-bv (conf->acc (context->config ctx))))
+                                                   )
+                                               )
+                       #:forall (list x-val acc-val)
+                       )
+   displayln)
+  )
+(find-add-argument-gadget)
 
 
 
@@ -271,4 +324,4 @@
                    )
                   displayln)
   )
-(find-load-gadget)
+#;(find-load-gadget)
