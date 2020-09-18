@@ -84,6 +84,7 @@
       #:forall             [vars (if debug
                                      (list ) ; no quantifiers for debugging
                                      ctx)]   ; any term containing symbolic variables to be quantified over
+      #:forall-extra       [vars-extra (list )]
       )
     (let*
         ([p ((language-link lang) ctx e)]
@@ -95,10 +96,10 @@
                           )]
          [p-witness ((language-link lang) ctx-witness e)]
          [b-witness ((language-evaluate lang) p-witness)]
-         [sol (synthesize #:forall vars
+         [sol (synthesize #:forall (append vars vars-extra)
                           #:assume (assert (and (valid-program p)
                                                 (valid-program p-witness)
-                                                ; we need to constraint both the
+                                                ; we need to constrain both the
                                                 ; ctx and the ctx-witness
                                                 (ctx-constraint ctx)
                                                 (ctx-constraint ctx-witness) 
@@ -164,33 +165,30 @@
            [acc  (conf->acc (program->config p))]
            [acc+ (conf->acc (behavior->config res))]
            )
-      #;(printf "acc: ~a~n" acc)
-      #;(printf "v: ~a~n" v)
-      #;(printf "acc+v: ~a~n" (bvadd acc (bonsai-bv-value v)))
-      #;(printf "acc+: ~a~n" acc+)
       ; want to check that acc+=acc+v
       (match v
         [(printf-lang n:bvint)
          (let* ([acc+v (bvadd acc (bonsai-bv-value n))])
-           (begin 
-             #;(printf "acc+v again: ~a~n" acc+v)
-             #;(printf "result: ~a~n" (equal? acc+v acc+))
-             (equal? acc+v acc+)))]
+           (equal? acc+v acc+))]
         [_ #f])
       ))
 
   (define l (printf-lang ident 1))
+  (define-symbolic* x-val integer?)
+  (define-symbolic* acc-val integer?)
 
   ; assert that l occurs in the domain of [ctx]'s memory
   (define (domain-constraint ctx)
-    (let* ([m (conf->mem (context->config ctx))])
-      (bonsai-bv? (lookup-loc l m))))
-  (define (strong-domain-constraint ctx)
-    (let* ([m (conf->mem (context->config ctx))])
-      (match m
-        [(printf-lang (mcons l+:ident bvint mnil))
-         (equal? l+ l)]
-        [_ #f])))
+    (let* ([conf (context->config ctx)]
+           [acc  (conf->acc conf)]
+           [m (conf->mem conf)]
+           )
+      (and (equal? (lookup-loc l m)
+                   (integer->bonsai-bv x-val)
+              )
+           (equal? (bonsai-bv acc) (integer->bonsai-bv acc-val))
+           )))
+  
   ; assert that [*l] occurs in the argument list of [ctx]
   (define (arglist-constraint ctx)
     (match (context->arglist ctx)
@@ -199,7 +197,11 @@
       [_ #f]
       ))
 
+  
+
   (define concrete-fmt  (ll-singleton (printf-lang (% (0 $) (* 0) d))))
+
+  #|
   (define (concrete-args l) (list->bonsai-ll (list (printf-lang (* (LOC ,l)))
                                                    (printf-lang ""))))
   (define/contract (concrete-m l)
@@ -207,6 +209,24 @@
       (printf-lang (mcons ,l (bv 3) mnil))
       )
   (define/contract concrete-ctx context? (printf-lang (,(concrete-args l) ((bv 0) ,(concrete-m l)))))
+
+
+  (define (strong-domain-constraint ctx)
+    (let* ([m (conf->mem (context->config ctx))])
+      (match m
+        [(printf-lang (mcons x:ident v:val m+:mem))
+         (and (equal? x l)
+              #;(bonsai-bv? v)
+              (equal? v (integer->bonsai-bv x-val))
+              #;(equal? m+ (printf-lang mnil)))
+         #;(equal? m (concrete-m l))
+         ]
+        [_ #f]
+        )
+      #;(match m
+        [(printf-lang (mcons l+:ident (bv 3) mnil))
+         (equal? l+ l)]
+        [_ #f])))
 
   (define l-concrete (printf-lang 7))
   (define bad-conf (printf-lang ((bv 0) ,(concrete-m l-concrete))))
@@ -217,7 +237,12 @@
                             (make-program    concrete-fmt (concrete-args l-concrete) bad-conf)
                             (interp-fmt-safe concrete-fmt (concrete-args l-concrete) bad-conf)
                             )))
+  |#
 
+  ; TODO: currently not correctly quantifying over x-val, since it is producing "@@@@" for x=4.
+  ; How to fix:
+  ; 1. implement non-memory version of this gadget
+  ; 2. look at macro expansions to see if anything is going wrong
   (display-gadget (find-gadget-custom
                    printf-spec
                    ((curry load-spec) l)
@@ -232,15 +257,17 @@
                                                       #;(equal? (conf->acc (context->config ctx))
                                                               (bonsai-bv-value (integer->bonsai-bv 0)))
                                                       ; TODO: try to remove this constraint
-                                                      (equal? (conf->mem (context->config ctx))
+                                                      #;(equal? (conf->mem (context->config ctx))
                                                               (concrete-m l))
-                                                      (strong-domain-constraint ctx)
+                                                      #;(strong-domain-constraint ctx)
                                                       #;(equal? ctx concrete-ctx)
                                                       ))
 ;                   #:context concrete-ctx
-                   #:expr concrete-fmt
+;                   #:expr concrete-fmt
 ;                   #:expr-constraint (λ (f) (equal? f concrete-fmt))
 ;                   #:fresh-witness #f
+;                   #:forall-extra x-val
+                   #:forall (list acc-val x-val l)
                    )
                   displayln)
   )
