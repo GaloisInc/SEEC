@@ -204,124 +204,122 @@
                        )
    displayln)
   )
-(find-add-argument-gadget)
-
+#;(find-add-argument-gadget)
 
 
 (define (find-load-gadget)
 
-  ; load a location given by the identifier [l] into the accumulator
-  (define/contract (load-spec l p res)
-    (-> ident? printf-program? behavior? boolean?)
-    (let* ([m (conf->mem (program->config p))]
-           [v (lookup-loc l m)]
-           [acc  (conf->acc (program->config p))]
-           [acc+ (conf->acc (behavior->config res))]
-           )
-      ; want to check that acc+=acc+v
-      (match v
-        [(printf-lang n:bvint)
-         (let* ([acc+v (bvadd acc (bonsai-bv-value n))])
-           (equal? acc+v acc+))]
-        [_ #f])
-      ))
+  (define/contract f-concrete fmt?
+    (printf-lang (cons (% (0 $) (* 1) s) nil)))
+  (define args+ (printf-lang arglist 2))
+  (define/contract (args-concrete l) (-> ident? arglist?)
+    (printf-lang (cons "" (cons (* (LOC ,l)) ,args+))))
+  (define m+ (printf-lang mem 2))
+  (define/contract (mem-concrete l y-val)
+    (-> ident? integer? mem?)
+    (printf-lang (mcons ,l ,(integer->bonsai-bv y-val) ,m+)))
 
-  (define l (printf-lang ident 1))
-  (define-symbolic* x-val integer?)
-  (define-symbolic* acc-val integer?)
+    
+  (define/contract (context-concrete l y-val acc-val)
+    (-> ident? integer? integer? context?)
+    (printf-lang (,(args-concrete l)
+                  (,(integer->bonsai-bv acc-val)
+                   ,(mem-concrete l y-val)
+                   ))))
 
-  ; assert that l occurs in the domain of [ctx]'s memory
-  (define (domain-constraint ctx)
-    (let* ([conf (context->config ctx)]
-           [acc  (conf->acc conf)]
-           [m (conf->mem conf)]
-           )
-      (and (equal? (lookup-loc l m)
-                   (integer->bonsai-bv x-val)
-              )
-           (equal? (bonsai-bv acc) (integer->bonsai-bv acc-val))
-           )))
-  
-  ; assert that [*l] occurs in the argument list of [ctx]
-  (define (arglist-constraint ctx)
-    (match (context->arglist ctx)
-      [(printf-lang (cons (* (LOC l+:ident)) arglist))
-       (equal? l+ l)]
-      [_ #f]
-      ))
+  #;(parameterize ([debug? #t])
+    (define res (interp-fmt-unsafe f-concrete (args-concrete 128) (printf-lang ((bv 0) mnil))))
+    (define spec (add-constant-spec 128 (make-program f-concrete (args-concrete 128)
+                                                 (printf-lang ((bv 0) mnil)))
+                                    res))
+    (printf "spec: ~a~n" spec)
+    )
 
-  
-
-  (define concrete-fmt  (ll-singleton (printf-lang (% (0 $) (* 0) d))))
-
-  #|
-  (define (concrete-args l) (list->bonsai-ll (list (printf-lang (* (LOC ,l)))
-                                                   (printf-lang ""))))
-  (define/contract (concrete-m l)
-      (-> ident? mem?)
-      (printf-lang (mcons ,l (bv 3) mnil))
-      )
-  (define/contract concrete-ctx context? (printf-lang (,(concrete-args l) ((bv 0) ,(concrete-m l)))))
-
-
-  (define (strong-domain-constraint ctx)
-    (let* ([m (conf->mem (context->config ctx))])
-      (match m
-        [(printf-lang (mcons x:ident v:val m+:mem))
-         (and (equal? x l)
-              #;(bonsai-bv? v)
-              (equal? v (integer->bonsai-bv x-val))
-              #;(equal? m+ (printf-lang mnil)))
-         #;(equal? m (concrete-m l))
-         ]
-        [_ #f]
-        )
-      #;(match m
-        [(printf-lang (mcons l+:ident (bv 3) mnil))
-         (equal? l+ l)]
-        [_ #f])))
-
-  (define l-concrete (printf-lang 7))
-  (define bad-conf (printf-lang ((bv 0) ,(concrete-m l-concrete))))
-  ; TODO: use this code to debug a specific instance
-  #;(parameterize ([debug? #f])
-    (printf "result: ~a~n" (load-spec
-                            l-concrete 
-                            (make-program    concrete-fmt (concrete-args l-concrete) bad-conf)
-                            (interp-fmt-safe concrete-fmt (concrete-args l-concrete) bad-conf)
-                            )))
-  |#
-
-  ; TODO: currently not correctly quantifying over x-val, since it is producing "@@@@" for x=4.
-  ; How to fix:
-  ; 1. implement non-memory version of this gadget
-  ; 2. look at macro expansions to see if anything is going wrong
-  (display-gadget (find-gadget-custom
-                   printf-spec
-                   ((curry load-spec) l)
-                   #:expr-bound 5
-                   #:context-bound 5
-                   #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
-                                                                (program->context p)))
-                   #:context-constraint (λ (ctx) (and (domain-constraint ctx)
-                                                      (arglist-constraint ctx)
-                                                      #;(equal? (context->arglist ctx)
-                                                                (concrete-args l))
-                                                      #;(equal? (conf->acc (context->config ctx))
-                                                              (bonsai-bv-value (integer->bonsai-bv 0)))
-                                                      ; TODO: try to remove this constraint
-                                                      #;(equal? (conf->mem (context->config ctx))
-                                                              (concrete-m l))
-                                                      #;(strong-domain-constraint ctx)
-                                                      #;(equal? ctx concrete-ctx)
-                                                      ))
-;                   #:context concrete-ctx
-;                   #:expr concrete-fmt
-;                   #:expr-constraint (λ (f) (equal? f concrete-fmt))
-;                   #:fresh-witness #f
-;                   #:forall-extra x-val
-                   #:forall (list acc-val x-val l)
-                   )
-                  displayln)
+  (define-symbolic x-val integer?)
+  (define-symbolic acc-val integer?)
+  (define-symbolic l-val integer?)
+  (define/contract l ident? (bonsai-integer l-val))
+  #;(define l-val (printf-lang ident 1))
+  (display-gadget
+   (find-gadget-custom printf-impl
+                       ((curry add-constant-spec) x-val)
+                       #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
+                                                                    (program->context p)))
+                       #:expr-bound 5
+;                       #:expr f-concrete
+;                       #:expr-constraint (λ (f) (equal? f f-concrete))
+                       #:context-bound 6
+                       ; NOTE: I found it easier to provide this "concrete"
+                       ;   context with symbolic variables in it, than to
+                       ;   provide a completely symbolic context and constrain
+                       ;   it. Not only did the completely symbolic version take
+                       ;   multiple minutes as opposed to less than 1 minute,
+                       ;   but it provided a bogus answer. Debugging this would
+                       ;   be useful, but in the meantime providing sketches is
+                       ;   a reasonable compromise.
+                       #:context (context-concrete l x-val acc-val)
+                       #:fresh-witness #f
+#|
+                       #:context-constraint (λ (ctx) 
+                                              (and (match (context->arglist ctx)
+                                                     ; NOTE: ideally we could
+                                                     ; just say that l occurs in
+                                                     ; the arglist, not exactly
+                                                     ; the shape of the arglist
+                                                     [(printf-lang (cons s:string
+                                                                   (cons (* (LOC l+:ident))
+                                                                   arglist)))
+                                                      (equal? l+ l)
+                                                      ]
+                                                     [_ #f])
+                                                   (equal? (integer->bonsai-bv acc-val)
+                                                    (bonsai-bv (conf->acc (context->config ctx))))
+                                                   (match (conf->mem (context->config ctx))
+                                                     [(printf-lang (mcons l+:ident v+:bvint mem))
+                                                      (and (equal? l+ l)
+                                                           (equal? v+ (integer->bonsai-bv x-val)))]
+                                                     [_ #f])
+                                                   )
+                                               )
+|#                      
+                       #:forall (list l-val x-val acc-val)
+                       )
+   displayln)
   )
-#;(find-load-gadget)
+(find-load-gadget)
+
+
+; If the gadget fails to synthesize, what could be wrong?
+
+; 1. The specification is unsatisfiable.
+;
+; Solution: Identify a gadget/context pair that satisfies the specification. Use
+;   unit tests (possibly using parameterize debug?) to check that the
+;   specification is satisfied for a concrete example. If that succeeds, use
+;   #:expr and #:context arguments to check that the find-gadget query succeeds
+;   on that concrete argument. Use the argument (#:fresh-witness #f).
+
+; 2. The specification is satisfied for a particular unit test, but fails when
+;   quantifying over symbolic variables.
+;
+; Solution: Use #:forall or #:forall-extra to limit or extend the variables
+;   being quantified over. For example, set (#:forall (list )) to stop universal
+;   quantification over contexts. If synthesis succeeds when removing one or
+;   more quantifiers, use the (#:debug #t) argument to search for
+;   counterexamples---instantiations of the variables that cause the
+;   specification to fail.
+
+; 2. The expression or context bound is too small
+; 
+; Solution: Assume you know a gadget/context pair that satisfies Solution 1.
+;   Remove the #:expr (resp #:context) argument and replace with
+;   (#:expr-constraint (λ (e) (equal? e concrete-e))). If this fails, increase
+;   the #:expr-bound argument until it succeeds.
+
+; 3. The witnessed behavior is ERROR and/or the witnessed context is incompatible.
+;
+; Solution: If this happens when given a concrete context argument, add the
+;   argument (#:fresh-witness #f), which will stop the query from generating a
+;   new argument and instead reuse the one provided. Otherwise, add a #:valid
+;   constraint or #:context-contraint to limit the search to contexts that
+;   provide meaningful results.
