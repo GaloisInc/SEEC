@@ -70,74 +70,22 @@
 (define (symbolic? e)
   (not (equal? (symbolics e) (list ))))
 
-(define find-gadget-custom
-  (λ (lang ; SEEC langauge
-      #:valid              [valid-program (λ (p) #t)]
-      spec ; program -> behavior -> boolean
-      #:expr-bound         [bound-e #f]
-      #:context-bound      [bound-c #f]
-      #:context            [ctx (make-symbolic-var (language-context lang) bound-c)]
-      #:context-constraint [ctx-constraint (λ (x) #t)] ; (-> context? boolean?)
-      #:expr               [e (make-symbolic-var (language-expression lang) bound-e)]
-      #:expr-constraint    [e-constraint (λ (x) #t)] ; (-> expr? boolean?)
 
-      #:fresh-witness      [fresh #t] ; set to false if we should NOT generate a
-                                      ; fresh witness context, e.g. if you are
-                                      ; providing an argument for the context
-      #:debug              [debug #f] ; if debug is set, then we will attempt to
-                                      ; synthesize an expression that violates the specification
-      #:forall             [vars (if debug
-                                     (list ) ; no quantifiers for debugging
-                                     ctx)]   ; any term containing symbolic variables to be quantified over
-      #:forall-extra       [vars-extra (list )]
-      )
-    (let*
-        ([p ((language-link lang) ctx e)]
-         [b ((language-evaluate lang) p)]
-         ; creating second context to return as example if the first is symbolic
-         [ctx-witness (if fresh
-                          (make-symbolic-var (language-context lang) bound-c)
-                          ctx
-                          )]
-         [p-witness ((language-link lang) ctx-witness e)]
-         [b-witness ((language-evaluate lang) p-witness)]
-         [sol (synthesize #:forall (cons vars vars-extra)
-                          #:assume (assert (and (valid-program p)
-                                                (valid-program p-witness)
-                                                ; we need to constrain both the
-                                                ; ctx and the ctx-witness
-                                                (ctx-constraint ctx)
-                                                (ctx-constraint ctx-witness) 
-                                                (e-constraint e)))
-                          #:guarantee (assert (if debug
-                                                  (not (spec p b))
-                                                  (spec p b))))]
-         )
-      (if (unsat? sol)
-          #f
-          (let* ([symbolic-witness (solution (list (language-witness e ctx-witness p-witness b-witness))
-                                             sol)]
-                 [witness (concretize-witness symbolic-witness)]
-                 [core (language-witness-expression (first witness))]
-                 )
-            witness))
-      )))
-      
 
 
 (define (find-increment-gadget)
-  (define g (find-gadget-custom printf-spec
+  (define g (find-gadget printf-spec
                          ((curry add-constant-spec) 1)
                          ))
   (display-gadget g displayln)
   )
-#;(find-increment-gadget)
+(find-increment-gadget)
 
 
 
 (define (find-add-constant-gadget c)
 
-  (define g (find-gadget-custom printf-spec
+  (define g (find-gadget printf-spec
                          ((curry add-constant-spec) c)
                          #:expr-bound 5
                          #:context-bound 3
@@ -155,7 +103,7 @@
                          ))
   (display-gadget g displayln)
   )
-#;(find-add-constant-gadget 100)
+(find-add-constant-gadget 100)
 
 (define (find-add-argument-gadget)
 
@@ -179,7 +127,7 @@
   (define-symbolic x-val integer?)
   (define-symbolic acc-val integer?)
   (display-gadget
-   (find-gadget-custom printf-impl
+   (find-gadget printf-impl
                        ((curry add-constant-spec) x-val)
                        #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
                                                                     (program->context p)))
@@ -204,7 +152,7 @@
                        )
    displayln)
   )
-#;(find-add-argument-gadget)
+(find-add-argument-gadget)
 
 
 (define (find-load-gadget)
@@ -241,7 +189,7 @@
   (define/contract l ident? (bonsai-integer l-val))
   #;(define l-val (printf-lang ident 1))
   (display-gadget
-   (find-gadget-custom printf-impl
+   (find-gadget printf-impl
                        ((curry add-constant-spec) x-val)
                        #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
                                                                     (program->context p)))
@@ -286,40 +234,6 @@
                        )
    displayln)
   )
-(find-load-gadget)
+#;(find-load-gadget)
 
 
-; If the gadget fails to synthesize, what could be wrong?
-
-; 1. The specification is unsatisfiable.
-;
-; Solution: Identify a gadget/context pair that satisfies the specification. Use
-;   unit tests (possibly using parameterize debug?) to check that the
-;   specification is satisfied for a concrete example. If that succeeds, use
-;   #:expr and #:context arguments to check that the find-gadget query succeeds
-;   on that concrete argument. Use the argument (#:fresh-witness #f).
-
-; 2. The specification is satisfied for a particular unit test, but fails when
-;   quantifying over symbolic variables.
-;
-; Solution: Use #:forall or #:forall-extra to limit or extend the variables
-;   being quantified over. For example, set (#:forall (list )) to stop universal
-;   quantification over contexts. If synthesis succeeds when removing one or
-;   more quantifiers, use the (#:debug #t) argument to search for
-;   counterexamples---instantiations of the variables that cause the
-;   specification to fail.
-
-; 2. The expression or context bound is too small
-; 
-; Solution: Assume you know a gadget/context pair that satisfies Solution 1.
-;   Remove the #:expr (resp #:context) argument and replace with
-;   (#:expr-constraint (λ (e) (equal? e concrete-e))). If this fails, increase
-;   the #:expr-bound argument until it succeeds.
-
-; 3. The witnessed behavior is ERROR and/or the witnessed context is incompatible.
-;
-; Solution: If this happens when given a concrete context argument, add the
-;   argument (#:fresh-witness #f), which will stop the query from generating a
-;   new argument and instead reuse the one provided. Otherwise, add a #:valid
-;   constraint or #:context-contraint to limit the search to contexts that
-;   provide meaningful results.

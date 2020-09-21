@@ -779,9 +779,129 @@ TODO: Get inc-changed-behavior to work
   (display-weird-component vars out))
 
 
+
+(define find-gadget
+  (λ (lang
+      spec                 ; (-> program? behavior? boolean?)
+
+      #:valid              [valid-program (λ (p) #t)] ; (-> program? boolean?)
+                           ; Constrain the search to expression-context pairs
+                           ; that satisfy the `valid-program` predicate
+
+
+      #:expr-bound         [bound-e #f] ; (or/c #f natural?)
+      #:expr               [e (make-symbolic-var (language-expression lang) bound-e)]
+                           ; The `#:expr` argument allows the user to provide
+                           ; a concrete expression argument instead of generating a
+                           ; symbolic one using `make-symbolic-var`. This could
+                           ; be used either during debugging, e.g. a unit test
+                           ; for the synthesis query, or a sketch consisting of
+                           ; symbolic variables contained inside a frame.
+      #:expr-constraint    [e-constraint (λ (x) #t)] ; (-> expr? boolean?) 
+                           ; The `#:expr-constraint` argument allows the user to
+                           ; constrain the search to expressions that satisfy
+                           ; the constraint.
+
+      #:context-bound      [bound-c #f] ; (or/c #f natural?)
+      #:context            [ctx (make-symbolic-var (language-context lang) bound-c)]
+      #:context-constraint [ctx-constraint (λ (x) #t)] ; (-> context? boolean?)
+
+      #:fresh-witness      [fresh #t]
+                           ; if `#t`, will generate a fresh context satisfying
+                           ; `valid-program` and `ctx-constraint` to witness the
+                           ; satisfiability of the query. This is useful due to
+                           ; the `forall` quantifier.
+                           ;
+                           ; if `#f`, will not generate a fresh context, e.g. if
+                           ; you are providing a concrete argument for the
+                           ; context or not including any `forall` quantifiers
+
+      #:debug              [debug #f]
+                           ; if debug is set, then we will attempt to synthesize
+                           ; an expression that violates the specification
+
+      #:forall             [vars (if debug
+                                     (list ) ; no quantifiers for debugging
+                                     ctx)]   ; any term containing symbolic
+                                             ; variables to be quantified over
+                           ; Use the `#:forall` argument to replace the default
+                           ; set of quantified variables
+      #:forall-extra       [vars-extra (list )]
+                           ; Use the `#:forall-extra` argument to add to the
+                           ; default set of quantified variables without
+                           ; replacing it
+      )
+    (let*
+        ([p ((language-link lang) ctx e)]
+         [b ((language-evaluate lang) p)]
+         ; creating second context to return as example if the first is symbolic
+         [ctx-witness (if fresh
+                          (make-symbolic-var (language-context lang) bound-c)
+                          ctx
+                          )]
+         [p-witness ((language-link lang) ctx-witness e)]
+         [b-witness ((language-evaluate lang) p-witness)]
+         [sol (synthesize #:forall (cons vars vars-extra)
+                          #:assume (assert (and (valid-program p)
+                                                (valid-program p-witness)
+                                                (ctx-constraint ctx)
+                                                (ctx-constraint ctx-witness) 
+                                                (e-constraint e)))
+                          #:guarantee (assert (if debug
+                                                  (not (spec p b))
+                                                  (spec p b))))]
+         )
+      (if (unsat? sol)
+          #f
+          (let* ([symbolic-witness (solution
+                                    (list (language-witness e ctx-witness p-witness b-witness))
+                                    sol)]
+                 [witness (concretize-witness symbolic-witness)]
+                 [core (language-witness-expression (first witness))]
+                 )
+            witness))
+      )))
+
+; DEBUGGING find-gadget:
+; If the gadget fails to synthesize, what could be wrong?
+
+; 1. The specification is unsatisfiable.
+;
+; Solution: Identify a gadget/context pair that satisfies the specification. Use
+;   unit tests (possibly using parameterize debug?) to check that the
+;   specification is satisfied for a concrete example. If that succeeds, use
+;   #:expr and #:context arguments to check that the find-gadget query succeeds
+;   on that concrete argument. Use the argument (#:fresh-witness #f).
+
+; 2. The specification is satisfied for a particular unit test, but fails when
+;   quantifying over symbolic variables.
+;
+; Solution: Use #:forall or #:forall-extra to limit or extend the variables
+;   being quantified over. For example, set (#:forall (list )) to stop universal
+;   quantification over contexts. If synthesis succeeds when removing one or
+;   more quantifiers, use the (#:debug #t) argument to search for
+;   counterexamples---instantiations of the variables that cause the
+;   specification to fail.
+
+; 2. The expression or context bound is too small
+; 
+; Solution: Assume you know a gadget/context pair that satisfies Solution 1.
+;   Remove the #:expr (resp #:context) argument and replace with
+;   (#:expr-constraint (λ (e) (equal? e concrete-e))). If this fails, increase
+;   the #:expr-bound argument until it succeeds.
+
+; 3. The witnessed behavior is ERROR and/or the witnessed context is incompatible.
+;
+; Solution: If this happens when given a concrete context argument, add the
+;   argument (#:fresh-witness #f), which will stop the query from generating a
+;   new argument and instead reuse the one provided. Otherwise, add a #:valid
+;   constraint or #:context-contraint to limit the search to contexts that
+;   provide meaningful results.
+
+
 ; Source: format-str, (arg-list x acc), cons, run
 ; Goal: find a format-str s.t. given a ctx (arg-list, acc), increment the acc. (input is Source, v-ctx:Context -> bool (in addition to the one in source), spec:Context -> behavior -> bool
-(define-syntax (make-query-gadget stx)
+#;(define-syntax (make-query-gadget stx)
   (syntax-parse stx
     [(_ lang valid-program specification
         bound-v
@@ -823,7 +943,7 @@ TODO: Get inc-changed-behavior to work
 ;     expressions and contexts)
 ; - [spec] is the desired property that takes two arguments: the program and the
 ;     behavior resulting from evaluating the program
-(define-syntax (find-gadget stx)
+#;(define-syntax (find-gadget stx)
     (syntax-parse stx
     [(_ lang valid-program specification
         (~seq
