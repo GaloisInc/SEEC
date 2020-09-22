@@ -840,7 +840,10 @@ TODO: Get inc-changed-behavior to work
                           ctx
                           )]
          [p-witness ((language-link lang) ctx-witness e)]
-         [b-witness ((language-evaluate lang) p-witness)]
+         [b-witness ((language-evaluate lang) p-witness)] ; NOTE: don't do this
+                                                          ; evaluation here; do
+                                                          ; it after it's
+                                                          ; concretized
          [sol (synthesize #:forall (cons vars vars-extra)
                           #:assume (assert (and (valid-program p)
                                                 (valid-program p-witness)

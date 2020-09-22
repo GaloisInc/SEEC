@@ -374,7 +374,7 @@
 ; INPUT: an integer offset and an argument list args such that offset < length(args)
 ; OUTPUT: the value mapped to the offset
 (define/contract (lookup-offset offset ctx)
-  (-> integer? context? (or/c err? val?))
+  (-> integer? context? (or/c err? expr?))
   (debug (thunk (printf "(lookup-offset ~a ~a)~n" offset ctx)))
   (define res 
     (let ([args (context->arglist ctx)]
@@ -387,7 +387,7 @@
              (eval-expr e (conf->mem conf))
              (lookup-offset (- offset 1) (make-context args+ conf)))]
         )))
-  #;(debug (thunk (printf "result: ~a~n" res)))
+  (debug (thunk (printf "result of lookup-offset: ~a~n" res)))
   res
   )
 
@@ -625,8 +625,13 @@
     [(printf-lang (LOC l:ident)) (bonsai->number l)]
     ; for strings, `s` is a boxed string from string.rkt, aka a list of
     ; characters, aka a list of integers. Therefore, interpreting a string as an
-    ; integer is just the integer value of the first character in the string.
-    [(printf-lang s:string)      (first (bonsai-string-value s))]
+    ; integer is just the integer value of the first character in the string. If
+    ; the string is the empty string, instead produce 0.
+    [(printf-lang s:string)      (let ([s+ (bonsai-string-value s)])
+                                   (if (equal? (string-length s+) 0)
+                                       0
+                                       (first s+)
+                                       ))]
     ))
   (debug (thunk (printf "result of unsafe:val->integer: ~a~n" res)))
   res)
@@ -670,7 +675,7 @@
 (define/contract (unsafe:fmt->constant ftype param ctx)
   (-> fmt-type? parameter? context? (or/c err? const?))
   (debug (thunk (printf "(unsafe:fmt->constant ~a ~a ~a)~n" ftype param ctx)))
-  (match (lookup-offset (param->offset param) ctx)
+  (define res (match (lookup-offset (param->offset param) ctx)
     [(printf-lang ERR) (printf-lang ERR)]
     [(printf-lang v:val)
      (match ftype
@@ -680,8 +685,10 @@
        [(printf-lang s) (bonsai-string (unsafe:val->string v))]
        ; if ftype = 'n', interpret the argument as a location aka an integer
        [(printf-lang n) (bonsai-integer (unsafe:val->integer v))]
-       )]
-    ))
+       )]))
+  (debug (thunk (printf "result of unsafe:fmt->constant: ~a~n" res)))
+  res
+  )
 
 ; INPUT: a format string, a stack (we assume that the arguments have been pushed
 ; onto the stack), and a configuration

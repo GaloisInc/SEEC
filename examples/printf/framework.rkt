@@ -79,7 +79,7 @@
                          ))
   (display-gadget g displayln)
   )
-(find-increment-gadget)
+#;(find-increment-gadget)
 
 
 
@@ -103,7 +103,7 @@
                          ))
   (display-gadget g displayln)
   )
-(find-add-constant-gadget 100)
+#;(find-add-constant-gadget 100)
 
 (define (find-add-argument-gadget)
 
@@ -152,7 +152,7 @@
                        )
    displayln)
   )
-(find-add-argument-gadget)
+#;(find-add-argument-gadget)
 
 
 (define (find-load-gadget)
@@ -237,3 +237,95 @@
 #;(find-load-gadget)
 
 
+(define (find-add-mem-gadget)
+
+  (define/contract f-concrete fmt?
+    (printf-lang (cons (% (0 $) (* 1) s) ; first  add value1 to the accumulator
+                 (cons (% (0 $) (* 2) s) ; second add value2 to the accumulator
+                 (cons (% (3 $) NONE n)  ; then write the result to the target location
+                       nil)))))
+  (define/contract (args-structure l1 l2 l3)
+    (-> ident? ident? ident? arglist?)
+    (printf-lang (cons ""
+                 (cons (* (LOC ,l1))
+                 (cons (* (LOC ,l2))
+                 (cons (LOC ,l3)
+                 nil))))))
+  (define/contract (mem-structure l1 x1 l2 x2)
+    (-> ident? integer? ident? integer? mem?)
+    (printf-lang (mcons ,l1 ,(integer->bonsai-bv x1)
+                 (mcons ,l2 ,(integer->bonsai-bv x2)
+                 mnil))))
+
+  (define (add-mem-spec l1 l2 l3 p b)
+      ; 1. look up the bitvector value of l1 in the memory of p
+      ; 2. look up the bitvector value of l2 in the memory of p
+      ; 3. look up the bitvector value of l3 in the memory of b
+      ; 4. check if l3 = l1+l2
+    (let* ([cfg (context->config (program->context p))]
+           [m   (conf->mem cfg)]
+           [m+  (conf->mem (behavior->config b))]
+           [x1  (lookup-loc l1 m)]
+           [x2  (lookup-loc l2 m)]
+           [x3  (lookup-loc l3 m+)]
+           )
+      (and (bonsai-bv? x1) (bonsai-bv? x2) (bonsai-bv? x3)
+           (equal? (bonsai-bv-value x3)
+                   (bvadd (bonsai-bv-value x1)
+                          (bonsai-bv-value x2))))))
+
+  
+  #;(parameterize ([debug? #t])
+    (define l1-concrete (bonsai-integer 1))
+    (define l2-concrete (bonsai-integer 2))
+    (define l3-concrete (bonsai-integer 3))
+    (define conf (printf-lang ((bv 0) ,(mem-structure l1-concrete 1 l2-concrete 2))))
+    ; the result should be (bv 3)
+    (define res (interp-fmt-unsafe f-concrete
+                                   (args-structure l1-concrete l2-concrete l3-concrete)
+                                   conf))
+    (define spec (add-mem-spec l1-concrete l2-concrete l3-concrete
+                               (make-program f-concrete
+                                             (args-structure l1-concrete l2-concrete l3-concrete)
+                                             conf)
+                               res))
+    (printf "spec: ~a~n" spec)
+    )
+
+  (define-symbolic l1-val integer?)
+  (define-symbolic l2-val integer?)
+  (define-symbolic l3-val integer?)
+  (define l1 (bonsai-integer l1-val)) ; Note: when I made l1, l2, and l3 purely
+                                      ; symbolic and quantified over them, I got
+                                      ; bogus answers
+  (define l2 (bonsai-integer l2-val))
+  (define l3 (bonsai-integer l3-val))
+  (define-symbolic x-val integer?)
+  (define-symbolic y-val integer?)
+  #;(define-symbolic z-val integer?)
+
+  (define context-structure
+    (printf-lang (,(args-structure l1 l2 l3) ; arglist
+                  ((bv 0) ; we will start with bv 0 here
+                   ,(mem-structure l1 x-val l2 y-val)))))
+
+
+  (display-gadget
+   (find-gadget printf-impl
+                       ((curry add-mem-spec) l1 l2 l3)
+                       #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
+                                                                    (program->context p)))
+                       #:expr-bound 5
+                       #:context-bound 8
+                       #:context context-structure
+                       ; NOTE: SEEC is not very good at synthesizing maps based
+                       ; on specifications of their contexts... e.g. on what lookup-loc does
+;                       #:context-constraint (λ (ctx) (equal? ctx context-structure))
+;                       #:expr f-concrete
+                       #:expr-constraint (λ (e) (equal? e f-concrete))
+                       #:fresh-witness #f
+                       #:forall (list l1-val l2-val l3-val x-val y-val)
+                       )
+   displayln)
+  )
+(find-add-mem-gadget)
