@@ -316,17 +316,19 @@
                        ((curry add-mem-spec) l1 l2 l3)
                        #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
                                                                     (program->context p)))
-                       #:expr-bound 5
+                       #:expr-bound 6
+;                       #:expr f-concrete
+;                       #:expr-constraint (λ (e) (equal? e f-concrete))
+
                        #:context-bound 8
                        #:context context-structure
                        ; NOTE: SEEC is not very good at synthesizing maps based
                        ; on specifications of their contexts... e.g. on what lookup-loc does
 ;                       #:context-constraint (λ (ctx) (equal? ctx context-structure))
-;                       #:expr f-concrete
-                       #:expr-constraint (λ (e) (equal? e f-concrete))
+
                        #:fresh-witness #f
                        #:forall (list l1-val l2-val l3-val x-val y-val)
                        )
    displayln)
   )
-#;(find-add-mem-gadget)
+(find-add-mem-gadget)
