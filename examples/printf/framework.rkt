@@ -76,6 +76,7 @@
 (define (find-increment-gadget)
   (define g (find-gadget printf-spec
                          ((curry add-constant-spec) 1)
+                         #:count 3
                          ))
   (display-gadget g displayln)
   )
@@ -152,7 +153,7 @@
                        )
    displayln)
   )
-#;(find-add-argument-gadget)
+#;(find-add-argument-gadget) ; currently not working?
 
 
 (define (find-load-gadget)
@@ -328,4 +329,4 @@
                        )
    displayln)
   )
-(find-add-mem-gadget)
+#;(find-add-mem-gadget)

@@ -37,6 +37,7 @@
 (require (for-syntax syntax/parse)
          (for-syntax racket/syntax)
          racket/stxparam
+         racket/contract
 
          (prefix-in unsafe:
                     (combine-in
@@ -49,7 +50,6 @@
                               raise-argument-error)
                     racket/generator))
          "bonsai2.rkt")
-
 #|
 
  This file provides structures to reason abstractly about weird machines.
@@ -471,7 +471,8 @@ TODO: Get inc-changed-behavior to work
 
 
 ; concretize all vars included in the solution, return a list of language-witness with concrete vars
-(define (concretize-witness sym-solution)
+(define/contract (concretize-witness sym-solution)
+  (-> solution? (listof language-witness?))
   (let* ([vars (solution-witness sym-solution)]
         [unpacked-vars (map unpack-language-witness vars)]
         [model (solution-model sym-solution)]
@@ -779,8 +780,33 @@ TODO: Get inc-changed-behavior to work
   (display-weird-component vars out))
 
 
+(define/contract (expr-in-witness-list? e witness-list)
+  (-> any/c (listof language-witness?) boolean?)
+  (ormap (λ (w) (equal? e (language-witness-expression w)))
+         witness-list))
 
-(define find-gadget
+
+(define/contract find-gadget
+  (->* (language?
+        (-> any/c any/c boolean?))
+       (
+      #:valid (-> any/c boolean?)
+
+      #:expr-bound (or/c #f integer?)
+      #:expr any/c
+      #:expr-constraint (-> any/c boolean?)
+      #:context-bound (or/c #f integer?)
+      #:context any/c
+      #:context-constraint (-> any/c boolean?)
+
+      #:fresh-witness boolean?
+      #:debug boolean?
+      #:forall any/c
+      #:forall-extra any/c
+      #:count integer?
+      )
+      (or/c #f (listof language-witness?))
+       )
   (λ (lang
       spec                 ; (-> program? behavior? boolean?)
 
@@ -830,6 +856,9 @@ TODO: Get inc-changed-behavior to work
                            ; Use the `#:forall-extra` argument to add to the
                            ; default set of quantified variables without
                            ; replacing it
+
+      #:count              [count 1]
+                           ; the number of different witnesses to return
       )
     (let*
         ([p ((language-link lang) ctx e)]
@@ -844,26 +873,39 @@ TODO: Get inc-changed-behavior to work
                                                           ; evaluation here; do
                                                           ; it after it's
                                                           ; concretized
-         [sol (synthesize #:forall (cons vars vars-extra)
-                          #:assume (assert (and (valid-program p)
-                                                (valid-program p-witness)
-                                                (ctx-constraint ctx)
-                                                (ctx-constraint ctx-witness) 
-                                                (e-constraint e)))
-                          #:guarantee (assert (if debug
-                                                  (not (spec p b))
-                                                  (spec p b))))]
          )
-      (if (unsat? sol)
-          #f
-          (let* ([symbolic-witness (solution
-                                    (list (language-witness e ctx-witness p-witness b-witness))
-                                    sol)]
-                 [witness (concretize-witness symbolic-witness)]
-                 [core (language-witness-expression (first witness))]
-                 )
-            witness))
-      )))
+      (letrec ([loop (λ (num witness-list)
+                       (if (<= num 0)
+                           witness-list
+                           (let* ([sol (synthesize
+                                        #:forall (cons vars vars-extra)
+                                        #:assume (assert (and (valid-program p)
+                                                              (valid-program p-witness)
+                                                              (ctx-constraint ctx)
+                                                              (ctx-constraint ctx-witness)
+                                                              (e-constraint e)
+                                                              (not (expr-in-witness-list? e witness-list))
+                                                              ))
+                                        #:guarantee (assert (if debug
+                                                                (not (spec p b))
+                                                                (spec p b))))
+                                       ])
+                             (if (unsat? sol)
+                                 #f
+                                 (let* ([symbolic-witness
+                                         (solution
+                                          (list (language-witness e ctx-witness p-witness b-witness))
+                                          sol)]
+                                        [witness (concretize-witness symbolic-witness)]
+                                        )
+                                   (loop (- num 1)
+                                         (append witness witness-list))))
+                             )))])
+        (define result (loop count (list )))
+        (clear-asserts!)
+        result
+        ))))
+
 
 ; DEBUGGING find-gadget:
 ; If the gadget fails to synthesize, what could be wrong?
@@ -969,17 +1011,22 @@ TODO: Get inc-changed-behavior to work
 
 
 
-(define (display-gadget vars out)
+(define/contract (display-gadget vars out)
+  (-> (or/c #f (listof language-witness?)) any/c any)
   (cond
     [(equal? vars #f) (out (format "Gadget failed to synthesize~n"))]
+    [(equal? vars (list )) (out (format "All gadgets synthesized~n"))]
     [else
      (let* ([lang-vars (first vars)])
        (out (format
           "Expression ~a~n is a gadget for the provided specification, as witnessed by behavior ~a~n in context ~a~n"
           (language-witness-expression lang-vars)
           (language-witness-behavior lang-vars)
-          (language-witness-context lang-vars))))
-     ]))
+          (language-witness-context lang-vars)))
+       (display-gadget (rest vars) out)
+     )]
+    ))
+
 
 (define (display-list list)
   (for-each displayln list)
