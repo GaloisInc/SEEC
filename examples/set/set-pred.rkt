@@ -11,124 +11,38 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-grammar set-api
-  (value       ::= integer boolean)
-  (vallist     ::= list<value>)
   (set         ::= list<integer>)
-  (trace       ::= list<boolean>)
-  (pred-inner ::= (if obs pred-inner pred-inner) (seq met pred-inner)
-                  (inc pred-inner) (dec pred-inner) nop)
-  (pred-while ::= (while observation pred-inner pred-while) nop)             
-  (pred-fold   ::= var-element var-value integer (if-val-eq integer pred-fold pred-fold) (if-el-eq integer pred-fold pred-fold) (add pred-fold pred-fold) (minus pred-fold)) 
-  (pred        ::= (count integer) (prefix? set) (member? integer) (add pred pred) (minus pred pred) (or pred pred) (and pred pred) (not pred)) ; predicate on lists (list -> T)
   (observation         ::= (member? integer) (or observation) (and observation observation) (not observation))   ; observationervations (set -> bool)
   (method         ::= (insert integer) (remove integer)) ; commands (set -> set)
   (interaction         ::= (seq method interaction) (if observation interaction interaction) nop) ; programs (set -> set)
-  )
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Define an abstract semantics of operations on sets
-;
-; * The semantics will represent a set as a list of unique values.
-; * Inserting and removing an element inserts or removes the corresponding
-;   element from the list.
-; * member? searches the list for the requested element
-; * select *non-deterministically* chooses and element from the list to return
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-; Convenience functions for manipulating lists
-(define (head s)
-  (match s
-    [(set-api nil) (assert #f)]
-    [(set-api (cons x:any any)) x]))
-
-(define (tail s)
-  (match s
-    [(set-api nil) (assert #f)]
-    [(set-api (cons any rest:any)) rest]))
-
-(define (abstract-insert s v)
-  (set-api (,v ,(abstract-remove s v))))
-
-(define (abstract-remove s v)
-  (match s
-    [(set-api nil) (set-api nil)]
-    [(set-api (cons x:value r:vallist))
-     (let ([new-tail (abstract-remove r v)])
-       (if (equal? x v)
-           new-tail
-           (set-api (cons ,x ,new-tail))))]))
-
-(define (abstract-member? s v)
-  (match s
-    [(set-api nil) (set-api #f)]
-    [(set-api (cons x:value r:vallist))
-     (if (equal? x v)
-         (set-api #t)
-         (abstract-member? r v))]))
-
-(define (abstract-select s)
-  (match s
-    [(set-api nil)      (set-api #f)]
-    [(set-api vallist)  (abstract-select-nondet s)]))
-
-; The (nondet!) construct introduces a non-deterministic choice
-(define (abstract-select-nondet s)
-  (match s
-    [(set-api (cons x:value nil)) x]
-    [(set-api (cons x:value r:vallist))
-     (if (nondet!) x (abstract-select-nondet r))]))
+  (pred        ::= (count integer) (prefix? set) (member? integer) (add pred pred) (minus pred pred) (or pred pred) (and pred pred) (not pred)) ; predicate on lists (list -> T)
+  (pred-fold   ::= var-element var-value integer (if-val-eq integer pred-fold pred-fold) (if-el-eq integer pred-fold pred-fold) (add pred-fold pred-fold) (minus pred-fold)) 
+  (pred-inner ::= (if obs pred-inner pred-inner) (seq met pred-inner)
+                  (inc pred-inner) (dec pred-inner) nop)
+  (pred-while ::= (while observation pred-inner pred-while) nop)
+)
 
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Define an concrete implementation of the set API
-;
-; * Like the abstract semantics, the implementation represents sets as lists of
-;   elements in the set.
-; * Inserting and removing an element inserts or removes the corresponding
-;   element from the list. If an item is in the list already, inserting it will
-;   add a second occurence. Removing an item will remove all occurences of the
-;   item in the list.
-; * member? searches the list for the requested element
-; * select returns the most-recently inserted item (the item at the head of the
-;   list
-;
-; Also define a "buggy" implementation of the API where remove is implemented
-; incorrectly and only removes the first instance of element.
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(define (concrete-insert s v)
+(define (insert s v)
   (set-api (cons ,v ,s)))
 
-(define (concrete-remove s v)
+(define (remove s v)
   (match s
     [(set-api nil) (set-api nil)]
-    [(set-api (cons x:value r:vallist))
-     (let ([new-tail (concrete-remove r v)])
+    [(set-api (cons x:integer r:set))
+     (let ([new-tail (remove r v)])
        (if (equal? x v)
            new-tail
            (set-api (cons ,x ,new-tail))))]))
 
-(define (buggy-concrete-remove s v)
+(define (buggy-remove s v)
   (match s
     [(set-api nil) (set-api nil)]
-    [(set-api (cons x:value r:vallist))
+    [(set-api (cons x:integer r:set))
      (if (equal? x v)
          r
-         (set-api (cons ,x ,(buggy-concrete-remove r v))))]))
+         (set-api (cons ,x ,(buggy-remove r v))))]))
 
-(define (concrete-member? s v)
-  (match s
-    [(set-api nil) (set-api #f)]
-    [(set-api (cons x:value r:vallist))
-     (if (equal? x v)
-         (set-api #t)
-         (concrete-member? r v))]))
-
-(define (concrete-select s)
-  (match s
-    [(set-api nil) (set-api #f)]
-    [(set-api (cons x:value vallist)) x]))
 
 
 ; set-api.set -> set-api.set -> bool 
@@ -165,9 +79,69 @@
          (+ 1 (interpret-count r i))
          (interpret-count r i))]))
 
+;; observation -> set -> bool
+(define (interpret-observation p s)
+  (match p
+    [(set-api (not p+:observation))
+     (not (interpret-observation p+ s))]
+    [(set-api (and p1:observation p2:observation))
+     (and (interpret-observation p1 s)
+          (interpret-observation p2 s))]
+    [(set-api (or p1:observation p2:observation))
+     (or (interpret-observation p1 s)
+         (interpret-observation p2 s))]
+    [(set-api (member? v:integer))
+     (interpret-member? s v)]))
+
+;; method -> set -> set
+(define (interpret-method m s)
+  (match m
+    [(set-api (insert i:integer))
+     (insert s i)]
+    [(set-api (remove i:integer))
+     (remove s i)]))
+
+;; method -> set -> set
+;; uses buggy-remove which just removes one instance of element i
+(define (interpret-buggy-method m s)
+  (match m
+    [(set-api (insert i:integer))
+     (insert s i)]
+    [(set-api (remove i:integer))
+     (buggy-remove s i)]))
 
 
+;; interaction -> set -> set
+(define (interpret-interaction i s)
+  (match i
+    [(set-api nop)
+     s]
+    [(set-api (seq m:method i+:interaction))
+     (interpret-interaction i+ (interpret-method m s))]
+    [(set-api (if o:observation i1:interaction i2:interaction))
+     (if (interpret-observation o s)
+         (interpret-interaction i1 s)
+         (interpret-interaction i2 s))]))
 
+;; interaction -> set -> set
+(define (interpret-buggy-interaction i s)
+  (match i
+    [(set-api nop)
+     s]
+    [(set-api (seq m:method i+:interaction))
+     (interpret-interaction i+ (interpret-buggy-method m s))]
+    [(set-api (if o:observation i1:interaction i2:interaction))
+     (if (interpret-observation o s)
+         (interpret-interaction i1 s)
+         (interpret-interaction i2 s))]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; PRED
+; pred is a predicate language where functionalities
+; such as "count" are builtin
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; 
 ;; pred -> set -> T
 (define (interpret-pred p s)
   (match p
@@ -189,10 +163,18 @@
          (interpret-pred p2 s))]
     [(set-api (prefix? vl:set))
      (interpret-prefix? s vl)]
-    [(set-api (member? v:value))
+    [(set-api (member? v:integer))
      (interpret-member? s v)]))
 
-;;; WHILE pred language
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; PRED-WHILE
+; pred-while is a predicate language consisting of
+; a sequence of while (obs) pred-inner ...
+; and pred-inner is a sequence of conditionals over observations,
+; interaction over states and interaction (increment, decrement) with a counter 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ;; int -> pred-inner -> state -> (list int state)
 (define (interpret-inner value i s)
   (match i
@@ -228,7 +210,11 @@
   (interpret-while 4 0 w s))
 
 
-;;; FOLD pred language
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; PRED-FOLD
+; pred-fold is a predicate language representing a function
+; (\ e. \ v. p) being left-folded over the state (with default value 0)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; pred-fold -> int -> int -> int
 (define (interpret-pred-fold p e v)
@@ -269,64 +255,10 @@
 (define (interpret-fold p s)
   (interpret-fold+ p s 0))
 
-;; observation -> set -> bool
-(define (interpret-observation p s)
-  (match p
-    [(set-api (not p+:observation))
-     (not (interpret-observation p+ s))]
-    [(set-api (and p1:observation p2:observation))
-     (and (interpret-observation p1 s)
-          (interpret-observation p2 s))]
-    [(set-api (or p1:observation p2:observation))
-     (or (interpret-observation p1 s)
-         (interpret-observation p2 s))]
-    [(set-api (member? v:integer))
-     (interpret-member? s v)]))
 
-;; method -> set -> set
-(define (interpret-method m s)
-  (match m
-    [(set-api (insert i:integer))
-     (concrete-insert s i)]
-    [(set-api (remove i:integer))
-     (concrete-remove s i)]))
-
-;; method -> set -> set
-;; uses buggy-concrete-remove which just removes one instance of element i
-(define (interpret-buggy-method m s)
-  (match m
-    [(set-api (insert i:integer))
-     (concrete-insert s i)]
-    [(set-api (remove i:integer))
-     (buggy-concrete-remove s i)]))
-
-
-;; interaction -> set -> set
-(define (interpret-interaction i s)
-  (match i
-    [(set-api nop)
-     s]
-    [(set-api (seq m:method i+:interaction))
-     (interpret-interaction i+ (interpret-method m s))]
-    [(set-api (if o:observation i1:interaction i2:interaction))
-     (if (interpret-observation o s)
-         (interpret-interaction i1 s)
-         (interpret-interaction i2 s))]))
-
-;; interaction -> set -> set
-(define (interpret-buggy-interaction i s)
-  (match i
-    [(set-api nop)
-     s]
-    [(set-api (seq m:method i+:interaction))
-     (interpret-interaction i+ (interpret-buggy-method m s))]
-    [(set-api (if o:observation i1:interaction i2:interaction))
-     (if (interpret-observation o s)
-         (interpret-interaction i1 s)
-         (interpret-interaction i2 s))]))
-
-
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; EXAMPLES
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Synthesize a predicate and a gadget implementing "not" using set
 ;; Expected:
