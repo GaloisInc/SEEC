@@ -374,7 +374,7 @@
 ; INPUT: an integer offset and an argument list args such that offset < length(args)
 ; OUTPUT: the value mapped to the offset
 (define/contract (lookup-offset offset ctx)
-  (-> integer? context? (or/c err? expr?))
+  (-> integer? context? (or/c err? val?))
   (debug (thunk (printf "(lookup-offset ~a ~a)~n" offset ctx)))
   (define res 
     (let ([args (context->arglist ctx)]

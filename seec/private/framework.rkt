@@ -47,7 +47,9 @@
                               in-range
                               in-producer)
                      (only-in racket/base
-                              raise-argument-error)
+                              raise-argument-error
+                              raise-user-error
+                              )
                     racket/generator))
          "bonsai2.rkt")
 #|
@@ -785,6 +787,33 @@ TODO: Get inc-changed-behavior to work
   (ormap (λ (w) (equal? e (language-witness-expression w)))
          witness-list))
 
+; `es` is a list of pairs of expressions and contexts
+(define (expr-in-expr-list? e es)
+  (ormap (λ (e-ctx) (equal? e (car e-ctx))) es))
+
+; TODO: make sure the assertion state is not changing from this...
+; NOTE: this actually only needs to be called once for every symbolic result...
+(define synthesize-fresh-context
+  (λ (lang
+      #:expr               e
+      #:context-bound      bound-c
+      #:context-constraint ctx-constraint
+      #:valid-constraint   valid-constraint
+      )
+    (let* ([ctx-witness (make-symbolic-var (language-context lang) bound-c)]
+           [p-witness ((language-link lang) ctx-witness e)]
+         #;[b-witness ((language-evaluate lang) p-witness)]
+           [sol (synthesize #:forall (list )
+                            #:guarantee (assert (and (ctx-constraint ctx-witness)
+                                                     (valid-constraint p-witness)
+                                                     ))
+                            )]
+           )
+      (if (unsat? sol)
+          (unsafe:raise-user-error "Could not synthesize a fresh context from the given constraints")
+          (concretize ctx-witness sol))
+      )))
+
 
 (define/contract find-gadget
   (->* (language?
@@ -863,28 +892,19 @@ TODO: Get inc-changed-behavior to work
     (let*
         ([p ((language-link lang) ctx e)]
          [b ((language-evaluate lang) p)]
-         ; creating second context to return as example if the first is symbolic
-         [ctx-witness (if fresh
-                          (make-symbolic-var (language-context lang) bound-c)
-                          ctx
-                          )]
-         [p-witness ((language-link lang) ctx-witness e)]
-         [b-witness ((language-evaluate lang) p-witness)] ; NOTE: don't do this
-                                                          ; evaluation here; do
-                                                          ; it after it's
-                                                          ; concretized
          )
+      ; 1. Define a recursive loop to generate `num` pairs of expressions (and corresponding contexts)
       (letrec ([loop (λ (num witness-list)
                        (if (<= num 0)
                            witness-list
                            (let* ([sol (synthesize
                                         #:forall (cons vars vars-extra)
                                         #:assume (assert (and (valid-program p)
-                                                              (valid-program p-witness)
+                                                              #;(valid-program p-witness)
                                                               (ctx-constraint ctx)
-                                                              (ctx-constraint ctx-witness)
+                                                              #;(ctx-constraint ctx-witness)
                                                               (e-constraint e)
-                                                              (not (expr-in-witness-list? e witness-list))
+                                                              (not (expr-in-expr-list? e witness-list))
                                                               ))
                                         #:guarantee (assert (if debug
                                                                 (not (spec p b))
@@ -892,19 +912,36 @@ TODO: Get inc-changed-behavior to work
                                        ])
                              (if (unsat? sol)
                                  #f
-                                 (let* ([symbolic-witness
-                                         (solution
-                                          (list (language-witness e ctx-witness p-witness b-witness))
-                                          sol)]
-                                        [witness (concretize-witness symbolic-witness)]
+                                 ; need to concretize context
+                                 (let* ([e-ctx-concrete (concretize (cons e ctx) sol)]
                                         )
                                    (loop (- num 1)
-                                         (append witness witness-list))))
-                             )))])
-        (define result (loop count (list )))
-        (clear-asserts!)
-        result
-        ))))
+                                         (cons e-ctx-concrete witness-list)))
+                                   ))))])
+        ; 2. If the `fresh` flag is true, for each generated expression,
+        ; synthesize a new context satisfying the relevant constraints
+        (let* ([exprs (loop count (list ))]) ; exprs is a list of expression-context pairs
+          (clear-asserts!)
+          (map (λ (e-ctx-concrete)
+                 (let* ([e-concrete  (car e-ctx-concrete)]
+                        [ctx-witness (if fresh
+                                         (synthesize-fresh-context lang
+                                            #:expr e-concrete
+                                            #:context-bound bound-c
+                                            #:context-constraint ctx-constraint
+                                            #:valid-constraint valid-program
+                                            )
+                                         (cdr e-ctx-concrete)
+                                         )]; ctx-witness should be completely concrete
+                        [p-witness ((language-link lang) ctx-witness e-concrete)]
+                        [b-witness ((language-evaluate lang) p-witness)]
+                        )
+                   (language-witness e-concrete
+                                     ctx-witness
+                                     p-witness
+                                     b-witness)))
+               exprs)
+          )))))
 
 
 ; DEBUGGING find-gadget:

@@ -125,35 +125,49 @@
     (printf "spec: ~a~n" spec)
     )
 
+  (define/contract (arglist-constraint ctx idx y-val)
+    (-> context? integer? integer? boolean?)
+    (match (lookup-offset idx ctx)
+      [(printf-lang b:bvint) (equal? b (integer->bonsai-bv y-val))]
+      [_ #f]
+      ))
+  (define/contract (acc-constraint ctx acc-val)
+    (-> context? integer? boolean?)
+    (equal? (integer->bonsai-bv acc-val)
+            (bonsai-bv (conf->acc (context->config ctx)))))
+
+
   (define-symbolic x-val integer?)
   (define-symbolic acc-val integer?)
+
+  (define args-symbolic (printf-lang arglist 4))
+  (define context-symbolic
+    (printf-lang (,args-symbolic
+                  (,(integer->bonsai-bv acc-val)
+                   mnil))))
+
   (display-gadget
    (find-gadget printf-impl
                        ((curry add-constant-spec) x-val)
                        #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
                                                                     (program->context p)))
                        #:expr-bound 5
+;                       #:expr f-concrete
                        #:context-bound 4 ; must be at least 4
-                       #:context-constraint (λ (ctx) 
-                                              (and (match (context->arglist ctx)
+                       #:context context-symbolic
+                       #:context-constraint (λ (ctx)
+                                              (and (arglist-constraint ctx 1 x-val)
                                                      ; NOTE: don't want to
                                                      ; quantify over the entire
                                                      ; context, since we want to
                                                      ; figure out what x and s should be!
-                                                     [(printf-lang (cons s:string
-                                                                   (cons x:bvint arglist)))
-                                                      (equal? x (integer->bonsai-bv x-val))
-                                                      ]
-                                                     [_ #f])
-                                                   (equal? (integer->bonsai-bv acc-val)
-                                                    (bonsai-bv (conf->acc (context->config ctx))))
-                                                   )
-                                               )
+                                                   (acc-constraint ctx acc-val)
+                                                   ))
                        #:forall (list x-val acc-val)
                        )
    displayln)
   )
-#;(find-add-argument-gadget) ; currently not working?
+(find-add-argument-gadget)
 
 
 (define (find-load-gadget)
@@ -326,9 +340,9 @@
                        ; on specifications of their contexts... e.g. on what lookup-loc does
 ;                       #:context-constraint (λ (ctx) (equal? ctx context-structure))
 
-                       #:fresh-witness #f
+                       #:fresh-witness #t
                        #:forall (list l1-val l2-val l3-val x-val y-val)
                        )
    displayln)
   )
-(find-add-mem-gadget)
+#;(time (find-add-mem-gadget))
