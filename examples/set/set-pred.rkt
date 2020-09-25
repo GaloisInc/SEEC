@@ -470,22 +470,22 @@
           (displayln c-predicate)))))
 
           
-;; Synthesize count from fold
+; Natural numbers in sets from 0 and +1
+; where the predicate is a fold over state
+;; Expected:
+;;; predicate (set-api (add (if-el-eq 1 1 0) var-value))
+;;; gadget-pred (set-api (seq (remove 1) nop))
+;;; gadget-succ (set-api (seq (insert 1) nop))
 (define (test-spec-count-fold)
   (begin
     (define spec-z 0)
     (define spec-succ (lambda (n) (+ 1 n)))
     (define predicate (set-api pred-fold 3))
-#;    (define predicate (set-api (add (if-el-eq 1 1 0) var-value)))
     (define gadget-z (set-api interaction 3))
     (define gadget-succ (set-api interaction 3))
-    #;(define gadget (set-api (if (member? 1)
-                                  (seq (remove 1) nop)
-                                  (seq (insert 1) nop))))        
     (define set (set-api set 5))
     (define sol (synthesize
                  #:forall set
-                 ;             #:assume ..
                  #:guarantee (assert
                               (and (equal?
                                     (interpret-fold predicate (interpret-interaction gadget-succ set))
@@ -509,7 +509,6 @@
 
 ; Natural numbers in buggy-sets from nat-pred and +1
 ; where the predicate is a fold over state
-; NOTE: this would work over non-buggy with spec-z instead of spec-pred
 ;; Expected:
 ;;; predicate (set-api (add (if-el-eq 1 1 0) var-value))
 ;;; gadget-pred (set-api (seq (remove 1) nop))
@@ -583,5 +582,33 @@
           (displayln "predicate...")
           (displayln c-predicate)))))
 
-
-
+; This should fail, as non-buggy version cannot produce something equivalent to "count" using pred-while 
+(define (test-spec-count-while-nat)
+  (begin
+    (define spec-z 0)
+    (define spec-succ (lambda (n) (+ 1 n)))
+    (define predicate (set-api pred-while 4))
+    (define gadget-z (set-api interaction 3))
+    (define gadget-succ (set-api interaction 3))
+    (define set (set-api set 3))
+    (define sol (synthesize
+                 #:forall set
+                 #:guarantee (assert
+                              (and (equal?
+                                    (interpret-fold predicate (interpret-interaction gadget-succ set))
+                                    (spec-succ (interpret-fold predicate set)))
+                                   (equal?
+                                    (interpret-fold predicate (interpret-interaction gadget-z set))
+                                    spec-z)))))
+    (if (unsat? sol)
+        (displayln "Synthesis failed")
+        (begin
+          (displayln "Synthesis succeeded")
+          (define c-gadget-succ (concretize gadget-succ sol))
+          (define c-gadget-z (concretize gadget-z sol))
+          (displayln "gadget z and succ...")
+          (displayln c-gadget-z)
+          (displayln c-gadget-succ)
+          (define c-predicate (concretize predicate sol))
+          (displayln "predicate...")
+          (displayln c-predicate)))))
