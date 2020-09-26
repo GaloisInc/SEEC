@@ -11,8 +11,66 @@
                      (file "list/query.rkt")
                      (file "list/alist-lang.rkt"))))
 
+(require (prefix-in simp+nat:
+                    (file "unit/simp+natural.rkt")))
+
 ;; Test suites
+; unit tests
+;; define-language
+;; base types
+;;; integer
+;;; natural
+;;; char
+;;; string
+;;; #:size at language
+;;; #:where at language
+;; refine-languagr
+;; define-compiler
+;; queries
+;;; find-changed-behavior
+;;; find-changed-component
+;;; find-weird-behavior
+;;; find-weird-component
+;;; #:count at query
+;;; #:size at query
+;;; #:where at query
+
+(define find-changed-component-tests
+  (test-suite "find-changed-component"
+               (test-case "testing query"
+                   (apply check-pred simp+nat:test-cc-nat-to-integer))
+               (test-case "testing arguments to query"
+                 (apply check-pred simp+nat:test-cc-arg-count-nat-to-integer)
+                 (apply check-pred simp+nat:test-cc-arg-source-exp-bound-nat-to-integer)
+                 (apply check-pred simp+nat:test-cc-arg-source-exp-where-nat-to-integer)
+                 (apply check-pred simp+nat:test-cc-arg-source-context-bound-nat-to-integer)
+                 (apply check-pred simp+nat:test-cc-arg-source-context-where-nat-to-integer)
+                 (apply check-pred simp+nat:test-cc-arg-target-context-bound-nat-to-integer)
+                 (apply check-pred simp+nat:test-cc-arg-target-context-where-nat-to-integer)
+                 (apply check-pred simp+nat:test-cc-arg-source-behavior-where-nat-to-integer)
+                 (apply check-pred simp+nat:test-cc-arg-target-behavior-where-nat-to-integer)
+                 (apply check-pred simp+nat:test-cc-all-args-nat-to-integer))))
+
+(define find-weird-component-tests
+  (test-suite "find-weird-component"
+               (test-case "testing query"
+                   (apply check-pred simp+nat:test-wc-nat-to-integer))
+               (test-case "testing arguments to query"
+                 (apply check-pred simp+nat:test-wc-arg-count-nat-to-integer)
+                 (apply check-pred simp+nat:test-wc-arg-source-exp-bound-nat-to-integer)
+                 (apply check-pred simp+nat:test-wc-arg-source-exp-where-nat-to-integer)
+                 (apply check-pred simp+nat:test-wc-arg-source-context-bound-nat-to-integer)
+                 (apply check-pred simp+nat:test-wc-arg-source-context-where-nat-to-integer)
+                 (apply check-pred simp+nat:test-wc-arg-target-context-bound-nat-to-integer)
+                 (apply check-pred simp+nat:test-wc-arg-target-context-where-nat-to-integer)
+                 (apply check-pred simp+nat:test-wc-arg-target-context-where-fail-nat-to-integer)
+                 (apply check-pred simp+nat:test-wc-arg-source-behavior-where-nat-to-integer)
+                 (apply check-pred simp+nat:test-wc-arg-target-behavior-where-nat-to-integer)
+                 (apply check-pred simp+nat:test-wc-all-args-nat-to-integer))))
+
+
 ; n-to-z
+
 
 ; set
 (define set-tests

@@ -15,6 +15,7 @@
          find-gadget
          (struct-out solution)
          unpack-language-witness
+         unpack-language-witnesses
          display-changed-behavior
          display-changed-component
          display-weird-behavior
@@ -245,6 +246,11 @@ TODO: Get inc-changed-behavior to work
         (language-witness-context v)
         (language-witness-program v)
         (language-witness-behavior v)))
+
+; unpack a list of two language witness (usually source and target)
+(define (unpack-language-witnesses v)
+  (list (unpack-language-witness (first v))
+        (unpack-language-witness (second v))))
 
 ; Group every n elements of the input list into language-witness, where n is the number of field of a language-witness
 ; Assumes length l is divisible by n
