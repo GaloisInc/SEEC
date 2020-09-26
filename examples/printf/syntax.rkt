@@ -34,6 +34,7 @@
          make-program
          lookup-offset
          lookup-loc
+         eval-expr
          config-add
          mem-update
          interp-fmt-safe
@@ -383,10 +384,11 @@
       (match args
         [(printf-lang nil) (printf-lang ERR)]
         [(printf-lang (cons e:expr args+:arglist))
-         (if (<= offset 0)
-             (eval-expr e (conf->mem conf))
-             (lookup-offset (- offset 1) (make-context args+ conf)))]
-        )))
+         (cond
+           [(< offset 0) (printf-lang ERR)]
+           [(= offset 0) (eval-expr e (conf->mem conf))]
+           [else         (lookup-offset (- offset 1) (make-context args+ conf))]
+           )])))
   (debug (thunk (printf "result of lookup-offset: ~a~n" res)))
   res
   )

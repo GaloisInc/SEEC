@@ -48,7 +48,7 @@
                               in-producer)
                      (only-in racket/base
                               raise-argument-error
-                              raise-user-error
+                              raise-arguments-error
                               )
                     racket/generator))
          "bonsai2.rkt")
@@ -792,7 +792,6 @@ TODO: Get inc-changed-behavior to work
   (ormap (λ (e-ctx) (equal? e (car e-ctx))) es))
 
 ; TODO: make sure the assertion state is not changing from this...
-; NOTE: this actually only needs to be called once for every symbolic result...
 (define synthesize-fresh-context
   (λ (lang
       #:expr               e
@@ -810,7 +809,15 @@ TODO: Get inc-changed-behavior to work
                             )]
            )
       (if (unsat? sol)
-          (unsafe:raise-user-error "Could not synthesize a fresh context from the given constraints")
+          (unsafe:raise-arguments-error
+             'synthesize-fresh-context
+             "Could not synthesize a fresh context from the given constraints"
+             "language" lang
+             "e" (bonsai-pretty e)
+             "context bound" (bonsai-pretty bound-c)
+;             "context-constraint" ctx-constraint
+;             "valid-constraint"   valid-constraint
+             )
           (concretize ctx-witness sol))
       )))
 
@@ -888,6 +895,7 @@ TODO: Get inc-changed-behavior to work
 
       #:count              [count 1]
                            ; the number of different witnesses to return
+
       )
     (let*
         ([p ((language-link lang) ctx e)]
@@ -900,9 +908,7 @@ TODO: Get inc-changed-behavior to work
                            (let* ([sol (synthesize
                                         #:forall (cons vars vars-extra)
                                         #:assume (assert (and (valid-program p)
-                                                              #;(valid-program p-witness)
                                                               (ctx-constraint ctx)
-                                                              #;(ctx-constraint ctx-witness)
                                                               (e-constraint e)
                                                               (not (expr-in-expr-list? e witness-list))
                                                               ))
@@ -922,7 +928,9 @@ TODO: Get inc-changed-behavior to work
         ; synthesize a new context satisfying the relevant constraints
         (let* ([exprs (loop count (list ))]) ; exprs is a list of expression-context pairs
           (clear-asserts!)
-          (map (λ (e-ctx-concrete)
+          (cond
+            [(equal? exprs #f) #f]
+            [else (map (λ (e-ctx-concrete)
                  (let* ([e-concrete  (car e-ctx-concrete)]
                         [ctx-witness (if fresh
                                          (synthesize-fresh-context lang
@@ -940,7 +948,7 @@ TODO: Get inc-changed-behavior to work
                                      ctx-witness
                                      p-witness
                                      b-witness)))
-               exprs)
+               exprs)])
           )))))
 
 

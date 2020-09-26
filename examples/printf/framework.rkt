@@ -108,6 +108,8 @@
 
 (define (find-add-argument-gadget)
 
+  (printf "Attempting to synthesize an add-argument gadget~n~n")
+
   (define/contract f-concrete fmt?
     (printf-lang (cons (% (0 $) (* 1) s) nil)))
   (define/contract (args-concrete y-val) (-> integer? arglist?)
@@ -127,10 +129,24 @@
 
   (define/contract (arglist-constraint ctx idx y-val)
     (-> context? integer? integer? boolean?)
-    (match (lookup-offset idx ctx)
-      [(printf-lang b:bvint) (equal? b (integer->bonsai-bv y-val))]
-      [_ #f]
-      ))
+    #;(begin
+      (define m (conf->mem (context->config ctx)))
+      (define y-bv (integer->bonsai-bv y-val))
+      (define (constraint args)
+        (match args
+          [(printf-lang nil) #f]
+          [(printf-lang (cons e:expr args+:arglist))
+           (or (equal? (eval-expr e m) y-bv)
+               (constraint args+)
+               )]
+          ))
+      (define res (constraint (context->arglist ctx)))
+      res
+      )
+    (equal? (lookup-offset idx ctx)
+            (integer->bonsai-bv y-val))
+    )
+
   (define/contract (acc-constraint ctx acc-val)
     (-> context? integer? boolean?)
     (equal? (integer->bonsai-bv acc-val)
@@ -146,6 +162,8 @@
                   (,(integer->bonsai-bv acc-val)
                    mnil))))
 
+  ; One of the biggest problems is that we will sometimes synthesize a bogus
+  ; answer, like e.g. %0$d... ??? maybe it still has to do with bitvectors??
   (display-gadget
    (find-gadget printf-impl
                        ((curry add-constant-spec) x-val)
@@ -156,18 +174,26 @@
                        #:context-bound 4 ; must be at least 4
                        #:context context-symbolic
                        #:context-constraint (λ (ctx)
-                                              (and (arglist-constraint ctx 1 x-val)
-                                                     ; NOTE: don't want to
-                                                     ; quantify over the entire
-                                                     ; context, since we want to
-                                                     ; figure out what x and s should be!
+                                              (and (arglist-constraint ctx 0 x-val)
+                                                   ; NOTE: no symbolic variables
+                                                   ; (like a symbolic index)
+                                                   ; should appear in these
+                                                   ; constraints. ALSO: don't
+                                                   ; want to quantify over the
+                                                   ; entire context, since we
+                                                   ; want to figure out what x
+                                                   ; and s should be!
+
+; The index provided to arglist-constraint cannot be symbolic, so we just give it a concrete index 
                                                    (acc-constraint ctx acc-val)
                                                    ))
+                       #:fresh-witness #f
                        #:forall (list x-val acc-val)
                        )
    displayln)
   )
-(find-add-argument-gadget)
+#;(find-add-argument-gadget)
+; note that I sometimes only synthesize a thing (%0$*1d) that works for positive x-val...
 
 
 (define (find-load-gadget)
@@ -202,6 +228,7 @@
   (define-symbolic acc-val integer?)
   (define-symbolic l-val integer?)
   (define/contract l ident? (bonsai-integer l-val))
+
   #;(define l-val (printf-lang ident 1))
   (display-gadget
    (find-gadget printf-impl
@@ -345,4 +372,4 @@
                        )
    displayln)
   )
-#;(time (find-add-mem-gadget))
+(time (find-add-mem-gadget))
