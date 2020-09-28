@@ -112,20 +112,28 @@
 
   (define/contract f-concrete fmt?
     (printf-lang (cons (% (0 $) (* 1) s) nil)))
+  (define/contract f-bad fmt?
+    (printf-lang (cons (% (0 $) 1 d)
+                 (cons (% (0 $) (* 0) d) nil))))
+  (define/contract f-bad-2 fmt?
+    (printf-lang (cons (% (1 $) 16383 d)
+                 (cons (% (0 $) NONE d) nil))))
+
   (define/contract (args-concrete y-val) (-> integer? arglist?)
-    (printf-lang (cons "" (cons ,(integer->bonsai-bv y-val) nil))))
+    (printf-lang (cons ,(integer->bonsai-bv y-val) (cons "" nil))))
+  (define/contract (args-bad y-val) (-> integer? arglist?)
+    (printf-lang (cons ,(integer->bonsai-bv y-val)
+                 (cons ,(integer->bonsai-bv y-val) nil))))
+  (define/contract (args-bad-2 y-val) (-> integer? arglist?)
+    (printf-lang (cons ,(integer->bonsai-bv y-val)
+                 (cons (* ,(integer->bonsai-bv 0))
+                 nil))))
+
   (define/contract (context-concrete y-val)
     (-> integer? context?)
     (printf-lang (,(args-concrete y-val)
                   ((bv 0) mnil))))
 
-  #;(parameterize ([debug? #t])
-    (define res (interp-fmt-unsafe f-concrete (args-concrete 128) (printf-lang ((bv 0) mnil))))
-    (define spec (add-constant-spec 128 (make-program f-concrete (args-concrete 128)
-                                                 (printf-lang ((bv 0) mnil)))
-                                    res))
-    (printf "spec: ~a~n" spec)
-    )
 
   (define/contract (arglist-constraint ctx idx y-val)
     (-> context? integer? integer? boolean?)
@@ -147,10 +155,49 @@
             (integer->bonsai-bv y-val))
     )
 
-  (define/contract (acc-constraint ctx acc-val)
-    (-> context? integer? boolean?)
-    (equal? (integer->bonsai-bv acc-val)
-            (bonsai-bv (conf->acc (context->config ctx)))))
+  #;(parameterize ([debug? #f])
+    #;(define x-val 1)
+    (define-symbolic x-val integer?)
+    #;(assert (equal? x-val -126))
+    (define f (printf-lang nil))
+    (define args (printf-lang (cons ,(integer->bonsai-bv x-val)
+                              nil #;(cons (LOC 0)
+                              (cons ,(integer->bonsai-bv -33)
+                              nil)))))
+    (define conf (printf-lang ((bv 0) mnil)))
+    (define ctx (make-context args conf))
+    (define p (make-program f args conf))
+    (define b ((language-evaluate printf-impl) p))
+    (define spec? (add-constant-spec x-val p b))
+    (printf "spec: ~a~n" spec?)
+    (define arglist-wf? (arglist-constraint ctx
+                                            0
+                                            x-val))
+    (printf "arglist-wf?: ~a~n" arglist-wf?)
+    (define consistent-wf? (fmt-consistent-with-arglist? f ctx))
+    (printf "consistent-wf?: ~a~n" consistent-wf?)
+
+    (display-gadget
+     (find-gadget printf-impl
+                  ((curry add-constant-spec) x-val)
+;                  #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
+;                                                               (program->context p)))
+                  #:expr-bound 5
+;                  #:expr f
+;                  #:expr (printf-lang (cons (% (0 $) (* 0) s)
+;                                      (cons (% (0 $) (* 16) s)
+;                                            nil)))
+;                  #:expr-constraint (λ (fmt) (equal? fmt f))
+                  #:context ctx
+                  #:context-constraint (λ (ctx)
+                                         (arglist-constraint ctx 0 x-val))
+                  #:fresh-witness #f
+                  #:debug #f
+                  #:forall (list x-val)
+                  )
+     displayln)
+
+    )
 
 
   (define-symbolic x-val integer?)
@@ -169,31 +216,31 @@
                        ((curry add-constant-spec) x-val)
                        #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
                                                                     (program->context p)))
+                       ; This valid constraint is not *necessarily* good for printf-impl
                        #:expr-bound 5
-;                       #:expr f-concrete
                        #:context-bound 4 ; must be at least 4
-                       #:context context-symbolic
+                       #:context (context-concrete x-val) ;context-symbolic
                        #:context-constraint (λ (ctx)
                                               (and (arglist-constraint ctx 0 x-val)
                                                    ; NOTE: no symbolic variables
                                                    ; (like a symbolic index)
                                                    ; should appear in these
-                                                   ; constraints. ALSO: don't
+                                                   ; constraints. ALSO: we don't
                                                    ; want to quantify over the
                                                    ; entire context, since we
                                                    ; want to figure out what x
                                                    ; and s should be!
-
-; The index provided to arglist-constraint cannot be symbolic, so we just give it a concrete index 
-                                                   (acc-constraint ctx acc-val)
+                                                   (equal? ctx (context-concrete x-val))
                                                    ))
                        #:fresh-witness #f
+                       #:debug #f
                        #:forall (list x-val acc-val)
                        )
    displayln)
+  (displayln "Done")
   )
-#;(find-add-argument-gadget)
-; note that I sometimes only synthesize a thing (%0$*1d) that works for positive x-val...
+(find-add-argument-gadget)
+; NOTE: still doesn't work for context-symbolic...
 
 
 (define (find-load-gadget)
@@ -372,4 +419,4 @@
                        )
    displayln)
   )
-(time (find-add-mem-gadget))
+#;(time (find-add-mem-gadget))

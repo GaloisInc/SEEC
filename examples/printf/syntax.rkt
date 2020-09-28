@@ -32,6 +32,7 @@
          program->arglist
          program->config
          make-program
+         make-context
          lookup-offset
          lookup-loc
          eval-expr
@@ -640,15 +641,10 @@
 
 (define/contract (unsafe:val->natural v)
   (-> val? integer?)
-  (debug (thunk (printf "(unsafe:val->integer ~a)~n" v)))
+  (debug (thunk (printf "(unsafe:val->natural ~a)~n" v)))
   (define res (match v
     [(printf-lang n:bvint)       (bvint->natural n)]
-    ; if the value is a location, we interpret the location as an integer
-    [(printf-lang (LOC l:ident)) (bonsai->number l)]
-    ; for strings, `s` is a boxed string from string.rkt, aka a list of
-    ; characters, aka a list of integers. Therefore, interpreting a string as an
-    ; integer is just the integer value of the first character in the string.
-    [(printf-lang s:string)      (first (bonsai-string-value s))]
+    [_                     (unsafe:val->integer v)]
     ))
   (debug (thunk (printf "result of unsafe:val->integer: ~a~n" res)))
   res)
