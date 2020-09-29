@@ -50,7 +50,7 @@
 (define arglist-d-n (bonsai-ll-append arglist-d-1 arglist-n-1))
 (define arglist-s-0 (ll-singleton (printf-lang "")))
 
-(define-test-suite safe-correct
+(define/provide-test-suite safe-correct
  (test-case "%0$d"
    ; printf("%0$d",32)
    (check-equal? (interp-fmt-safe fmt-d-1
@@ -133,7 +133,7 @@
 ; TODO: add test cases for padding
 (run-tests safe-correct)
 
-(define-test-suite unsafe-correct
+(define/provide-test-suite unsafe-correct
 
   (test-case "%0$d"
   ; printf("%0$d","hi") 
@@ -176,7 +176,7 @@
 (run-tests unsafe-correct)
 
 
-(define-test-suite safe-unsafe-consistent
+(define/provide-test-suite safe-unsafe-consistent
   (check-safe-unsafe-consistent fmt-d-1
                                 arglist-d-1
                                 (mk-config-triv 0))

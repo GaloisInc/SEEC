@@ -14,6 +14,12 @@
 (require (prefix-in simp+nat:
                     (file "unit/simp+natural.rkt")))
 
+(require (prefix-in printf:
+                    (combine-in
+                     (file "printf/unit-tests.rkt")
+                     (file "printf/framework.rkt")
+                     )))
+
 ;; Test suites
 ; unit tests
 ;; define-language
@@ -68,7 +74,6 @@
                  (apply check-pred simp+nat:test-wc-arg-target-behavior-where-nat-to-integer)
                  (apply check-pred simp+nat:test-wc-all-args-nat-to-integer))))
 
-
 ; n-to-z
 
 
@@ -100,3 +105,11 @@
                   (check-pred (lambda (v) (linked-list:alist-in (first ll3-s) v)) (fourth ll3-t) "Behaviors found respect the predicates provided at query")))))
 
 ; printf
+; (currently only unit tests, not query testing)
+
+(define printf-unit-tests-safe-correct
+  printf:safe-correct)
+(define printf-unit-tests-unsafe-correct
+  printf:unsafe-correct)
+(define printf-unit-tests-safe-unsafe-consistent
+  printf:safe-unsafe-consistent)
