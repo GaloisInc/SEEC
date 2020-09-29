@@ -29,11 +29,16 @@
          link-and-evaluate
          compile
          clear-all-queries
+
+         make-symbolic-var
+         (struct-out language-witness)
+         concretize-witness
          )
 
 (require (for-syntax syntax/parse)
          (for-syntax racket/syntax)
          racket/stxparam
+         racket/contract
 
          (prefix-in unsafe:
                     (combine-in
@@ -43,10 +48,11 @@
                               in-range
                               in-producer)
                      (only-in racket/base
-                              raise-argument-error)
+                              raise-argument-error
+                              raise-arguments-error
+                              )
                     racket/generator))
          "bonsai2.rkt")
-
 #|
 
  This file provides structures to reason abstractly about weird machines.
@@ -473,7 +479,8 @@ TODO: Get inc-changed-behavior to work
 
 
 ; concretize all vars included in the solution, return a list of language-witness with concrete vars
-(define (concretize-witness sym-solution)
+(define/contract (concretize-witness sym-solution)
+  (-> solution? (listof language-witness?))
   (let* ([vars (solution-witness sym-solution)]
         [unpacked-vars (map unpack-language-witness vars)]
         [model (solution-model sym-solution)]
@@ -781,9 +788,216 @@ TODO: Get inc-changed-behavior to work
   (display-weird-component vars out))
 
 
+(define/contract (expr-in-witness-list? e witness-list)
+  (-> any/c (listof language-witness?) boolean?)
+  (ormap (λ (w) (equal? e (language-witness-expression w)))
+         witness-list))
+
+; `es` is a list of pairs of expressions and contexts
+(define (expr-in-expr-list? e es)
+  (ormap (λ (e-ctx) (equal? e (car e-ctx))) es))
+
+; TODO: make sure the assertion state is not changing from this...
+(define synthesize-fresh-context
+  (λ (lang
+      #:expr               e
+      #:context-bound      bound-c
+      #:context-constraint ctx-constraint
+      #:valid-constraint   valid-constraint
+      )
+    (let* ([ctx-witness (make-symbolic-var (language-context lang) bound-c)]
+           [p-witness ((language-link lang) ctx-witness e)]
+         #;[b-witness ((language-evaluate lang) p-witness)]
+           [sol (synthesize #:forall (list )
+                            #:guarantee (assert (and (ctx-constraint ctx-witness)
+                                                     (valid-constraint p-witness)
+                                                     ))
+                            )]
+           )
+      (if (unsat? sol)
+          (unsafe:raise-arguments-error
+             'synthesize-fresh-context
+             "Could not synthesize a fresh context from the given constraints"
+             "language" lang
+             "e" (bonsai-pretty e)
+             "context bound" (bonsai-pretty bound-c)
+;             "context-constraint" ctx-constraint
+;             "valid-constraint"   valid-constraint
+             )
+          (concretize ctx-witness sol))
+      )))
+
+
+(define/contract find-gadget
+  (->* (language?
+        (-> any/c any/c boolean?))
+       (
+      #:valid (-> any/c boolean?)
+
+      #:expr-bound (or/c #f integer?)
+      #:expr any/c
+      #:expr-constraint (-> any/c boolean?)
+      #:context-bound (or/c #f integer?)
+      #:context any/c
+      #:context-constraint (-> any/c boolean?)
+
+      #:fresh-witness boolean?
+      #:debug boolean?
+      #:forall any/c
+      #:forall-extra any/c
+      #:count integer?
+      )
+      (or/c #f (listof language-witness?))
+       )
+  (λ (lang
+      spec                 ; (-> program? behavior? boolean?)
+
+      #:valid              [valid-program (λ (p) #t)] ; (-> program? boolean?)
+                           ; Constrain the search to expression-context pairs
+                           ; that satisfy the `valid-program` predicate
+
+
+      #:expr-bound         [bound-e #f] ; (or/c #f natural?)
+      #:expr               [e (make-symbolic-var (language-expression lang) bound-e)]
+                           ; The `#:expr` argument allows the user to provide
+                           ; a concrete expression argument instead of generating a
+                           ; symbolic one using `make-symbolic-var`. This could
+                           ; be used either during debugging, e.g. a unit test
+                           ; for the synthesis query, or a sketch consisting of
+                           ; symbolic variables contained inside a frame.
+      #:expr-constraint    [e-constraint (λ (x) #t)] ; (-> expr? boolean?) 
+                           ; The `#:expr-constraint` argument allows the user to
+                           ; constrain the search to expressions that satisfy
+                           ; the constraint.
+
+      #:context-bound      [bound-c #f] ; (or/c #f natural?)
+      #:context            [ctx (make-symbolic-var (language-context lang) bound-c)]
+      #:context-constraint [ctx-constraint (λ (x) #t)] ; (-> context? boolean?)
+
+      #:fresh-witness      [fresh #t]
+                           ; if `#t`, will generate a fresh context satisfying
+                           ; `valid-program` and `ctx-constraint` to witness the
+                           ; satisfiability of the query. This is useful due to
+                           ; the `forall` quantifier.
+                           ;
+                           ; if `#f`, will not generate a fresh context, e.g. if
+                           ; you are providing a concrete argument for the
+                           ; context or not including any `forall` quantifiers
+
+      #:debug              [debug #f]
+                           ; if debug is set, then we will attempt to synthesize
+                           ; an expression that violates the specification
+
+      #:forall             [vars (if debug
+                                     (list ) ; no quantifiers for debugging
+                                     ctx)]   ; any term containing symbolic
+                                             ; variables to be quantified over
+                           ; Use the `#:forall` argument to replace the default
+                           ; set of quantified variables
+      #:forall-extra       [vars-extra (list )]
+                           ; Use the `#:forall-extra` argument to add to the
+                           ; default set of quantified variables without
+                           ; replacing it
+
+      #:count              [count 1]
+                           ; the number of different witnesses to return
+
+      )
+    (let*
+        ([p ((language-link lang) ctx e)]
+         [b ((language-evaluate lang) p)]
+         )
+      ; 1. Define a recursive loop to generate `num` pairs of expressions (and corresponding contexts)
+      (letrec ([loop (λ (num witness-list)
+                       (if (<= num 0)
+                           witness-list
+                           (let* ([sol (synthesize
+                                        #:forall (cons vars vars-extra)
+                                        #:assume (assert (and (valid-program p)
+                                                              (ctx-constraint ctx)
+                                                              (e-constraint e)
+                                                              (not (expr-in-expr-list? e witness-list))
+                                                              ))
+                                        #:guarantee (assert (if debug
+                                                                (not (spec p b))
+                                                                (spec p b))))
+                                       ])
+                             (if (unsat? sol)
+                                 #f
+                                 ; need to concretize context
+                                 (let* ([e-ctx-concrete (concretize (cons e ctx) sol)]
+                                        )
+                                   (loop (- num 1)
+                                         (cons e-ctx-concrete witness-list)))
+                                   ))))])
+        ; 2. If the `fresh` flag is true, for each generated expression,
+        ; synthesize a new context satisfying the relevant constraints
+        (let* ([exprs (loop count (list ))]) ; exprs is a list of expression-context pairs
+          (clear-asserts!)
+          (cond
+            [(equal? exprs #f) #f]
+            [else (map (λ (e-ctx-concrete)
+                 (let* ([e-concrete  (car e-ctx-concrete)]
+                        [ctx-witness (if fresh
+                                         (synthesize-fresh-context lang
+                                            #:expr e-concrete
+                                            #:context-bound bound-c
+                                            #:context-constraint ctx-constraint
+                                            #:valid-constraint valid-program
+                                            )
+                                         (cdr e-ctx-concrete)
+                                         )]; ctx-witness should be completely concrete
+                        [p-witness ((language-link lang) ctx-witness e-concrete)]
+                        [b-witness ((language-evaluate lang) p-witness)]
+                        )
+                   (language-witness e-concrete
+                                     ctx-witness
+                                     p-witness
+                                     b-witness)))
+               exprs)])
+          )))))
+
+
+; DEBUGGING find-gadget:
+; If the gadget fails to synthesize, what could be wrong?
+
+; 1. The specification is unsatisfiable.
+;
+; Solution: Identify a gadget/context pair that satisfies the specification. Use
+;   unit tests (possibly using parameterize debug?) to check that the
+;   specification is satisfied for a concrete example. If that succeeds, use
+;   #:expr and #:context arguments to check that the find-gadget query succeeds
+;   on that concrete argument. Use the argument (#:fresh-witness #f).
+
+; 2. The specification is satisfied for a particular unit test, but fails when
+;   quantifying over symbolic variables.
+;
+; Solution: Use #:forall or #:forall-extra to limit or extend the variables
+;   being quantified over. For example, set (#:forall (list )) to stop universal
+;   quantification over contexts. If synthesis succeeds when removing one or
+;   more quantifiers, use the (#:debug #t) argument to search for
+;   counterexamples---instantiations of the variables that cause the
+;   specification to fail.
+
+; 2. The expression or context bound is too small
+; 
+; Solution: Assume you know a gadget/context pair that satisfies Solution 1.
+;   Remove the #:expr (resp #:context) argument and replace with
+;   (#:expr-constraint (λ (e) (equal? e concrete-e))). If this fails, increase
+;   the #:expr-bound argument until it succeeds.
+
+; 3. The witnessed behavior is ERROR and/or the witnessed context is incompatible.
+;
+; Solution: If this happens when given a concrete context argument, add the
+;   argument (#:fresh-witness #f), which will stop the query from generating a
+;   new argument and instead reuse the one provided. Otherwise, add a #:valid
+;   constraint or #:context-contraint to limit the search to contexts that
+;   provide meaningful results.
+
+
 ; Source: format-str, (arg-list x acc), cons, run
 ; Goal: find a format-str s.t. given a ctx (arg-list, acc), increment the acc. (input is Source, v-ctx:Context -> bool (in addition to the one in source), spec:Context -> behavior -> bool
-(define-syntax (make-query-gadget stx)
+#;(define-syntax (make-query-gadget stx)
   (syntax-parse stx
     [(_ lang valid-program specification
         bound-v
@@ -815,7 +1029,17 @@ TODO: Get inc-changed-behavior to work
                     (unsafe:yield witness)
                     (loop (cons core found))))))))]))
 
-(define-syntax (find-gadget stx)
+; Usage: find-gadget lang valid spec
+;                    (#:expression-bound bound-v)
+;                    (#:context-bound bound-c)
+;                    (#:count num)
+; where
+; - [lang] is a SEEC language
+; - [valid] is a predicate characterizing valid [lang] programs (pairs of
+;     expressions and contexts)
+; - [spec] is the desired property that takes two arguments: the program and the
+;     behavior resulting from evaluating the program
+#;(define-syntax (find-gadget stx)
     (syntax-parse stx
     [(_ lang valid-program specification
         (~seq
@@ -838,17 +1062,22 @@ TODO: Get inc-changed-behavior to work
 
 
 
-(define (display-gadget vars out)
+(define/contract (display-gadget vars out)
+  (-> (or/c #f (listof language-witness?)) any/c any)
   (cond
     [(equal? vars #f) (out (format "Gadget failed to synthesize~n"))]
+    [(equal? vars (list )) (out (format "All gadgets synthesized~n"))]
     [else
      (let* ([lang-vars (first vars)])
        (out (format
           "Expression ~a~n is a gadget for the provided specification, as witnessed by behavior ~a~n in context ~a~n"
           (language-witness-expression lang-vars)
           (language-witness-behavior lang-vars)
-          (language-witness-context lang-vars))))
-     ]))
+          (language-witness-context lang-vars)))
+       (display-gadget (rest vars) out)
+     )]
+    ))
+
 
 (define (display-list list)
   (for-each displayln list)

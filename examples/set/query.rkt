@@ -40,7 +40,7 @@
     [_ #f]
     ))
 
-(define (ex4) (find-gadget concrete-with-state (lambda (v) #t) add1-concrete?))
+(define (ex4) (find-gadget concrete-with-state add1-concrete?))
 #;(begin
   (displayln "Trying to find a +1 gadget")
   (display-gadget (ex4) displayln))
