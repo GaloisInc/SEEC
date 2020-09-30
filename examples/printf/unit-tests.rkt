@@ -1,5 +1,9 @@
 #lang seec
-(require (file "syntax.rkt"))
+(require (prefix-in safe:
+                    (file "printf-spec.rkt")))
+(require (prefix-in unsafe:
+                    (file "printf-impl.rkt")))
+(require (file "printf-compiler.rkt"))
 (require rackunit)
 (require rackunit/text-ui)
 (require racket/contract)
@@ -8,123 +12,106 @@
 
 
 (define (check-safe-unsafe-consistent f args conf)
-  (check-equal? (interp-fmt-safe f args conf)
-                (interp-fmt-unsafe f args conf)))
+  (check-equal? (compile-behavior (safe:interp-fmt f args conf))
+                (unsafe:interp-fmt (compile-fmt f) (compile-arglist args) (compile-config conf))))
 
-(define/contract (mk-config n m)
-  (-> integer? mem? config?)
-  (printf-lang (,(integer->bonsai-bv n) ,m)))
-(define (mk-config-triv n)
-  (mk-config n (printf-lang mnil)))
-(define/contract (mk-behav t n m)
-  (-> trace? integer? mem? behavior?)
-  (printf-lang (,t ,(mk-config n m))))
-(define (mk-behav-triv t n)
-  (printf-lang (,t ,(mk-config-triv n))))
 
 (define/contract (racket->constant x)
-  (-> (or/c integer? string?) const?)
+  (-> (or/c integer? string?) safe:const?)
   (cond
     [(integer? x) (bonsai-integer x)]
     [(string? x)  (bonsai-string  x)]
     ))
 (define/contract (mk-trace l)
-  (-> (listof (or/c integer? string?)) trace?)
+  (-> (listof (or/c integer? string?)) safe:trace?)
   (list->bonsai-ll (map racket->constant l)))
 
 (set-bitwidth 64 32)
 
-(define fmt-d-1 (ll-singleton (printf-lang (% (0 $) NONE d))))
-(define fmt-s-1 (ll-singleton (printf-lang (% (0 $) NONE s))))
-(define fmt-n-1 (ll-singleton (printf-lang (% (0 $) NONE n))))
-(define fmt-d-n (ll-cons      (printf-lang "foo ")
-                (ll-cons      (printf-lang (% (0 $) NONE d))
-                (ll-singleton (printf-lang (% (1 $) NONE n))))))
+(define fmt-d-1 (ll-singleton (safe:printf-lang (% (0 $) NONE d))))
+(define fmt-s-1 (ll-singleton (safe:printf-lang (% (0 $) NONE s))))
+(define fmt-n-1 (ll-singleton (safe:printf-lang (% (0 $) NONE n))))
+(define fmt-d-n (ll-cons      (safe:printf-lang "foo ")
+                (ll-cons      (safe:printf-lang (% (0 $) NONE d))
+                (ll-singleton (safe:printf-lang (% (1 $) NONE n))))))
 (define bv-neg-1 (bitvector->natural (bonsai-bv-value (integer->bonsai-bv -1))))
-(define fmt-decrement (ll-singleton (printf-lang (% (0 $) ,(bonsai-integer bv-neg-1) s))))
+(define fmt-decrement (ll-singleton (unsafe:printf-lang (% (0 $) ,(bonsai-integer bv-neg-1) s))))
 
-(define arglist-0   (printf-lang nil))
-(define arglist-d-1 (ll-singleton (printf-lang (bv 32))))
-(define arglist-s-1 (ll-singleton (printf-lang "hi")))
-(define arglist-n-1 (ll-singleton (printf-lang (LOC 0))))
+(define arglist-0   (safe:printf-lang nil))
+(define arglist-d-1 (ll-singleton (safe:printf-lang 32 #;(bv 32))))
+(define arglist-s-1 (ll-singleton (safe:printf-lang "hi")))
+(define arglist-n-1 (ll-singleton (safe:printf-lang (LOC 0))))
 (define arglist-d-n (bonsai-ll-append arglist-d-1 arglist-n-1))
-(define arglist-s-0 (ll-singleton (printf-lang "")))
+(define arglist-s-0 (ll-singleton (safe:printf-lang "")))
 
 (define/provide-test-suite safe-correct
  (test-case "%0$d"
    ; printf("%0$d",32)
-   (check-equal? (interp-fmt-safe fmt-d-1
+   (check-equal? (safe:interp-fmt fmt-d-1
                                   arglist-d-1
-                                  (mk-config-triv 0))
-                 (mk-behav-triv (mk-trace (list 32)) 2))
+                                  (safe:make-config-triv 0))
+                 (safe:make-behav-triv (mk-trace (list 32)) 2))
    )
  (test-case "hello world"
   ; printf("hello world")
-  (check-equal? (interp-fmt-safe (ll-singleton (printf-lang "hello world"))
+  (check-equal? (safe:interp-fmt (ll-singleton (safe:printf-lang "hello world"))
                                  arglist-0
-                                 (mk-config-triv 0))
-                (mk-behav-triv (mk-trace (list (string "hello world")))
+                                 (safe:make-config-triv 0))
+                (safe:make-behav-triv (mk-trace (list (string "hello world")))
                                11))
   )
  (test-case "%0$s"
   ; printf("%0$s","hi")
-  (check-equal? (interp-fmt-safe fmt-s-1
+  (check-equal? (safe:interp-fmt fmt-s-1
                                  arglist-s-1
-                                 (mk-config-triv 0))
-                (mk-behav-triv (mk-trace (list (string "hi")))
+                                 (safe:make-config-triv 0))
+                (safe:make-behav-triv (mk-trace (list (string "hi")))
                                2))
   )
  (test-case "%0$n"
   ; printf("%0$n",Loc 0)
-  (check-equal? (interp-fmt-safe fmt-n-1
+  (check-equal? (safe:interp-fmt fmt-n-1
                                  arglist-n-1
-                                 (mk-config-triv 0))
-                (mk-behav (mk-trace (list))
+                                 (safe:make-config-triv 0))
+                (safe:make-behav (mk-trace (list))
                           0
-                          (printf-lang (mcons 0 (bv 0) mnil))))
-  )
+                          (safe:printf-lang (mcons 0 0 #;(bv 0) mnil)))))
+
  (test-case "%0$d"
   ; printf("%0$d") ==> ERR
-  (check-equal? (interp-fmt-safe fmt-d-1
+  (check-equal? (safe:interp-fmt fmt-d-1
                                  arglist-0
-                                 (mk-config-triv 0))
-                (printf-lang ERR))
+                                 (safe:make-config-triv 0))
+                (safe:printf-lang ERR))
   )
  (test-case "%0$d%1$n"
   ; printf("foo %0$d%1$n",32,Loc 0)
-  (parameterize ([debug? #f])
-    (check-equal? (interp-fmt-safe fmt-d-n
+  (parameterize ([safe:debug? #f])
+    (check-equal? (safe:interp-fmt fmt-d-n
                                    arglist-d-n
-                                   (mk-config-triv 0))
-                  (mk-behav (mk-trace (list (string "foo ")
+                                   (safe:make-config-triv 0))
+                  (safe:make-behav (mk-trace (list (string "foo ")
                                             32))
                             6
-                            (printf-lang (mcons 0 (bv 6) mnil))))
+                            (safe:printf-lang (mcons 0 6 #;(bv 6) mnil))))
     )
-  )
- (test-case "%0$Xs"
-  ; printf("%0$Xs,"") ==> add X=fmt-decrement (aka -1) to the accumulator
-  (check-equal? (behavior->config (interp-fmt-safe fmt-decrement
-                                                   arglist-s-0
-                                                   (mk-config-triv 2)))
-                (mk-config-triv 1))
   )
 
   (test-case "add argument from memory"
-    (define/contract l ident?
-      (printf-lang 1))
-    (define fmt  (ll-singleton (printf-lang (% (0 $) (* 0) d))))
-    (define args (list->bonsai-ll (list (printf-lang (* (LOC ,l)))
-                                        (printf-lang ""))))
+    (define/contract l safe:ident?
+      (safe:printf-lang 1))
+    (define fmt  (ll-singleton (safe:printf-lang (% (0 $) (* 0) d))))
+    (define args (list->bonsai-ll (list (safe:printf-lang (* (LOC ,l)))
+                                        (safe:printf-lang ""))))
     (define/contract m
-      mem?
-      (printf-lang (mcons ,l (bv 3) mnil))
+      safe:mem?
+      (safe:printf-lang (mcons ,l 3 #;(bv 3) mnil))
       )
-    (define behav (interp-fmt-safe fmt
+    (define behav (safe:interp-fmt fmt
                                    args
-                                   (mk-config 1 m)))
-    (check-equal? (behavior->config behav)
-                  (mk-config 4 m))
+                                   (safe:make-config 1 m)))
+    (check-equal? (safe:behavior->config behav)
+                  (safe:make-config 4 m))
     )
 
 
@@ -135,41 +122,50 @@
 
 (define/provide-test-suite unsafe-correct
 
+
+ (test-case "%0$Xs"
+  ; printf("%0$Xs,"") ==> add X=fmt-decrement (aka -1) to the accumulator
+  (check-equal? (unsafe:behavior->config (unsafe:interp-fmt fmt-decrement
+                                                            arglist-s-0
+                                                            (unsafe:make-config-triv 2)))
+                (unsafe:make-config-triv 1))
+  )
+
   (test-case "%0$d"
   ; printf("%0$d","hi") 
   ; note: the character h is encoded as the number 104
-  (check-equal? (interp-fmt-unsafe fmt-d-1
-                                   arglist-s-1
-                                   (mk-config-triv 0))
-                (mk-behav-triv (mk-trace (list 104)) 3))
+  (check-equal? (unsafe:interp-fmt (compile-fmt fmt-d-1)
+                                   (compile-arglist arglist-s-1)
+                                   (unsafe:make-config-triv 0))
+                (unsafe:make-behav-triv (mk-trace (list 104)) 3))
   )
 
   (test-case "%0$s"
   ; printf("%0$s",32)
   ; note: 32 is the ASCII representation of the space character
-  (check-equal? (interp-fmt-unsafe fmt-s-1
-                                     arglist-d-1
-                                     (mk-config-triv 0))
-                (mk-behav-triv (mk-trace (list (string " ")))
+  (check-equal? (unsafe:interp-fmt (compile-fmt fmt-s-1)
+                                   (compile-arglist arglist-d-1)
+                                   (unsafe:make-config-triv 0))
+                (unsafe:make-behav-triv (mk-trace (list (string " ")))
                                1))
   )
 
   (test-case "%0$n"
   ; printf("%0$n,32)
-  (check-equal? (interp-fmt-unsafe fmt-n-1
-                                   arglist-d-1
-                                   (mk-config-triv 0))
-                (mk-behav (mk-trace (list))
+  (check-equal? (unsafe:interp-fmt (compile-fmt fmt-n-1)
+                                   (compile-arglist arglist-d-1)
+                                   (unsafe:make-config-triv 0))
+                (unsafe:make-behav (mk-trace (list))
                           0
-                          (printf-lang (mcons 32 (bv 0) mnil))))
+                          (unsafe:printf-lang (mcons 32 (bv 0) mnil))))
   )
 
   (test-case "%0$d"
   ; printf("%0$d")
-  (check-equal? (interp-fmt-unsafe fmt-d-1
-                                   arglist-0
-                                   (mk-config-triv 0))
-                (mk-behav-triv (mk-trace (list )) 0))
+  (check-equal? (unsafe:interp-fmt (compile-fmt fmt-d-1)
+                                   (compile-arglist arglist-0)
+                                   (unsafe:make-config-triv 0))
+                (unsafe:make-behav-triv (mk-trace (list )) 0))
   )
 
   )
@@ -179,12 +175,16 @@
 (define/provide-test-suite safe-unsafe-consistent
   (check-safe-unsafe-consistent fmt-d-1
                                 arglist-d-1
-                                (mk-config-triv 0))
+                                (safe:make-config-triv 0))
   (check-safe-unsafe-consistent fmt-s-1
                                 arglist-s-1
-                                (mk-config-triv 0))
+                                (safe:make-config-triv 0))
   (check-safe-unsafe-consistent fmt-n-1
                                 arglist-n-1
-                                (mk-config-triv 0))
+                                (safe:make-config-triv 0))
   )
-(run-tests safe-unsafe-consistent)
+(parameterize ([safe:debug? #f]
+               [unsafe:debug? #f]
+               )
+  (run-tests safe-unsafe-consistent)
+  )

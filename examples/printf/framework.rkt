@@ -1,5 +1,8 @@
 #lang seec
-(require (file "syntax.rkt"))
+#;(require (file "syntax.rkt"))
+(require (prefix-in safe:
+                    (file "printf-spec.rkt")))
+(require (file "printf-impl.rkt")) ; unsafe does not have a prefix for now
 (require racket/contract)
 (require seec/private/framework)
 
@@ -14,11 +17,6 @@
 (set-bitwidth 16 8)
 
 
-; a context is a pair of an arglist and a config
-(define (spec-interpret ctx f)
-  (match ctx
-    [(printf-lang (args:arglist cfg:config))
-     (interp-fmt-safe f args cfg)]))
 
 ; It usually makes sense to define functions in the printf grammar that take
 ; three arguments: a format string, an argument list, and a configuration. This
@@ -32,24 +30,7 @@
       [(cons (printf-lang (args:arglist cfg:config)) fmt)
        (f fmt args cfg)])))
 
-(define-language printf-spec
-  #:grammar printf-lang
-  #:expression fmt #:size 3
-  #:context context #:size 5
-  #:link cons
-  #:evaluate (λ (p) (interp-fmt-safe (program->fmt p) (program->arglist p) (program->config p)))
-  )
-(define-language printf-impl
-  #:grammar printf-lang
-  #:expression fmt #:size 3
-  #:context context #:size 5
-  #:link cons
-  #:evaluate (λ (p) (interp-fmt-unsafe (program->fmt p) (program->arglist p) (program->config p)))
-  )
 
-
-(define (valid-printf-spec-program? f args cfg)
-  (fmt-consistent-with-arglist? f args))
 
 (define/contract (bv-add-integer b x)
   (-> bv? integer? bv?)
@@ -65,17 +46,23 @@
          )
     (equal? acc+ (bv-add-integer acc c))
     ))
+(define/contract (safe:add-constant-spec c p res)
+  (-> integer? safe:printf-program? safe:behavior? boolean?)
+  #;(printf "(add-constant-spec ~a ~a ~a)~n" c p res)
+  (let* ([acc (safe:conf->acc (safe:program->config p))]
+         [acc+ (safe:conf->acc (safe:behavior->config res))]
+         )
+    (equal? acc+ (+ acc c))
+    ))
 
 
 (define (symbolic? e)
   (not (equal? (symbolics e) (list ))))
 
 
-
-
 (define (find-increment-gadget)
-  (define g (find-gadget printf-spec
-                         ((curry add-constant-spec) 1)
+  (define g (find-gadget safe:printf-spec
+                         ((curry safe:add-constant-spec) 1)
                          #:count 3
                          ))
   (display-gadget g displayln)
@@ -86,20 +73,20 @@
 
 (define (find-add-constant-gadget c)
 
-  (define g (find-gadget printf-spec
-                         ((curry add-constant-spec) c)
+  (define g (find-gadget safe:printf-spec
+                         ((curry safe:add-constant-spec) c)
                          #:expr-bound 5
                          #:context-bound 3
                          ; NOTE: will not find gadget without this context-constraint. WHY????
-                         #:context-constraint (λ (ctx) (match (context->arglist ctx)
-                                                         [(printf-lang (cons s:string arglist))
+                         #:context-constraint (λ (ctx) (match (safe:context->arglist ctx)
+                                                         [(safe:printf-lang (cons s:string arglist))
                                                           ; need to compare the
                                                           ; string via equal?
                                                           ; because pattern
                                                           ; matching against
                                                           ; string literals does
                                                           ; not work currently
-                                                          (equal? s (printf-lang ""))]
+                                                          (equal? s (safe:printf-lang ""))]
                                                          [_ #f]))
                          ))
   (display-gadget g displayln)

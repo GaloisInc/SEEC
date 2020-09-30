@@ -15,8 +15,12 @@
                   bonsai-pretty))
 (require (only-in seec/private/string
                   char->string))
+(require (prefix-in safe:
+                    (file "printf-spec.rkt")))
+
 
 (provide printf-lang
+         printf-impl
          bonsai->number
          val->number
          val->loc
@@ -33,16 +37,20 @@
          program->config
          make-program
          make-context
+         make-config
+         make-config-triv
+         make-behav
+         make-behav-triv
          lookup-offset
          lookup-loc
          eval-expr
          config-add
          mem-update
-         interp-fmt-safe
-         interp-fmt-unsafe
+         (rename-out [interp-fmt-unsafe interp-fmt])
          fmt?
          ident?
          val?
+         expr?
          arglist?
          mem?
          trace?
@@ -53,9 +61,6 @@
          err?
          debug?
          fmt-consistent-with-arglist?
-
-;         ll-singleton
-;         ll-cons
          )
 
 ; We aim to eventually support all or most of the syntax for printf formats:
@@ -106,7 +111,6 @@
   (val ::= (LOC ident) bvint string ERR #;(DEREF val))
   ; use signed bitvectors to represent integers in certain places
   (bvint ::= bitvector)
-  ; TODO: should idents be implemented as bitvectors?
   (ident ::= integer)
   (trace ::= list<constant>)
   (constant ::= string integer (pad-by natural))
@@ -116,15 +120,6 @@
   (behavior ::= (trace config))
   )
 
-  #;(behavior ::= (string config))
-
-
-#;(define/contract (ll-singleton x)
-  (-> bonsai? bonsai-linked-list?)
-  (printf-lang (cons ,x nil)))
-#;(define/contract (ll-cons x xs)
-  (-> bonsai? bonsai-linked-list? bonsai-linked-list?)
-  (printf-lang (cons ,x ,xs)))
 
 (define debug? (make-parameter #f))
 (define (debug stmt)
@@ -305,6 +300,17 @@
     ))
 (define (make-context args conf)
   (printf-lang (,args ,conf)))
+(define/contract (make-config n m)
+  (-> integer? mem? config?)
+  (printf-lang (,(integer->bonsai-bv n) ,m)))
+(define (make-config-triv n)
+  (make-config n (printf-lang mnil)))
+(define/contract (make-behav t n m)
+  (-> trace? integer? mem? behavior?)
+  (printf-lang (,t ,(make-config n m))))
+(define (make-behav-triv t n)
+  (printf-lang (,t ,(make-config-triv n))))
+
 (define/contract (context->config ctx)
   (-> context? config?)
   (match ctx
@@ -465,8 +471,6 @@
   (debug (thunk (printf "computed print-constant: ~a~n" res)))
   res
   )
-
-
 ; Input: t is either a trace or ERR
 (define/contract (print-trace conf t)
   (-> config? (or/c err? trace?) (or/c err? behavior?))
@@ -482,6 +486,7 @@
   res)
 
 
+
 ; INPUT: a config conf and a location identifier l
 ; OUTPUT: an updated configuration that assigns l the value of the accumulator.
 (define/contract (print-n-loc conf l)
@@ -492,123 +497,6 @@
          )
     (printf-lang (,acc ,new-mem))
     ))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Define an abstract "safe" implementation of printf                          ;
-;                                                                             ;
-; If an argument in the format string is not in scope with respect to the     ;
-; argument list, or if it maps to a value of the wrong type, it will throw an ;
-; error.                                                                      ;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
-; returns the contant to be printed, or ERR
-; expects ftype to not be equal to `n`
-(define/contract (fmt->constant ftype param ctx)
-  (-> fmt-type? parameter? context? (or/c err? const?))
-  (debug (thunk (printf "(fmt->constant ~a ~a ~a)~n" ftype param ctx)))
-  (define res
-      (match (cons ftype (lookup-offset (param->offset param) ctx))
-        [(cons (printf-lang d) (printf-lang n:bvint))
-         (bonsai-integer (bvint->number n))]
-        [(cons (printf-lang s) (printf-lang s:string))
-         s]
-        [_ (printf-lang ERR)]
-        ))
-  (debug (thunk (printf "result of fmt->constant: ~a~n" res)))
-  res)
-
-; INPUT: a constant `c` and a natural number `w`
-; OUTPUT: the trace of length max(w,len(c)) obtained by padding `c` with up to `w` spaces.
-;
-; TODO: do we need to use bitvectors to keep track of potential overflow? Right
-; now both the constant lengths and widths are integers, rather than bitvectors.
-(define/contract (pad-constant c w)
-  (-> const? integer? trace?)
-  (debug (thunk (printf "(pad-constant ~a ~a)~n" c w)))
-  (define res (let* ([c-len (constant-length c)]
-         )
-    (cond
-      [(<= w c-len) (ll-singleton c)]
-      [else         (ll-cons (printf-lang (pad-by ,(bonsai-integer (- w c-len)))) (ll-singleton c))]
-      )))
-  (debug (thunk (printf "result of pad-constant: ~a~n" res)))
-  res)
-
-
-; INPUT: a format string, an argument list, and a configuration
-; OUTPUT: an outputted string and a configuration OR ERR
-(define/contract (interp-fmt-elt-safe f ctx)
-  (-> fmt-elt? context? (or/c err? behavior?))
-  (debug (thunk (printf "(interp-fmt-elt-safe ~a ~a)~n" f ctx)))
-  (define conf (context->config ctx))
-  (define res (match f
-    [(printf-lang s:string)
-     (print-constant conf s)]
-
-    ; the width parameter doesn't make a difference for n formats
-    [(printf-lang (% p:parameter width n))
-     (match (lookup-offset (param->offset p) ctx)
-       [(printf-lang (LOC l:ident))
-        (printf-lang (nil ,(print-n-loc conf l)))
-        ]
-       [_ (printf-lang ERR)]
-       )]
-
-    ; otherwise, for the 's' and 'd' format types:
-    [(printf-lang (% p:parameter NONE ftype:fmt-type))
-     (match (fmt->constant ftype p ctx)
-       [(printf-lang c:constant)
-        (print-constant conf (fmt->constant ftype p ctx))]
-       [(printf-lang ERR)
-        (printf-lang ERR)]
-       )]
-
-    [(printf-lang (% p:parameter w:natural ftype:fmt-type))
-     (match (fmt->constant ftype p ctx)
-       [(printf-lang c:constant)
-        (print-trace conf (pad-constant c (bonsai->number w)))]
-       [(printf-lang ERR) (printf-lang ERR)]
-       )]
-
-    [(printf-lang (% p:parameter (* o:offset) ftype:fmt-type))
-     (match (list (lookup-offset (bonsai->number o) ctx)
-                  (fmt->constant ftype p ctx))
-       [(list (printf-lang w:bvint)
-              (printf-lang c:constant))
-        (print-trace conf (pad-constant c (bvint->number w)))]
-       [_ (printf-lang ERR)]
-       )]
-
-    [_ (raise-argument-error 'interp-fmt-elt-safe "(printf-lang fmt-elt)" f)]
-    ))
-    
-  (debug (thunk (printf "done with interp-fmt-elt-safe: ~a~n" res)))
-  res)
-
-
-(define/contract (interp-fmt-safe f args conf)
-  (-> fmt? arglist? config? (or/c err? behavior?))
-  (debug (thunk (printf "(interp-fmt-safe ~a ~a ~a)~n" f args conf)))
-  (define res (match f
-    [(printf-lang nil) (printf-lang (nil ,conf))]
-
-    [(printf-lang (cons f1:fmt-elt f+:fmt))
-     (match (interp-fmt-elt-safe f1 (make-context args conf))
-       [(printf-lang ERR) (printf-lang ERR)]
-       [(printf-lang (t1:trace conf+:config))
-        (match (interp-fmt-safe f+ args conf+)
-          [(printf-lang ERR) (printf-lang ERR)]
-          [(printf-lang (t2:trace conf++:config))
-           (printf-lang (,(bonsai-ll-append t1 t2) ,conf++))]
-          )]
-       )
-
-     ]
-    ))
-  (debug (thunk (printf "result of interp-fmt-safe: ~a~n" res)))
-  res
-  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Define an concrete "unsafe" implementation of printf                          ;
@@ -721,7 +609,7 @@
      (match (unsafe:fmt->constant ftype p ctx)
        [(printf-lang ERR)        (printf-lang (nil ,conf))]
        [(printf-lang c:constant)
-        (print-trace conf (pad-constant c (bonsai->number w)))]
+        (print-trace conf (safe:pad-constant c (bonsai->number w)))]
        )]
 
     [(printf-lang (% p:parameter (* o:offset) ftype:fmt-type))
@@ -734,7 +622,7 @@
           [(printf-lang c:constant)
            ; if c is a negative signed bitvector: interpret the bitvector as
            ; overflow???? is this right?
-           (print-trace conf (pad-constant c (unsafe:val->natural v)))]
+           (print-trace conf (safe:pad-constant c (unsafe:val->natural v)))]
           )]
        )]
 
@@ -807,3 +695,11 @@
           (fmt-consistent-with-arglist? f+ ctx))]
     ))
 
+
+(define-language printf-impl
+  #:grammar printf-lang
+  #:expression fmt #:size 3
+  #:context context #:size 5
+  #:link cons
+  #:evaluate (λ (p) (interp-fmt-unsafe (program->fmt p) (program->arglist p) (program->config p)))
+  )
