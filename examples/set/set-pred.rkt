@@ -1,5 +1,6 @@
 #lang seec
 (provide (all-defined-out))
+(set-bitwidth 4)
 
 (define (bonsai->number n)
   (match n
@@ -16,7 +17,8 @@
   (method         ::= (insert integer) (remove integer)) ; commands (set -> set)
   (interaction         ::= (seq method interaction) (if observation interaction interaction) nop) ; programs (set -> set)
   (dec        ::= (count integer) (prefix? set) (member? integer) (add dec dec) (minus dec dec) (or dec dec) (and dec dec) (not dec)) ; decoder on lists (list -> T)
-  (dec-fold   ::= var-element var-value integer (if-val-eq integer dec-fold dec-fold) (if-el-eq integer dec-fold dec-fold) (add dec-fold dec-fold) (minus dec-fold)) 
+  (dec-fun   ::= var-element var-value integer (if-val-eq integer dec-fun dec-fun) (if-el-eq integer dec-fun dec-fun) (add dec-fun dec-fun) (minus dec-fun))
+  (dec-fold ::= (fold dec-fun integer))
   (dec-inner ::= (if observation dec-inner dec-inner) (seq method dec-inner)
                   (inc dec-inner) (dec dec-inner) nop)
   (dec-while ::= (while observation dec-inner dec-while) nop)
@@ -219,7 +221,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; dec-fold -> int -> int -> int
-(define (interpret-dec-fold p e v)
+(define (interpret-dec-fun p e v)
   (match p
     [(set-api var-element)
      e]
@@ -227,35 +229,37 @@
      v]
     [(set-api i:integer)
      (bonsai->number i)]
-    [(set-api (if-el-eq i:integer p1:dec-fold p2:dec-fold))
+    [(set-api (if-el-eq i:integer p1:dec-fun p2:dec-fun))
      (if (equal? (bonsai->number i) e)
-         (interpret-dec-fold p1 e v)
-         (interpret-dec-fold p2 e v))]
-    [(set-api (if-val-eq i:integer p1:dec-fold p2:dec-fold))
+         (interpret-dec-fun p1 e v)
+         (interpret-dec-fun p2 e v))]
+    [(set-api (if-val-eq i:integer p1:dec-fun p2:dec-fun))
      (if (equal? (bonsai->number i) v)
-         (interpret-dec-fold p1 e v)
-         (interpret-dec-fold p2 e v))]
+         (interpret-dec-fun p1 e v)
+         (interpret-dec-fun p2 e v))]
 
-    [(set-api (add p1:dec-fold p2:dec-fold))
-     (+  (interpret-dec-fold p1 e v)
-         (interpret-dec-fold p2 e v))]
-    [(set-api (minus p+:dec-fold))
-     (- (interpret-dec-fold p+ e v))]))
+    [(set-api (add p1:dec-fun p2:dec-fun))
+     (+  (interpret-dec-fun p1 e v)
+         (interpret-dec-fun p2 e v))]
+    [(set-api (minus p+:dec-fun))
+     (- (interpret-dec-fun p+ e v))]))
 
   
 
-;; dec-fold -> set -> int -> int
-(define (interpret-fold+ p s v)
+;; dec-fun -> set -> int -> int
+(define (interpret-dec-fold+ f s v)
   (match s
     [(set-api nil)
      v]
     [(set-api (cons e:integer s+:set))
-     (interpret-fold+ p s+ (interpret-dec-fold p (bonsai->number e) v))]))
+     (interpret-dec-fold+ f s+ (interpret-dec-fun f (bonsai->number e) v))]))
 
 ; Folds over state s using function p and default value 0
 ;; dec-fold -> set -> int
-(define (interpret-fold p s)
-  (interpret-fold+ p s 0))
+(define (interpret-dec-fold p s)
+  (match p
+    [(set-api (fold f:dec-fun i:integer))
+     (interpret-dec-fold+ f s (bonsai->number i))]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -407,14 +411,14 @@
 ; Natural numbers in sets from 0 and +1
 ; where the decoder is a fold over state
 ;; Expected:
-;;; decoder (set-api (add (if-el-eq 1 1 0) var-value))
+;;; decoder (set-api (fold (add (if-el-eq 1 1 0) var-value) 0))
 ;;; gadget-pred (set-api (seq (remove 1) nop))
 ;;; gadget-succ (set-api (seq (insert 1) nop))
 (define (test-spec-count-fold)
   (begin
     (define spec-z 0)
     (define spec-succ (lambda (n) (+ 1 n)))
-    (define decoder (set-api dec-fold 3))
+    (define decoder (set-api dec-fold 4))
     (define gadget-z (set-api interaction 3))
     (define gadget-succ (set-api interaction 3))
     (define set (set-api set 5))
@@ -422,10 +426,10 @@
                  #:forall set
                  #:guarantee (assert
                               (and (equal?
-                                    (interpret-fold decoder (interpret-interaction gadget-succ set))
-                                    (spec-succ (interpret-fold decoder set)))
+                                    (interpret-dec-fold decoder (interpret-interaction gadget-succ set))
+                                    (spec-succ (interpret-dec-fold decoder set)))
                                    (equal?
-                                    (interpret-fold decoder (interpret-interaction gadget-z set))
+                                    (interpret-dec-fold decoder (interpret-interaction gadget-z set))
                                     spec-z)))))
     (if (unsat? sol)
         (displayln "Synthesis failed")
@@ -444,36 +448,37 @@
 ; Natural numbers in buggy-sets from nat-pred and +1
 ; where the decoder is a fold over state
 ;; Expected:
-;;; decoder (set-api (add (if-el-eq 1 1 0) var-value))
+;;; decoder (set-api (fold (add (if-el-eq 1 1 0) var-value) 0))
 ;;; gadget-pred (set-api (seq (remove 1) nop))
 ;;; gadget-succ (set-api (seq (insert 1) nop))
-(define (test-spec-buggy-count-fold-nat)
+(define (test-spec-buggy-count-fold)
   (begin
     (define spec-pred (lambda (n) (max 0 (- n 1))))
     (define spec-succ (lambda (n) (+ n 1)))
-    (define decoder (set-api dec-fold 3))
+    (define decoder (set-api dec-fold 4))
     (define gadget-pred (set-api interaction 3))
-   (define gadget-succ (set-api interaction 3))
-    (define set (set-api set 5))
-  (define sol (synthesize
+    (define gadget-succ (set-api interaction 3))
+   (define set (set-api set 5))
+   (define sol (synthesize
                  #:forall set
                  #:guarantee (assert
                               (and (equal?
-                                    (interpret-fold decoder (interpret-buggy-interaction gadget-succ set))
-                                    (spec-succ (interpret-fold decoder set)))
+                                    (interpret-dec-fold decoder (interpret-buggy-interaction gadget-succ set))
+                                    (spec-succ (interpret-dec-fold decoder set)))
                                    (equal?
-                                    (interpret-fold decoder (interpret-buggy-interaction gadget-pred set))
-                                    (spec-pred (interpret-fold decoder set)))))))
+                                    (interpret-dec-fold decoder (interpret-buggy-interaction gadget-pred set))
+                                    (spec-pred (interpret-dec-fold decoder set)))))))
     (if (unsat? sol)
         (displayln "Synthesis failed")
         (begin
+
           (displayln "Synthesis succeeded")
           (define c-gadget-succ (concretize gadget-succ sol))
           (define c-gadget-pred (concretize gadget-pred sol))
+          (define c-decoder (concretize decoder sol))
           (displayln "gadget pred and succ...")
           (displayln c-gadget-pred)
           (displayln c-gadget-succ)
-          (define c-decoder (concretize decoder sol))
           (displayln "decoder...")
           (displayln c-decoder)))))
 
@@ -529,10 +534,10 @@
                  #:forall set
                  #:guarantee (assert
                               (and (equal?
-                                    (interpret-fold decoder (interpret-interaction gadget-succ set))
-                                    (spec-succ (interpret-fold decoder set)))
+                                    (interpret-while-d decoder (interpret-interaction gadget-succ set))
+                                    (spec-succ (interpret-while-d decoder set)))
                                    (equal?
-                                    (interpret-fold decoder (interpret-interaction gadget-z set))
+                                    (interpret-while-d decoder (interpret-interaction gadget-z set))
                                     spec-z)))))
     (if (unsat? sol)
         (displayln "Synthesis failed")
