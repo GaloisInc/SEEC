@@ -99,7 +99,7 @@
 
 (define-grammar printf-lang
   (fmt ::= list<fmt-elt>)
-  (fmt-elt ::= string (% parameter width fmt-type))
+  (fmt-elt ::= string (% (parameter (width fmt-type))))
   (parameter ::= (offset $))
   (width ::= NONE (* offset) natural)
   (offset ::= natural)
@@ -107,7 +107,9 @@
 
   (arglist ::= list<expr>)
   (expr ::= (LOC ident) (* expr) bvint string)
-  (mem ::= mnil (mcons ident val mem))
+  #;(mem ::= mnil (mcons ident val mem))
+  (mem-elem ::= (ident val))
+  (mem ::= list<mem-elem>)
   (val ::= (LOC ident) bvint string ERR #;(DEREF val))
   ; use signed bitvectors to represent integers in certain places
   (bvint ::= bitvector)
@@ -134,9 +136,7 @@
 (define/contract (mem? m)
   (-> any/c boolean?)
   (match m
-    [(printf-lang mnil) #t]
-    [(printf-lang (mcons x:ident v:val m+:mem))
-     (and (ident? x) (val? v) (mem? m+))]
+    [(printf-lang mem) #t]
     [_ #f]
     ))
 (define/contract (expr? e)
@@ -304,7 +304,7 @@
   (-> integer? mem? config?)
   (printf-lang (,(integer->bonsai-bv n) ,m)))
 (define (make-config-triv n)
-  (make-config n (printf-lang mnil)))
+  (make-config n (printf-lang nil)))
 (define/contract (make-behav t n m)
   (-> trace? integer? mem? behavior?)
   (printf-lang (,t ,(make-config n m))))
@@ -360,8 +360,8 @@
   (-> ident? mem? (or/c err? val?))
   (debug (thunk (printf "(lookup-loc ~a ~a)~n" l m)))
   (match m
-    [(printf-lang mnil) (printf-lang ERR)]
-    [(printf-lang (mcons l0:ident v0:val m0:mem))
+    [(printf-lang nil) (printf-lang ERR)]
+    [(printf-lang (cons (l0:ident v0:val) m0:mem))
      (if (equal? l l0)
          v0
          (lookup-loc l m0))]
@@ -423,7 +423,7 @@
 ; OUTPUT: an updated memory with the location mapping to the new value
 (define/contract (mem-update m l v)
   (-> mem? ident? val? mem?)
-  (printf-lang (mcons ,l ,v ,m)))
+  (printf-lang (cons (,l ,v) ,m)))
 
 
 
@@ -591,7 +591,7 @@
      ]
 
     ; the width parameter doesn't make a difference for n formats
-    [(printf-lang (% p:parameter width n))
+    [(printf-lang (% (p:parameter (width n))))
      (match (unsafe:fmt->constant (printf-lang n) p ctx)
        [(printf-lang ERR)     (printf-lang (nil ,conf))]
        [(printf-lang l:ident) (printf-lang (nil ,(print-n-loc conf l)))]
@@ -599,20 +599,20 @@
 
     ; for d and n format types, we will first calculate the constant associated
     ; with the format type, and then pad it by the appropriate amount
-    [(printf-lang (% p:parameter NONE ftype:fmt-type))
+    [(printf-lang (% (p:parameter (NONE ftype:fmt-type))))
      (match (unsafe:fmt->constant ftype p ctx)
        [(printf-lang ERR)        (printf-lang (nil ,conf))]
        [(printf-lang c:constant) (print-constant conf c)]
        )]
 
-    [(printf-lang (% p:parameter w:natural ftype:fmt-type))
+    [(printf-lang (% (p:parameter (w:natural ftype:fmt-type))))
      (match (unsafe:fmt->constant ftype p ctx)
        [(printf-lang ERR)        (printf-lang (nil ,conf))]
        [(printf-lang c:constant)
         (print-trace conf (safe:pad-constant c (bonsai->number w)))]
        )]
 
-    [(printf-lang (% p:parameter (* o:offset) ftype:fmt-type))
+    [(printf-lang (% (p:parameter ((* o:offset) ftype:fmt-type))))
      (match (lookup-offset (bonsai->number o) ctx)
        ; if o is greater than the length of the argument list, no-op
        [(printf-lang ERR)   (printf-lang (nil ,conf))]
@@ -684,7 +684,7 @@
     (match f0
       [(printf-lang string) #t]
 
-      [(printf-lang (% p:parameter w:width ftype:fmt-type))
+      [(printf-lang (% (p:parameter (w:width ftype:fmt-type))))
        (and (parameter-consistent-with-arglist p ftype ctx)
             (width-consistent-with-arglist w ctx))]
       ))
@@ -701,5 +701,7 @@
   #:expression fmt #:size 3
   #:context context #:size 5
   #:link cons
-  #:evaluate (λ (p) (interp-fmt-unsafe (program->fmt p) (program->arglist p) (program->config p)))
+  #:evaluate (λ (p) (interp-fmt-unsafe (program->fmt p)
+                                       (program->arglist p)
+                                       (program->config p)))
   )

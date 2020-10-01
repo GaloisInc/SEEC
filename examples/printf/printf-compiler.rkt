@@ -57,9 +57,9 @@
 (define/contract (compile-mem m)
   (-> safe:mem? unsafe:mem?)
   (match m
-    [(safe:printf-lang mnil) m]
+    [(safe:printf-lang mnil) (unsafe:printf-lang nil)]
     [(safe:printf-lang (mcons x:ident v:val m+:mem))
-     (unsafe:printf-lang (mcons ,x ,(compile-val v) ,(compile-mem m+)))]
+     (unsafe:printf-lang (cons (,x ,(compile-val v)) ,(compile-mem m+)))]
     ))
 
 (define/contract (compile-config conf)
@@ -75,7 +75,14 @@
 
 (define/contract (compile-fmt f)
   (-> safe:fmt? unsafe:fmt?)
-  f) ; representation of format strings stays the same
+  (match f
+    [(safe:printf-lang nil) f]
+    [(safe:printf-lang (cons s:string f+:fmt))
+     (unsafe:printf-lang (cons ,s ,(compile-fmt f+)))]
+    [(safe:printf-lang (cons (% p:parameter w:width ftype:fmt-type)
+                             f+:fmt))
+     (unsafe:printf-lang (cons (% (,p (,w ,ftype))) ,f+))]
+    ))
 
 (define/contract (compile-program p)
   (-> safe:printf-program? unsafe:printf-program?)

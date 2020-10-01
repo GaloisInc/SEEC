@@ -35,7 +35,7 @@
                 (ll-cons      (safe:printf-lang (% (0 $) NONE d))
                 (ll-singleton (safe:printf-lang (% (1 $) NONE n))))))
 (define bv-neg-1 (bitvector->natural (bonsai-bv-value (integer->bonsai-bv -1))))
-(define fmt-decrement (ll-singleton (unsafe:printf-lang (% (0 $) ,(bonsai-integer bv-neg-1) s))))
+(define fmt-decrement (ll-singleton (unsafe:printf-lang (% ((0 $) (,(bonsai-integer bv-neg-1) s))))))
 
 (define arglist-0   (safe:printf-lang nil))
 (define arglist-d-1 (ll-singleton (safe:printf-lang 32 #;(bv 32))))
@@ -157,7 +157,7 @@
                                    (unsafe:make-config-triv 0))
                 (unsafe:make-behav (mk-trace (list))
                           0
-                          (unsafe:printf-lang (mcons 32 (bv 0) mnil))))
+                          (unsafe:printf-lang (cons (32 (bv 0)) nil))))
   )
 
   (test-case "%0$d"
