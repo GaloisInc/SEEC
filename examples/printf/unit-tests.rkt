@@ -140,7 +140,7 @@
                 (unsafe:make-behav-triv (mk-trace (list 104)) 3))
   )
 
-  (test-case "%0$s"
+  #;(test-case "%0$s" ; we took out this conversion in the model
   ; printf("%0$s",32)
   ; note: 32 is the ASCII representation of the space character
   (check-equal? (unsafe:interp-fmt (compile-fmt fmt-s-1)

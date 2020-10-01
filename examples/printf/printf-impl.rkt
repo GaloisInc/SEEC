@@ -538,7 +538,7 @@
   res)
 
 
-(define/contract (unsafe:val->string v)
+#;(define/contract (unsafe:val->string v)
   (-> val? string?)
   (debug (thunk (printf "(unsafe:val->string ~a)~n" v)))
   (define (unsafe:char->string x)
@@ -568,7 +568,11 @@
        ; if ftype = 'd', interpret the argument as an integer
        [(printf-lang d) (bonsai-integer (unsafe:val->integer v))]
        ; if ftype = 's', interpret the argument as a string
-       [(printf-lang s) (bonsai-string (unsafe:val->string v))]
+       [(printf-lang s) #;(bonsai-string (unsafe:val->string v))
+        (match v
+          [(printf-lang s:string) s]
+          [_ (printf-lang ERR)]
+          )]
        ; if ftype = 'n', interpret the argument as a location aka an integer
        [(printf-lang n) (bonsai-integer (unsafe:val->integer v))]
        )]))

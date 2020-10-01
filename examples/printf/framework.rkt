@@ -366,8 +366,6 @@
    (find-gadget printf-impl
                        (λ (p b) (add-mem-spec l1 l2 l3 p b))
                        #:expr-bound 7
-;                       #:expr-constraint (λ (e) (equal? e f-concrete))
-;                       #:context-bound 8
                        #:context context-structure
                        ; NOTE: SEEC is not very good at synthesizing maps based
                        ; on specifications of their contexts... e.g. on what lookup-loc does
