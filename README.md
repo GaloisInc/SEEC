@@ -3,9 +3,11 @@ To install locally, navigate to the `seec` directory and invoke `raco pkg instal
 # Case studies
 
 The three main case studies in this report are in the following directories:
+
 * `examples/list`
 * `examples/set`
 * `examples/printf`
+
 See the READMEs in those subdirectories for more information about the case study code.
 
 # Directory structure
