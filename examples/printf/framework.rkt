@@ -1,5 +1,4 @@
 #lang seec
-#;(require (file "syntax.rkt"))
 (require (prefix-in safe:
                     (file "printf-spec.rkt")))
 (require (file "printf-impl.rkt")) ; unsafe does not have a prefix for now
