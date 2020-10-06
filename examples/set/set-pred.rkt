@@ -13,14 +13,14 @@
 
 (define-grammar set-api
   (set         ::= list<integer>)
-  (observation         ::= (member? integer) (or observation observation) (and observation observation) (not observation))   ; observationervations (set -> bool)
+  (observation         ::= (member? integer) (or observation observation) (and observation observation) (not observation))   ; observations (set -> bool)
   (method         ::= (insert integer) (remove integer)) ; commands (set -> set)
   (interaction         ::= (seq method interaction) (if observation interaction interaction) nop) ; programs (set -> set)
   (dec        ::= (count integer) (prefix? set) (member? integer) (add dec dec) (minus dec dec) (or dec dec) (and dec dec) (not dec)) ; decoder on lists (list -> T)
   (dec-fun   ::= var-element var-value integer (if-val-eq integer dec-fun dec-fun) (if-el-eq integer dec-fun dec-fun) (add dec-fun dec-fun) (minus dec-fun))
   (dec-fold ::= (fold dec-fun integer))
   (dec-inner ::= (if observation dec-inner dec-inner) (seq method dec-inner)
-                  (inc dec-inner) (dec dec-inner) nop)
+                  (incr dec-inner) (decr dec-inner) nop)
   (dec-while ::= (while observation dec-inner dec-while) nop)
 )
 
@@ -84,7 +84,6 @@
 ;; observation -> set -> bool
 (define (interpret-observation p s)
   (match p
-    #|
     [(set-api (not p+:observation))
      (not (interpret-observation p+ s))]
     [(set-api (and p1:observation p2:observation))
@@ -92,8 +91,7 @@
           (interpret-observation p2 s))]
     [(set-api (or p1:observation p2:observation))
      (or (interpret-observation p1 s)
-         (interpret-observation p2 s))]
-    |#
+         (interpret-observation p2 s))]    
     [(set-api (member? v:integer))
      (interpret-member? s v)]))
 
@@ -188,9 +186,9 @@
          (interpret-inner value pi2 s))]
     [(set-api (seq m:method i+:dec-inner))
      (interpret-inner value i+ (interpret-buggy-method m s))]
-    [(set-api (inc i+:dec-inner))
+    [(set-api (incr i+:dec-inner))
      (interpret-inner (+ value 1) i+ s)]
-    [(set-api (dec i+:dec-inner))
+    [(set-api (decr i+:dec-inner))
      (interpret-inner (- value 1) i+ s)]
     [(set-api nop)
      (list value s)
@@ -217,7 +215,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; DEC-FOLD
 ; dec-fold is a decoder language representing a function
-; (\ e. \ v. p) being left-folded over the state (with default value 0)
+; (\ e. \ v. p) being left-folded over the state
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; dec-fold -> int -> int -> int
@@ -488,7 +486,7 @@
 ; NOTE: this takes a long time with larger set. while is bounded by fuel in interpret-while-d.
 ; NOTE: this would NOT work on non-buggy set
 ;; Expected:
-;;; decoder (set-api (while (member? 0) (seq (remove 0) (inc nop)) (while (member? 0) nop nop))
+;;; decoder (set-api (while (member? 0) (seq (remove 0) (incr nop)) (while (member? 0) nop nop))
 ;;; gadget-pred (set-api (seq (remove 0) nop))
 ;;; gadget-succ (set-api (seq (insert 0) nop))
 (define (test-spec-buggy-count-while-nat)
@@ -521,7 +519,44 @@
           (displayln "decoder...")
           (displayln c-decoder)))))
 
-; This should fail, as non-buggy version cannot produce something equivalent to "count" using dec-while 
+; WARNING: THIS IS SLOW (30 min)
+;; Expected:
+;;; decoder (set-api (while (or (member? 1) (and (member? 0) (member? 0))) (if (not (member? 1)) (seq (remove 0) (incr nop)) (seq (remove 1) (decr nop))) nop)
+;;; gadget-pred (set-api (seq (insert 1) nop))
+;;; gadget-succ (set-api (seq (insert 0) nop))
+(define (test-spec-buggy-count-while-int)
+  (begin
+    (define spec-pred (lambda (n) (- n 1)))
+    (define spec-succ (lambda (n) (+ n 1)))
+    (define decoder (set-api dec-while 5))
+    (define gadget-pred (set-api interaction 3))
+    (define gadget-succ (set-api interaction 3))
+    (define set (set-api set 3))
+  (define sol (synthesize
+                 #:forall set
+                 #:guarantee (assert
+                              (and (equal?
+                                    (interpret-while-d decoder (interpret-buggy-interaction gadget-succ set))
+                                    (spec-succ (interpret-while-d decoder set)))
+                                   (equal?
+                                    (interpret-while-d decoder (interpret-buggy-interaction gadget-pred set))
+                                    (spec-pred (interpret-while-d decoder set)))))))
+    (if (unsat? sol)
+        (displayln "Synthesis failed")
+        (begin
+          (displayln "Synthesis succeeded")
+          (define c-gadget-succ (concretize gadget-succ sol))
+          (define c-gadget-pred (concretize gadget-pred sol))
+          (define c-decoder (concretize decoder sol))
+          (displayln "gadget pred and succ...")
+          (displayln c-gadget-pred)
+          (displayln c-gadget-succ)          
+          (displayln "decoder...")
+          (displayln c-decoder)))))
+
+
+; This should fail, as non-buggy version cannot produce something equivalent to "count" using dec-while
+; (and likewise with integer's spec-pred and spec-succ)
 (define (test-spec-count-while-nat)
   (begin
     (define spec-z 0)
@@ -551,3 +586,4 @@
           (define c-decoder (concretize decoder sol))
           (displayln "decoder...")
           (displayln c-decoder)))))
+
