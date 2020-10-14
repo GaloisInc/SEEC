@@ -12,6 +12,9 @@
                   string))
 
 (require (for-syntax syntax/parse)
+         (for-syntax (only-in racket/syntax
+                              format-id
+                              ))
          (prefix-in unsafe:
                     (combine-in
                      (only-in racket
@@ -415,9 +418,30 @@
       [p:production (attribute p.terminals)]
       )
     )
+
   )
 
 
+; Define type classifiers of the form lang-nt?
+(define-syntax-rule (check-nonterminal lang nt0 expr)
+  (match expr
+    [(lang nt0) #t]
+    [_ #f]
+    ))
+(define-syntax (define-nonterminal-predicate stx)
+  (syntax-case stx ()
+    [(_ lang nt0)
+     (with-syntax ([new-name (format-id #'lang "~a-~a?" #'lang #'nt0)])
+       #`(define (new-name expr)
+           (check-nonterminal lang nt0 expr)))]))
+
+(define-syntax (define-nonterminal-predicates stx)
+  (syntax-case stx ()
+    [(_ lang nt0 ...)
+     #`(begin
+       (define-nonterminal-predicate lang nt0)
+       ...)
+     ]))
 
 (define-syntax (define-grammar stx)
   (syntax-parse stx
@@ -493,7 +517,21 @@
                     #:declare pat (term #,(syntax->string #'name)
                                         terminalstx)
                     #'(make-term! name pat depth)]
-                   ))))))]))
+                   )))
+
+             ; Add predicates for each nonterminal
+
+             ; I actually want lang-struct nonterminals but I don't know how to convert a list to a ... form
+             ; something-of-type-list-syntax
+             (define-nonterminal-predicates name nt ...)
+             ; I considered also adding predicates for each builtin nonterminal,
+             ; so a user could write, e.g. `my-lang-integer?` rather than
+             ; `bonsai-integer?` As of now I chose not to do this because (1)
+             ; the list of builtin nonterminals in scope for a particular
+             ; grammar is not directly exposed by the grammar; and (2) hopefully
+             ; we will be removing references to bonsai structures anyway.
+
+             )))]))
 
 (define-syntax (make-concrete-term! stx)
   (syntax-parse stx
@@ -652,4 +690,12 @@
     (match-check
      (test-grammar integer 1)
      (test-grammar n:natural)
-     (>= (bonsai-integer-value n) 0))))
+     (>= (bonsai-integer-value n) 0)))
+
+  (test-case "Types"
+     (check-equal? (test-grammar-base? (test-grammar 5)) #t)
+     (check-equal? (test-grammar-base? (test-grammar +)) #f)
+     (check-equal? (test-grammar-op? (test-grammar 5)) #f)
+     (check-equal? (test-grammar-op? (test-grammar +)) #t)
+     )
+  )
