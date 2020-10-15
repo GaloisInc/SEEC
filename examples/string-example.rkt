@@ -17,10 +17,10 @@
 (define b (constants (BOOL #f)))
 (define five (constants (NAT 5)))
 
-
-(define hi-desired (constants (STR "hi")))
+(define x (string-append (string "h") (string "i")))
+(define hi-desired (constants (STR ,x)))
 (define c-desired (constants (CHAR #\x)))
-#;(displayln hi-desired)
+(displayln hi-desired)
 #;(displayln c-desired)
 #;(match hi-desired
   [(constants (STR s:string)) (print-string (bonsai-string-value s))]
@@ -29,6 +29,10 @@
   [(constants (CHAR c:char)) (displayln c)]
   )
 
+(define-symbolic x-id boolean?)
+(define n (constants (BOOL ,x-id)))
+(displayln n)
+(constants-const? n)
 
 #|
 (define (any-lang x)

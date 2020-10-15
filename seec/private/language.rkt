@@ -9,7 +9,16 @@
          "match.rkt"
          (only-in "string.rkt"
                   char
-                  string))
+                  string
+                  char?
+                  string?
+                  ))
+(require (only-in racket/base
+                  [string? racket/string?]
+                  [char? racket/char?]
+                  raise-argument-error
+                  ))
+
 
 (require (for-syntax syntax/parse)
          (for-syntax (only-in racket/syntax
@@ -553,7 +562,19 @@
     [(_ lang:id s:id)
      #`(bonsai-terminal (symbol->enum 's))]
     [(_ lang:id (unquote e:expr))
-     #'e]
+     #`(cond
+       [(integer? e)       (bonsai-integer e)]
+       [(boolean? e)       (bonsai-boolean e)]
+       [(bitvector? e)     (bonsai-bv e)]
+       [(char? e)          (bonsai-char e)]
+       [(string? e)        (bonsai-string e)]
+       [(racket/char? e)   (bonsai-char (char e))]
+       [(racket/string? e) (bonsai-string (string e))]
+       [(bonsai? e)        e]
+       [else               (raise-argument-error 'make-concrete-term!
+                              "(or/c bonsai? integer? boolean? bitvector? char? string?)"
+                              e)])
+     ]
     [(_ lang:id (pat ...))
      #`(bonsai-list (list (make-concrete-term! lang pat) ...))]))
 
