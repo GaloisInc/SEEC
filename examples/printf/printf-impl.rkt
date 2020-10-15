@@ -47,17 +47,18 @@
          config-add
          mem-update
          (rename-out [interp-fmt-unsafe interp-fmt])
-         fmt?
-         ident?
-         val?
-         expr?
-         arglist?
-         mem?
-         trace?
-         const?
-         behavior?
-         config?
-         context?
+         (rename-out [printf-lang-fmt? fmt?]
+                     [printf-lang-ident? ident?]
+                     [printf-lang-val? val?]
+                     [printf-lang-expr? expr?]
+                     [printf-lang-arglist? arglist?]
+                     [printf-lang-mem? mem?]
+                     [printf-lang-trace? trace?]
+                     [printf-lang-constant? const?]
+                     [printf-lang-behavior? behavior?]
+                     [printf-lang-config? config?]
+                     [printf-lang-context? context?]
+                     )
          err?
          debug?
          fmt-consistent-with-arglist?
@@ -133,102 +134,16 @@
 #| Projections out of types |#
 #||||||||||||||||||||||||||||#
 
-(define/contract (mem? m)
-  (-> any/c boolean?)
-  (match m
-    [(printf-lang mem) #t]
-    [_ #f]
-    ))
-(define/contract (expr? e)
-  (-> any/c boolean?)
-  (match e
-    [(printf-lang expr) #t]
-    ))
-(define/contract (width? w)
-  (-> any/c boolean?)
-  (match w
-    [(printf-lang width) #t]
-    [_ #f]
-    ))
-
-(define/contract (trace? t)
-  (-> any/c boolean?)
-  (match t
-    [(printf-lang trace) #t]
-    [_ #f]
-    ))
-
-(define/contract (fmt? f)
-  (-> any/c boolean?)
-  (match f
-    [(printf-lang fmt) #t]
-    [_ #f]))
-(define/contract (fmt-type? f)
-  (-> any/c boolean?)
-  (match f
-    [(printf-lang fmt-type) #t]
-    [_ #f]))
-(define/contract (fmt-elt? f)
-  (-> any/c boolean?)
-  (match f
-    [(printf-lang fmt-elt) #t]
-    [_ #f]))
-
-
-(define/contract (parameter? p)
-  (-> any/c boolean?)
-  (match p
-    [(printf-lang parameter) #t]
-    [_ #f]))
-
-(define (ident? x)
-  (bonsai-integer? x)
-  )
-(define/contract (val? v)
-  (-> any/c boolean?)
-  (match v
-    [(printf-lang val) #t]
-    [_ #f]
-    ))
 (define/contract (loc? v)
   (-> any/c boolean?)
   (match v
     [(printf-lang (LOC l:ident)) #t]
     [_ #f]
     ))
-(define/contract (bvint? v)
-  (-> any/c boolean?)
-  (match v
-    [(printf-lang bvint) #t]
-    [_ #f]))
-
-(define/contract (arglist? args)
-  (-> any/c boolean?)
-  (match args
-    [(printf-lang arglist) #t]
-    [_ #f]
-    ))
-(define/contract (behavior? b)
-  (-> any/c boolean?)
-  (match b
-    [(printf-lang behavior) #t]
-    [_ #f]
-    ))
-(define/contract (config? cfg)
-  (-> any/c boolean?)
-  (match cfg
-    [(printf-lang config) #t]
-    [_ #f]
-    ))
 (define/contract (err? x)
   (-> any/c boolean?)
   (match x
     [(printf-lang ERR) #t]
-    [_ #f]))
-(define/contract (const? x)
-  (-> any/c boolean?)
-  (match x
-    [(printf-lang constant) #t]
     [_ #f]))
 (define (natural? n)
   (and (integer? n)
@@ -265,30 +180,30 @@
     [(printf-lang (LOC x:ident)) x]
     ))
 (define/contract (conf->mem c)
-  (-> config? mem?)
+  (-> printf-lang-config? printf-lang-mem?)
   (match c
     [(printf-lang (bvint m:mem)) m]
     ))
 (define/contract (conf->acc c)
-  (-> config? bv?)
+  (-> printf-lang-config? bv?)
   (match c
     [(printf-lang (acc:bvint mem)) (bonsai->bv acc)]
     [_ (raise-argument-error 'conf->acc "conf" c)]
     ))
 
 (define/contract (param->offset param)
-  (-> parameter? integer?)
+  (-> printf-lang-parameter? integer?)
   (match param
     [(printf-lang (o:offset $)) (bonsai->number o)]
     ))
 
 
 (define/contract (behavior->trace b)
-  (-> behavior? trace?)
+  (-> printf-lang-behavior? printf-lang-trace?)
   (match b
     [(printf-lang (t:trace config)) t]))
 (define/contract (behavior->config b)
-  (-> behavior? config?)
+  (-> printf-lang-behavior? printf-lang-config?)
   (match b
     [(printf-lang (trace c:config)) c]
     ))
@@ -301,23 +216,23 @@
 (define (make-context args conf)
   (printf-lang (,args ,conf)))
 (define/contract (make-config n m)
-  (-> integer? mem? config?)
+  (-> integer? printf-lang-mem? printf-lang-config?)
   (printf-lang (,(integer->bonsai-bv n) ,m)))
 (define (make-config-triv n)
   (make-config n (printf-lang nil)))
 (define/contract (make-behav t n m)
-  (-> trace? integer? mem? behavior?)
+  (-> printf-lang-trace? integer? printf-lang-mem? printf-lang-behavior?)
   (printf-lang (,t ,(make-config n m))))
 (define (make-behav-triv t n)
   (printf-lang (,t ,(make-config-triv n))))
 
 (define/contract (context->config ctx)
-  (-> context? config?)
+  (-> context? printf-lang-config?)
   (match ctx
     [(printf-lang (args:arglist cfg:config)) cfg]
     ))
 (define/contract (context->arglist ctx)
-  (-> context? arglist?)
+  (-> context? printf-lang-arglist?)
   (match ctx
     [(printf-lang (args:arglist cfg:config)) args]
     ))
@@ -325,22 +240,22 @@
 (define (printf-program? p)
   (and (pair? p)
        (context? (car p))
-       (fmt? (cdr p))
+       (printf-lang-fmt? (cdr p))
        ))
 (define/contract (program->fmt p)
-  (-> printf-program? fmt?)
+  (-> printf-program? printf-lang-fmt?)
   (cdr p))
 (define/contract (program->context p)
   (-> printf-program? context?)
   (car p))
 (define/contract (program->arglist p)
-  (-> printf-program? arglist?)
+  (-> printf-program? printf-lang-arglist?)
   (context->arglist (car p)))
 (define/contract (program->config p)
-  (-> printf-program? config?)
+  (-> printf-program? printf-lang-config?)
   (context->config (car p)))
 (define/contract (make-program f args conf)
-  (-> fmt? arglist? config? printf-program?)
+  (-> printf-lang-fmt? printf-lang-arglist? printf-lang-config? printf-program?)
   (cons (printf-lang (,args ,conf)) f))
 
 
@@ -357,7 +272,7 @@
 ; INPUT: a location identifier l and a memory value m with l in the domain of m
 ; OUTPUT: the value mapped to by the identifier
 (define/contract (lookup-loc l m)
-  (-> ident? mem? (or/c err? val?))
+  (-> printf-lang-ident? printf-lang-mem? (or/c err? printf-lang-val?))
   (debug (thunk (printf "(lookup-loc ~a ~a)~n" l m)))
   (match m
     [(printf-lang nil) (printf-lang ERR)]
@@ -368,7 +283,7 @@
     ))
 
 (define/contract (eval-expr e m)
-  (-> expr? mem? (or/c err? val?))
+  (-> printf-lang-expr? printf-lang-mem? (or/c err? printf-lang-val?))
   (debug (thunk (printf "(eval-expr ~a ~a)~n" e m)))
   (match e
     [(printf-lang v:val) v]
@@ -382,7 +297,7 @@
 ; INPUT: an integer offset and an argument list args such that offset < length(args)
 ; OUTPUT: the value mapped to the offset
 (define/contract (lookup-offset offset ctx)
-  (-> integer? context? (or/c err? val?))
+  (-> integer? context? (or/c err? printf-lang-val?))
   (debug (thunk (printf "(lookup-offset ~a ~a)~n" offset ctx)))
   (define res 
     (let ([args (context->arglist ctx)]
@@ -404,7 +319,7 @@
 ; INPUT: a configuration (acc,mem) and a number n
 ; OUTPUT: a new configuration (acc+n,mem)
 (define/contract (config-add conf n)
-  (-> config? integer? config?)
+  (-> printf-lang-config? integer? printf-lang-config?)
   (debug (thunk (printf "(config-add ~a ~a)~n" conf n)))
   (let* ([acc   (conf->acc conf)]
          [m     (conf->mem conf)]
@@ -422,7 +337,7 @@
 ; INPUT: a mem, a location, and a value
 ; OUTPUT: an updated memory with the location mapping to the new value
 (define/contract (mem-update m l v)
-  (-> mem? ident? val? mem?)
+  (-> printf-lang-mem? printf-lang-ident? printf-lang-val? printf-lang-mem?)
   (printf-lang (cons (,l ,v) ,m)))
 
 
@@ -438,7 +353,7 @@
 ; If the constant is an integer (represented by a bitvector) give the length of
 ; the string representing the number.
 (define/contract (constant-length c)
-  (-> const? integer?)
+  (-> printf-lang-constant? integer?)
   (debug (thunk (printf "(constant-length ~a)~n" c)))
   (define res (match c
     [(printf-lang s:string)   (string-length (bonsai-string-value s))]
@@ -452,7 +367,7 @@
 ; INPUT: a config OR behavior conf-or-behav and constant c
 ; OUTPUT: a behavior consisting of the trace containing n and the upated configuration
 (define/contract (print-constant conf-or-behav c)
-  (-> (or/c config? behavior?) const? behavior?)
+  (-> (or/c printf-lang-config? printf-lang-behavior?) printf-lang-constant? printf-lang-behavior?)
   (debug (thunk (printf "(print-constant ~a ~a)~n" conf-or-behav c)))
   (define res (match conf-or-behav
     [(printf-lang conf:config)
@@ -465,7 +380,7 @@
             [conf+ (config-add conf len-c)]
             )
        (printf-lang ((cons ,c ,t) ,conf+)))]
-    [_ (raise-argument-error 'print-constant "(or/c (config?) (behavior?))" conf-or-behav)]
+    [_ (raise-argument-error 'print-constant "(or/c printf-lang-config? printf-lang-behavior?)" conf-or-behav)]
     )
   )
   (debug (thunk (printf "computed print-constant: ~a~n" res)))
@@ -473,14 +388,14 @@
   )
 ; Input: t is either a trace or ERR
 (define/contract (print-trace conf t)
-  (-> config? (or/c err? trace?) (or/c err? behavior?))
+  (-> printf-lang-config? (or/c err? printf-lang-trace?) (or/c err? printf-lang-behavior?))
   (debug (thunk (printf "(print-trace ~a ~a)~n" conf t)))
   (define res (match t
     [(printf-lang ERR) (printf-lang ERR)]
     [(printf-lang nil) (printf-lang (nil ,conf))]
     [(printf-lang (cons c:constant t+:trace))
      (print-constant (print-trace conf t+) c)]
-    [_ (raise-argument-error 'print-trace "trace?" t)]
+    [_ (raise-argument-error 'print-trace "printf-lang-trace?" t)]
     ))
   (debug (thunk (printf "result of print-trace: ~a~n" res)))
   res)
@@ -490,7 +405,7 @@
 ; INPUT: a config conf and a location identifier l
 ; OUTPUT: an updated configuration that assigns l the value of the accumulator.
 (define/contract (print-n-loc conf l)
-  (-> config? ident? config?)
+  (-> printf-lang-config? printf-lang-ident? printf-lang-config?)
   (debug (thunk (printf "(print-n-loc ~a)~n" l)))
   (let* ([acc (bonsai-bv (conf->acc conf))]
          [new-mem (mem-update (conf->mem conf) l acc)]
@@ -508,7 +423,7 @@
 
 
 (define/contract (unsafe:val->integer v)
-  (-> val? integer?)
+  (-> printf-lang-val? integer?)
   (debug (thunk (printf "(unsafe:val->integer ~a)~n" v)))
   (define res (match v
     [(printf-lang n:bvint)       (bvint->number n)]
@@ -528,7 +443,7 @@
   res)
 
 (define/contract (unsafe:val->natural v)
-  (-> val? integer?)
+  (-> printf-lang-val? integer?)
   (debug (thunk (printf "(unsafe:val->natural ~a)~n" v)))
   (define res (match v
     [(printf-lang n:bvint)       (bvint->natural n)]
@@ -539,7 +454,7 @@
 
 
 #;(define/contract (unsafe:val->string v)
-  (-> val? string?)
+  (-> printf-lang-val? string?)
   (debug (thunk (printf "(unsafe:val->string ~a)~n" v)))
   (define (unsafe:char->string x)
     (cond
@@ -559,7 +474,7 @@
   res)
 
 (define/contract (unsafe:fmt->constant ftype param ctx)
-  (-> fmt-type? parameter? context? (or/c err? const?))
+  (-> printf-lang-fmt-type? printf-lang-parameter? context? (or/c err? printf-lang-constant?))
   (debug (thunk (printf "(unsafe:fmt->constant ~a ~a ~a)~n" ftype param ctx)))
   (define res (match (lookup-offset (param->offset param) ctx)
     [(printf-lang ERR) (printf-lang ERR)]
@@ -585,7 +500,7 @@
 ;
 ; OUTPUT: an outputted trace and a configuration
 (define/contract (interp-fmt-elt-unsafe f ctx)
-  (-> fmt-elt? context? behavior?)
+  (-> printf-lang-fmt-elt? context? printf-lang-behavior?)
   (debug (thunk (printf "(interp-fmt-elt-unsafe ~a ~a)~n" f ctx)))
   (define conf (context->config ctx))
   (define res (match f
@@ -636,7 +551,7 @@
   res
   )
 (define/contract (interp-fmt-unsafe f args conf)
-  (-> fmt? arglist? config? behavior?)
+  (-> printf-lang-fmt? printf-lang-arglist? printf-lang-config? printf-lang-behavior?)
   (debug (thunk (printf "(interp-fmt-unsafe ~a ~a ~a)~n" f args conf)))
   (define res (match f
     [(printf-lang nil) (printf-lang (nil ,conf))]
@@ -662,7 +577,7 @@
 ; p is the parameter offset as a bonsai number
 ; ftype is the format type associated with the parameter
 (define/contract (parameter-consistent-with-arglist p ftype ctx)
-  (-> parameter? fmt-type? context? boolean?)
+  (-> printf-lang-parameter? printf-lang-fmt-type? context? boolean?)
   (let* ([offset (param->offset p)]
          [arg (lookup-offset offset ctx)])
     (and (< offset (bonsai-ll-length (context->arglist ctx)))
@@ -673,13 +588,13 @@
            [_                                                #f]
            ))))
 (define (width-consistent-with-arglist w ctx)
-  (-> width? context? boolean?)
+  (-> printf-lang-width? context? boolean?)
   (match w
     [(printf-lang NONE) #t]
     [(printf-lang natural) #t]
     [(printf-lang (* o:offset))
      (and (< (bonsai->number o) (bonsai-ll-length (context->arglist ctx)))
-          (bvint? (lookup-offset (bonsai->number o) ctx)))]
+          (printf-lang-bvint? (lookup-offset (bonsai->number o) ctx)))]
     ))
 
 
