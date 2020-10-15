@@ -11,6 +11,8 @@
   (num ::= (NAT natural))
 )
 
+(constants-const? (constants (BOOL #t)))
+
 
 (define b (constants (BOOL #f)))
 (define five (constants (NAT 5)))
@@ -155,4 +157,4 @@
     [(constants #t) #t]
     [_ #f])
   )
-(pattern-matching-tests)
+#;(pattern-matching-tests)

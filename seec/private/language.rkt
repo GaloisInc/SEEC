@@ -12,6 +12,9 @@
                   string))
 
 (require (for-syntax syntax/parse)
+         (for-syntax (only-in racket/syntax
+                              format-id
+                              ))
          (prefix-in unsafe:
                     (combine-in
                      (only-in racket
@@ -415,9 +418,30 @@
       [p:production (attribute p.terminals)]
       )
     )
+
   )
 
 
+; Define type classifiers of the form lang-nt?
+(define-syntax-rule (check-nonterminal lang nt0 expr)
+  (match expr
+    [(lang nt0) #t]
+    [_ #f]
+    ))
+(define-syntax (define-nonterminal-predicate stx)
+  (syntax-case stx ()
+    [(_ lang nt0)
+     (with-syntax ([new-name (format-id #'lang "~a-~a?" #'lang #'nt0)])
+       #`(define (new-name expr)
+           (check-nonterminal lang nt0 expr)))]))
+
+(define-syntax (define-nonterminal-predicates stx)
+  (syntax-case stx ()
+    [(_ lang nt0 ...)
+     #`(begin
+       (define-nonterminal-predicate lang nt0)
+       ...)
+     ]))
 
 (define-syntax (define-grammar stx)
   (syntax-parse stx
@@ -426,6 +450,7 @@
      (let* ([prods         (syntax->datum #'((nt prod ...) ...))]
             [nts           (list->set (syntax->datum #'(nt ...)))]
             [terminals     (prods->terminals prods)]
+            [builtin-nts   (set->list (set-intersect terminals (list->set builtin-nonterminals)))]
             )
        (with-syntax ([terminalstx #`(apply set '(#,@(set->list terminals)))]
                      [ntstx       #`(apply set '(#,@(set->list nts)))])
@@ -493,7 +518,18 @@
                     #:declare pat (term #,(syntax->string #'name)
                                         terminalstx)
                     #'(make-term! name pat depth)]
-                   ))))))]))
+                   )))
+
+             ; Add predicates for each nonterminal
+             ;
+             ; Usage: For each user-defined or builtin nonterminal `nt` that
+             ; occurs in the grammar `name`, we define a function `name-nt?`
+             ; that takes `x` of any type and returns a boolean---`#t` if `x`
+             ; matches the pattern `(name nt)` and `#f` otherwise
+             (define-nonterminal-predicates name nt ...)
+             (define-nonterminal-predicates name #,@builtin-nts)
+
+             )))]))
 
 (define-syntax (make-concrete-term! stx)
   (syntax-parse stx
@@ -652,4 +688,13 @@
     (match-check
      (test-grammar integer 1)
      (test-grammar n:natural)
-     (>= (bonsai-integer-value n) 0))))
+     (>= (bonsai-integer-value n) 0)))
+
+  (test-case "Types"
+     (check-equal? (test-grammar-base? (test-grammar 5)) #t)
+     (check-equal? (test-grammar-base? (test-grammar +)) #f)
+     (check-equal? (test-grammar-op? (test-grammar 5)) #f)
+     (check-equal? (test-grammar-op? (test-grammar +)) #t)
+     (check-equal? (test-grammar-natural? (test-grammar 5)) #t)
+     )
+  )
