@@ -521,6 +521,11 @@
                    )))
 
              ; Add predicates for each nonterminal
+             ;
+             ; Usage: For each user-defined or builtin nonterminal `nt` that
+             ; occurs in the grammar `name`, we define a function `name-nt?`
+             ; that takes `x` of any type and returns a boolean---`#t` if `x`
+             ; matches the pattern `(name nt)` and `#f` otherwise
              (define-nonterminal-predicates name nt ...)
              (define-nonterminal-predicates name #,@builtin-nts)
 
