@@ -450,6 +450,7 @@
      (let* ([prods         (syntax->datum #'((nt prod ...) ...))]
             [nts           (list->set (syntax->datum #'(nt ...)))]
             [terminals     (prods->terminals prods)]
+            [builtin-nts   (set->list (set-intersect terminals (list->set builtin-nonterminals)))]
             )
        (with-syntax ([terminalstx #`(apply set '(#,@(set->list terminals)))]
                      [ntstx       #`(apply set '(#,@(set->list nts)))])
@@ -520,16 +521,8 @@
                    )))
 
              ; Add predicates for each nonterminal
-
-             ; I actually want lang-struct nonterminals but I don't know how to convert a list to a ... form
-             ; something-of-type-list-syntax
              (define-nonterminal-predicates name nt ...)
-             ; I considered also adding predicates for each builtin nonterminal,
-             ; so a user could write, e.g. `my-lang-integer?` rather than
-             ; `bonsai-integer?` As of now I chose not to do this because (1)
-             ; the list of builtin nonterminals in scope for a particular
-             ; grammar is not directly exposed by the grammar; and (2) hopefully
-             ; we will be removing references to bonsai structures anyway.
+             (define-nonterminal-predicates name #,@builtin-nts)
 
              )))]))
 
@@ -697,5 +690,6 @@
      (check-equal? (test-grammar-base? (test-grammar +)) #f)
      (check-equal? (test-grammar-op? (test-grammar 5)) #f)
      (check-equal? (test-grammar-op? (test-grammar +)) #t)
+     (check-equal? (test-grammar-natural? (test-grammar 5)) #t)
      )
   )
