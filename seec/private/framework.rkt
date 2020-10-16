@@ -7,9 +7,7 @@
          (struct-out language)
          (struct-out compiler)
          find-changed-behavior
-         find-changed-behavior-inc
          find-changed-component
-         find-changed-component-inc
          find-weird-computation
          find-weird-component
          find-weird-behavior
@@ -78,13 +76,6 @@
       > find-X ... #:count n 
    3) Display the concrete witnesses returned at step 2
       > display-X
-
-
- TODO: change rel to be
-  Eq (use the same symbolic var)
-  Fn 
-TODO: Get inc-changed-behavior to work
-
 
 
 
@@ -314,61 +305,6 @@ TODO: Get inc-changed-behavior to work
 
   
 
-; inner-weird-computation
-(define-syntax (inner-weird-computation stx)
-  (syntax-parse stx
-    [(_ comp
-        v
-        bound-v1
-        bound-c1
-        bound-c2
-        where-vars
-        found-core)
-     #`(let*
-           ([source (compiler-source comp)]
-            [target (compiler-target comp)]
-            [v1 (if v
-                    v
-                    (let* ([v* (make-symbolic-var (language-expression source) bound-v1)])
-                      v*))]
-            [c1 (make-symbolic-var (language-context source) bound-c1)]
-            [c2 (make-symbolic-var (language-context target) bound-c2)]
-            [source-evaluate (language-evaluate source)] 
-            [source-link (language-link source)]
-            [target-evaluate (language-evaluate target)] 
-            [target-link (language-link target)]
-            [compile (compiler-compile comp)]
-            [context-relation  (compiler-context-relation comp)]
-            [ccomp (if context-relation
-                       (context-relation c1 c2)
-                       #t)]
-            [behavior-relation (compiler-behavior-relation comp)]
-            [v2 (compile v1)]
-            [p1 (source-link c1 v1)]
-            [p2 (target-link c2 v2)])
-         (let*-values ([(b1 nondet1) (capture-nondeterminism (source-evaluate p1))] ; capture nondet
-                       [(b2 nondet2) (capture-nondeterminism (target-evaluate p2))])
-           (let* ([equality (with-asserts-only (assert (behavior-relation b1 b2)))]
-                  [language-witnesses (list (language-witness v1 c1 p1 b1) (language-witness v2 c2 p2 b2))]
-                  [sym-core (found-core language-witnesses)])
-             (unsafe:generator
-              ()
-              (let loop ([found (list)])
-                (let ([tmpsol (synthesize
-                               #:forall (cons c1 (cons nondet1 nondet2)) ; quantify over nondet
-                               #:assume (assert (and ccomp
-                                                     (where-vars v1 v2 c1 c2 b1 b2)
-                                                     (not (ormap (lambda (t) (equal? sym-core t)) found))))
-                               #:guarantee (assert (! (apply && equality))))])
-                  (if (unsat? tmpsol)
-                      #f
-                      (let* ([symbolic-witness (weird-component-solution language-witnesses tmpsol)]                             
-                             [witness (concretize-witness symbolic-witness)]
-                             ; Projecting c2 out of the concrete witness
-                             [core (found-core witness)])                        
-                        (unsafe:yield witness)
-                        (loop (cons core found))))))))))]))
-
 
 ; concretize all vars included in the solution, return a list of language-witness with concrete vars
 (define/contract (concretize-witness sym-solution)
@@ -407,183 +343,10 @@ TODO: Get inc-changed-behavior to work
   (display-changed-behavior vars out))
 
 
-; find-changed-behavior query
-; provided as a wrapper to find-weird-behavior
-; for backward compatibility
-(define find-changed-behavior
-  (lambda (comp
-           v1
-           #:source-context-bound [bound-c1 #f]
-           #:source-context-where [where-c1 (lambda (v1 c1) #t)]
-           #:target-context-bound [bound-c2 #f]
-           #:target-context-where [where-c2 (lambda (v1 c2) #t)]
-           #:source-behavior-where [where-b1 (lambda (v1 c1 c2 b1) #t)]
-           #:target-behavior-where [where-b2 (lambda (v1 c1 c2 b2) #t)]
-           #:count [witness-count #f])
-    (unwrap-witness witness-count (find-weird-behavior comp
-                         #:source-expr v1
-                         #:source-context-bound bound-c1
-                         #:source-context-constraint where-c1
-                         #:target-context-bound bound-c2
-                         #:target-context-constraint where-c2
-                         #:source-behavior-constraint where-b1
-                         #:target-behavior-constraint where-b2
-                         #:fresh-witness #f
-                         #:forall (list ) ; don't quantify over c2 in changed-behavior
-                         #:count (if witness-count witness-count 1)
-                         #:capture-nondeterminism #f
-                         #:found-core (lambda (w) (language-witness-context (first w)))))))
-
-#|
-
-; Find changed behavior: {r:comp} r.source.expression -> concrete witness 
-; 1) Create a generator for changed behavior
-; 2) Run generator n times (if count argument is provided, in which case a list of witness is provided)
-; 3) Restore assertion state to pre-query
-; Solve the following synthesis problem:
-; (\lambda v1).
-; Exists c1:s.t.context c2:r.t.context,
-;    r.ctx-relation(c1, c2)
-;       not (r.behavior-relation(r.s.apply(c1, v1), r.t.apply(c2, r.compile(v1))))
-; Returns a list of concrete witness, each of which will have a different source context
-(define-syntax (find-changed-behavior stx)
-  (syntax-parse stx
-    [(_ comp v1
-        (~seq
-         (~optional
-          (~seq #:source-context-bound bound-c1)
-          #:defaults ([bound-c1 #'#f]))
-         (~optional
-          (~seq #:source-context-where where-c1)
-          #:defaults ([where-c1 #'(lambda (v1 c1) #t)]))
-         (~optional
-          (~seq #:target-context-bound bound-c2)
-          #:defaults ([bound-c2 #'#f]))
-         (~optional
-          (~seq #:target-context-where where-c2)
-          #:defaults ([where-c2 #'(lambda (v1 c2) #t)])))
-        (~optional
-         (~seq #:source-behavior-where where-b1)
-         #:defaults ([where-b1 #'(lambda (v1 c1 c2 b1) #t)]))
-        (~optional
-         (~seq #:target-behavior-where where-b2)
-         #:defaults ([where-b2 #'(lambda (v1 c1 c2 b2) #t)]))
-        (~optional
-         (~seq #:count witness-count)
-         #:defaults ([witness-count #'#f])))
-     #'(let*
-           ([assert-store (asserts)] ; save assertions on entry
-            [where-vars (lambda (v1 v2 c1 c2 b1 b2) (and (where-c1 v1 c1)
-                                                         (where-c2 v1 c2)
-                                                         (where-b1 v1 c1 c2 b1)
-                                                         (where-b2 v1 c1 c2 b2)))]
-            [gen (inner-changed-behavior comp v1 #f #f bound-c1 bound-c2 where-vars (lambda (w) (language-witness-context (first w))))]
-            [witness (run-query #:count witness-count gen)])
-         (clear-asserts!)
-         (for-each (lambda (arg) (assert arg)) assert-store) ; restore entry assertions
-         witness)]))
-|#
 
 
 
 
-(define-syntax (find-changed-behavior-inc stx)
-  (syntax-parse stx
-    [(_ comp v1
-        (~seq
-         (~optional
-          (~seq #:source-context-bound bound-c1)
-          #:defaults ([bound-c1 #'#f]))
-         (~optional
-          (~seq #:source-context-where where-c1)
-          #:defaults ([where-c1 #'(lambda (v1 c1) #t)]))
-         (~optional
-          (~seq #:target-context-bound bound-c2)
-          #:defaults ([bound-c2 #'#f]))
-         (~optional
-          (~seq #:target-context-where where-c2)
-          #:defaults ([where-c2 #'(lambda (v1 c2) #t)])))
-        (~optional
-         (~seq #:source-behavior-where where-b1)
-         #:defaults ([where-b1 #'(lambda (v1 c1 c2 b1) #t)]))
-        (~optional
-         (~seq #:target-behavior-where where-b2)
-         #:defaults ([where-b2 #'(lambda (v1 c1 c2 b2) #t)]))
-         (~optional
-          (~seq #:count witness-count)
-          #:defaults ([witness-count #'1])))        
-     #'((inc-changed-behavior comp v1 #f #f bound-c1 where-c1 bound-c2 where-c2 where-b1 where-b2 (lambda (w) (language-witness-context (first w)))) witness-count)]))
-
-
-
-; find-changed-component query
-; provided as a wrapper to find-weird-behavior
-; for backward compatibility
-; Solve the following synthesis problem:
-; (\lambda r).
-;   Exists v:r.s.expression
-;     find-changed-behavior r v
-; Returns a list of witness if #:count is used
-; each of which will have a different source expression
-(define find-changed-component
-  (lambda (comp
-           #:source-expression-bound [bound-v1 #f]
-           #:source-expression-where [where-v1 (lambda (v1) #t)]
-           #:source-context-bound [bound-c1 #f]
-           #:source-context-where [where-c1 (lambda (v1 c1) #t)]
-           #:target-context-bound [bound-c2 #f]
-           #:target-context-where [where-c2 (lambda (v1 c2) #t)]
-           #:source-behavior-where [where-b1 (lambda (v1 c1 c2 b1) #t)]
-           #:target-behavior-where [where-b2 (lambda (v1 c1 c2 b2) #t)]
-           #:count [witness-count #f])
-    (unwrap-witness witness-count
-                    (find-weird-behavior comp
-                                         #:source-expr-bound bound-v1
-                                         #:source-expr-constraint where-v1
-                                         #:source-context-bound bound-c1
-                                         #:source-context-constraint where-c1
-                                         #:target-context-bound bound-c2
-                                         #:target-context-constraint where-c2
-                                         #:source-behavior-constraint where-b1
-                                         #:target-behavior-constraint where-b2
-                                         #:fresh-witness #f
-                                         #:forall (list ) ; don't quantify over c2 in changed-behavior
-                                         #:count (if witness-count witness-count 1)
-                                         #:capture-nondeterminism #f
-                                         #:found-core (lambda (w) (language-witness-expression (first w)))))))
-
-
-
-
-
-
-(define-syntax (find-changed-component-inc stx)
-  (syntax-parse stx
-    [(_ comp
-        (~seq
-         (~optional
-          (~seq #:source-expression-bound bound-v1)
-          #:defaults ([bound-v1 #'#f]))
-         (~optional
-          (~seq #:source-expression-where where-v1)
-          #:defaults ([where-v1 #'(lambda (v1) #t)]))
-         (~optional
-          (~seq #:source-context-bound bound-c1)
-          #:defaults ([bound-c1 #'#f]))
-         (~optional
-          (~seq #:source-context-where where-c1)
-          #:defaults ([where-c1 #'(lambda (v1 c1) #t)]))
-         (~optional
-          (~seq #:target-context-bound bound-c2)
-          #:defaults ([bound-c2 #'#f]))
-         (~optional
-          (~seq #:target-context-where where-c2)
-          #:defaults ([where-c2 #'(lambda (v1 c2) #t)]))
-         (~optional
-          (~seq #:count witness-count)
-          #:defaults ([witness-count #'1]))))
-     #`(let ([query (inc-changed-behavior comp #f bound-v1 where-v1 bound-c1 where-c1 bound-c2 where-c2 (lambda (w) (language-witness-expression (first w))))])
-         (query witness-count))]))
 
 
 
@@ -613,23 +376,33 @@ TODO: Get inc-changed-behavior to work
   (lambda (comp
            #:source-expr-bound [e1-bound #f]; (or/c #f natural?)
            #:source-expr [e1 (make-symbolic-var (language-expression (compiler-source comp)) e1-bound)]
-           #:source-expr-constraint [e1-constraint (λ (x) #t)]
+           ; Provide a concrete expression argument instead of generating a symbolic one
+           #:source-expr-constraint [e1-constraint (λ (x) #t)] ; (-> s.expression? boolean?)
            #:source-context-bound [c1-bound #f] ; (or/c #f natural?) 
            #:source-context [c1 (make-symbolic-var (language-context  (compiler-source comp)) c1-bound)]
-           #:source-context-constraint [c1-constraint (λ (e1 c1) #t)]
-           #:source-behavior-constraint [b1-constraint (λ (e1 c1 c2 b1) #t)]
-           #:target-context-bound [c2-bound #f]
+           #:source-context-constraint [c1-constraint (λ (e1 c1) #t)] ; (-> s.expression? s.context? boolean?)
+           ; Constraint the source context according to the source expression
+           #:source-behavior-constraint [b1-constraint (λ (e1 c1 c2 b1) #t)] ; (-> s.expression? s.context? t.context? s.behavior boolean?)
+           ; Constraint the desired source behavior according to the source expression and the source and target context
+           #:target-context-bound [c2-bound #f] ; (or/c #f natural?)
            #:target-context [c2 (make-symbolic-var (language-context (compiler-target comp)) c2-bound)]
-           #:target-context-constraint [c2-constraint (λ (e1 c2) #t)]
-           #:target-behavior-constraint [b2-constraint (λ (e1 c1 c2 b2) #t)]
-           #:fresh-witness [fresh #t]
-           #:debug [debug #f]
+           ; Provide a concrete target context instead of generating a symbolic one
+           #:target-context-constraint [c2-constraint (λ (e1 c2) #t)] ; (-> s.expression? t.context? boolean?)
+           ; Constraint the target context according to the source expression
+           #:target-behavior-constraint [b2-constraint (λ (e1 c1 c2 b2) #t)] ; (-> s.expression? s.context? t.context? t.behavior boolean?)
+           ; Constraint the desired target behavior according to the source expression and the source and target context
+           #:fresh-witness [fresh #t] ; (boolean?)
+           ; if #t, generate a fresh context satisfying the constraints
+           #:debug [debug #f] ; (boolean?)
+           ; if #t, query will synthesize an expression that violates the property
            #:forall [vars (if debug
                               (list )
-                              c1)]
+                              c1)] 
            #:forall-extra [vars-extra (list )]
            #:count [count 1]
+           ; the number of different witnesses to return
            #:capture-nondeterminism [nondet #t]
+           ; if true, we will quantify over the nondetermism collected when evaluating the source and target program
            #:found-core [found-core (lambda (w) (language-witness-context (second w)))] ; different target context for each returned witness
            )
 
@@ -744,10 +517,87 @@ TODO: Get inc-changed-behavior to work
           
 
 
+; find-changed-behavior query
+; provided as a wrapper to find-weird-behavior
+; Solve the following synthesis problem:
+; (\lambda v1).
+; Exists c1:s.t.context c2:r.t.context,
+;    r.ctx-relation(c1, c2)
+;       not (r.behavior-relation(r.s.apply(c1, v1), r.t.apply(c2, r.compile(v1))))
+; Returns a list of concrete witness, each of which will have a different source context
+(define find-changed-behavior
+  (lambda (comp
+           v1
+           #:source-context-bound [bound-c1 #f]
+           #:source-context-where [where-c1 (lambda (v1 c1) #t)]
+           #:target-context-bound [bound-c2 #f]
+           #:target-context-where [where-c2 (lambda (v1 c2) #t)]
+           #:source-behavior-where [where-b1 (lambda (v1 c1 c2 b1) #t)]
+           #:target-behavior-where [where-b2 (lambda (v1 c1 c2 b2) #t)]
+           #:count [witness-count #f])
+    (unwrap-witness witness-count (find-weird-behavior comp
+                         #:source-expr v1
+                         #:source-context-bound bound-c1
+                         #:source-context-constraint where-c1
+                         #:target-context-bound bound-c2
+                         #:target-context-constraint where-c2
+                         #:source-behavior-constraint where-b1
+                         #:target-behavior-constraint where-b2
+                         #:fresh-witness #f
+                         #:forall (list ) ; don't quantify over c2 in changed-behavior
+                         #:count (if witness-count witness-count 1)
+                         #:capture-nondeterminism #f
+                         #:found-core (lambda (w) (language-witness-context (first w)))))))
+
+
+
+
+; find-changed-component query
+; provided as a wrapper to find-weird-behavior
+; for backward compatibility
+; Solve the following synthesis problem:
+; (\lambda r).
+;   Exists v:r.s.expression
+;     find-changed-behavior r v
+; Returns a list of witness if #:count is used
+; each of which will have a different source expression
+(define find-changed-component
+  (lambda (comp
+           #:source-expression-bound [bound-v1 #f]
+           #:source-expression-where [where-v1 (lambda (v1) #t)]
+           #:source-context-bound [bound-c1 #f]
+           #:source-context-where [where-c1 (lambda (v1 c1) #t)]
+           #:target-context-bound [bound-c2 #f]
+           #:target-context-where [where-c2 (lambda (v1 c2) #t)]
+           #:source-behavior-where [where-b1 (lambda (v1 c1 c2 b1) #t)]
+           #:target-behavior-where [where-b2 (lambda (v1 c1 c2 b2) #t)]
+           #:count [witness-count #f])
+    (unwrap-witness witness-count
+                    (find-weird-behavior comp
+                                         #:source-expr-bound bound-v1
+                                         #:source-expr-constraint where-v1
+                                         #:source-context-bound bound-c1
+                                         #:source-context-constraint where-c1
+                                         #:target-context-bound bound-c2
+                                         #:target-context-constraint where-c2
+                                         #:source-behavior-constraint where-b1
+                                         #:target-behavior-constraint where-b2
+                                         #:fresh-witness #f
+                                         #:forall (list ) ; don't quantify over c2 in changed-behavior
+                                         #:count (if witness-count witness-count 1)
+                                         #:capture-nondeterminism #f
+                                         #:found-core (lambda (w) (language-witness-expression (first w)))))))
+
 
 ; find-weird-component query
 ; provided as a wrapper to find-weird-behavior
-; for backward compatibility
+; Solve the following synthesis problem:
+; (\lambda v1).
+; Exists c2:r.t.context,
+;   Forall c1:r.s.context,
+;     r.context-relation(c1, c2) ->
+;       not (r.behavior-relation(r.s.apply(c1, v1), r.t.apply(c2, r.compile(v1))))
+; Returns a list of concrete witness, each of which will have a different target context
 (define find-weird-computation
   (lambda (comp
            v1
@@ -770,56 +620,15 @@ TODO: Get inc-changed-behavior to work
                          #:forall (list ) ; don't quantify over c2 in changed-behavior
                          #:count (if witness-count witness-count 1)))))
 
-#|
-; find-weird-computation: {r:comp} r.source.expression -> list witness
+; find-weird-component query
+; provided as a wrapper to find-weird-behavior
 ; Solve the following synthesis problem:
-; (\lambda v1).
+; Exists v1:r.s.expression,
 ; Exists c2:r.t.context,
 ;   Forall c1:r.s.context,
 ;     r.context-relation(c1, c2) ->
 ;       not (r.behavior-relation(r.s.apply(c1, v1), r.t.apply(c2, r.compile(v1))))
-; Returns a list of concrete witness, each of which will have a different target context
-(define-syntax (find-weird-computation stx)
-  (syntax-parse stx
-    [(_ comp v1 (~seq
-                 (~optional
-                  (~seq #:source-context-bound bound-c1)
-                  #:defaults ([bound-c1 #'#f]))
-                 (~optional
-                  (~seq #:source-context-where where-c1)
-                  #:defaults ([where-c1 #'(lambda (v1 c1) #t)]))
-                 (~optional
-                  (~seq #:target-context-bound bound-c2)
-                  #:defaults ([bound-c2 #'#f]))
-                 (~optional
-                  (~seq #:target-context-where where-c2)
-                  #:defaults ([where-c2 #'(lambda (v1 c2) #t)]))
-                 (~optional
-                  (~seq #:source-behavior-where where-b1)
-                  #:defaults ([where-b1 #'(lambda (v1 c1 c2 b1) #t)]))
-                 (~optional
-                  (~seq #:target-behavior-where where-b2)
-                  #:defaults ([where-b2 #'(lambda (v1 c1 c2 b2) #t)]))                          
-                 (~optional
-                  (~seq #:count witness-count)
-                  #:defaults ([witness-count #'#f]))))
-     #`(let*
-           ([assert-store (asserts)] ; save assertions on entry
-            [where-vars (lambda (v1 v2 c1 c2 b1 b2) (and (where-v1 v1)
-                                                         (where-c1 v1 c1)                                                         
-                                                         (where-c2 v1 c2)
-                                                         (where-b1 v1 c1 c2 b1)
-                                                         (where-b2 v1 c1 c2 b2)))]
-            [gen (inner-weird-computation comp v1 #f #f bound-c1 bound-c2 where-vars (lambda (w) (language-witness-context (second w))))]
-            [witness (run-query #:count witness-count gen)])
-         (clear-asserts!)
-         (for-each (lambda (arg) (assert arg)) assert-store) ; restore entry assertions
-         witness)]))
-|#
-
-; find-weird-component query
-; provided as a wrapper to find-weird-behavior
-; for backward compatibility
+; Returns a list of concrete witness, each of which will have a different source expression
 (define find-weird-component
   (lambda (comp
            #:source-expression-bound [bound-v1 #f]
@@ -845,57 +654,6 @@ TODO: Get inc-changed-behavior to work
                          #:count (if witness-count witness-count 1)
                          #:found-core (lambda (w) (language-witness-context (first w)))))))
 
-
-#|
-; find-weird-component: {r:comp} -> list witness
-; (\lambda r).
-;   Exists v:r.s.expression
-;     find-weird-computation r v
-; Returns a list of concrete witness, each of which will have a different source expression
-(define-syntax (find-weird-component stx)
-  (syntax-parse stx
-    [(_ comp
-        (~seq
-         (~optional
-          (~seq #:source-expression-bound bound-v1)
-          #:defaults ([bound-v1 #'#f]))
-         (~optional
-          (~seq #:source-expression-where where-v1)
-          #:defaults ([where-v1 #'(lambda (v1) #t)]))
-         (~optional
-          (~seq #:source-context-bound bound-c1)
-          #:defaults ([bound-c1 #'#f]))
-         (~optional
-          (~seq #:source-context-where where-c1)
-          #:defaults ([where-c1 #'(lambda (v1 c1) #t)]))
-         (~optional
-          (~seq #:target-context-bound bound-c2)
-          #:defaults ([bound-c2 #'#f]))
-         (~optional
-          (~seq #:target-context-where where-c2)
-          #:defaults ([where-c2 #'(lambda (v1 c2) #t)]))
-         (~optional
-          (~seq #:source-behavior-where where-b1)
-          #:defaults ([where-b1 #'(lambda (v1 c1 c2 b1) #t)]))
-         (~optional
-          (~seq #:target-behavior-where where-b2)
-          #:defaults ([where-b2 #'(lambda (v1 c1 c2 b2) #t)]))
-         (~optional
-          (~seq #:count witness-count)
-          #:defaults ([witness-count #'#f]))))
-          #`(let*
-                ([assert-store (asserts)] ; save assertions on entry
-                 [where-vars (lambda (v1 v2 c1 c2 b1 b2) (and (where-v1 v1)
-                                                              (where-c1 v1 c1)                                                         
-                                                              (where-c2 v1 c2)
-                                                              (where-b1 v1 c1 c2 b1)
-                                                              (where-b2 v1 c1 c2 b2)))]
-                 [gen (inner-weird-computation comp #f bound-v1 bound-c1 bound-c2 where-vars (lambda (w) (language-witness-expression (first w))))]
-                 [witness (run-query #:count witness-count gen)])
-         (clear-asserts!)
-         (for-each (lambda (arg) (assert arg)) assert-store) ; restore entry assertion state
-         witness)]))
-|#
 
 ; show v1, c2 and b2
 (define (display-weird-component vars out)
