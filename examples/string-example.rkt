@@ -7,7 +7,7 @@
 (require rosette/lib/value-browser) ; debugging
 
 (define-grammar constants
-  (const ::= (BOOL boolean) num (STR string) (CHAR char))
+  (const ::= (BOOL boolean) num (STR string) (CHAR char) (BV bitvector))
   (num ::= (NAT natural))
 )
 
@@ -33,6 +33,9 @@
 (define n (constants (BOOL ,x-id)))
 (displayln n)
 (constants-const? n)
+(match (constants (STR "hello"))
+  [(constants (STR s:string)) (constants ,"hi")]
+  )
 
 #|
 (define (any-lang x)

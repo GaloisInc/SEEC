@@ -249,7 +249,7 @@
     #:literal-sets (builtin-terminals)
     #:description (format "~a pattern ~a" lang-name terminals)
     #:opaque
-    (pattern n:id
+    (pattern n:id ; (lang-name X) for X a type
              #:when (and (syntax? #'n)
                          (not (syntax-has-colon? #'n))
                          (is-type? terminals #'n)
@@ -258,7 +258,49 @@
              #:attr match-pattern #'_
              #:attr stx-pattern   #'n
              #:attr depth         #'1)
-    (pattern n:id
+    (pattern n:id ; (lang-name n:natural) or (lang-name n:integer)
+             #:when (and (syntax? #'n)
+                         (syntax-has-colon? #'n)
+                         (or (equal? (syntax->datum (after-colon #'n)) 'natural)
+                             (equal? (syntax->datum (after-colon #'n)) 'integer))
+                         )
+             #:attr match-pattern #`(bonsai-integer #,(before-colon #'n))
+             #:attr stx-pattern   (after-colon #'n)
+             #:attr depth         #'1)
+    (pattern n:id ; (lang-name n:boolean)
+             #:when (and (syntax? #'n)
+                         (syntax-has-colon? #'n)
+                         (equal? (syntax->datum (after-colon #'n)) 'boolean)
+                         )
+             #:attr match-pattern #`(bonsai-boolean #,(before-colon #'n))
+             #:attr stx-pattern   #'boolean
+             #:attr depth         #'1)
+    (pattern n:id ; (lang-name n:bitvector)
+             #:when (and (syntax? #'n)
+                         (syntax-has-colon? #'n)
+                         (equal? (syntax->datum (after-colon #'n)) 'bitvector)
+                         )
+             #:attr match-pattern #`(bonsai-bv #,(before-colon #'n))
+             #:attr stx-pattern   #'bitvector
+             #:attr depth         #'1)
+    (pattern n:id ; (lang-name n:char)
+             #:when (and (syntax? #'n)
+                         (syntax-has-colon? #'n)
+                         (equal? (syntax->datum (after-colon #'n)) 'char)
+                         )
+             #:attr match-pattern #`(bonsai-char #,(before-colon #'n))
+             #:attr stx-pattern   #'char
+             #:attr depth         #'1)
+    (pattern n:id ; (lang-name n:string)
+             #:when (and (syntax? #'n)
+                         (syntax-has-colon? #'n)
+                         (equal? (syntax->datum (after-colon #'n)) 'string)
+                         )
+             #:attr match-pattern #`(bonsai-string #,(before-colon #'n))
+             #:attr stx-pattern   #'string
+             #:attr depth         #'1)
+
+    (pattern n:id ; (lang-name n:X) for X a non-builtin type
              #:when (and (syntax? #'n)
                          (syntax-has-colon? #'n)
                          (is-type? terminals (after-colon #'n))
@@ -427,7 +469,6 @@
       [p:production (attribute p.terminals)]
       )
     )
-
   )
 
 
@@ -565,14 +606,14 @@
      #`(cond
        [(integer? e)       (bonsai-integer e)]
        [(boolean? e)       (bonsai-boolean e)]
-       [(bitvector? e)     (bonsai-bv e)]
+       [(bv? e)     (bonsai-bv e)]
        [(char? e)          (bonsai-char e)]
        [(string? e)        (bonsai-string e)]
        [(racket/char? e)   (bonsai-char (char e))]
        [(racket/string? e) (bonsai-string (string e))]
        [(bonsai? e)        e]
        [else               (raise-argument-error 'make-concrete-term!
-                              "(or/c bonsai? integer? boolean? bitvector? char? string?)"
+                              "(or/c bonsai? integer? boolean? bv? char? string?)"
                               e)])
      ]
     [(_ lang:id (pat ...))
