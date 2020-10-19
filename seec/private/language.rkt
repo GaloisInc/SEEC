@@ -606,7 +606,7 @@
      #`(cond
        [(integer? e)       (bonsai-integer e)]
        [(boolean? e)       (bonsai-boolean e)]
-       [(bv? e)     (bonsai-bv e)]
+       [(bv? e)            (bonsai-bv e)]
        [(char? e)          (bonsai-char e)]
        [(string? e)        (bonsai-string e)]
        [(racket/char? e)   (bonsai-char (char e))]

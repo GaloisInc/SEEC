@@ -459,7 +459,7 @@
                                  (if (unsat? sol)
                                        #f
                                      ; need to concretize context
-                                     (let* ([symbolic-witness (weird-component-solution language-witnesses sol)]                             
+                                     (let* ([symbolic-witness (weird-component-solution language-witnesses sol)]
                                             [witness (concretize-witness symbolic-witness)]
                                             [core (found-core witness)]
                                             [e-ctx-concrete (list ; e1 c1 e2 c2
@@ -483,19 +483,28 @@
                              (let* ([e1-concrete  (first e-ctx-concrete)]
                                     [e2-concrete  (third e-ctx-concrete)]
                                     [c12-witness (if fresh
-                                                     (let ([wit (find-weird-behavior comp
-                                                                                     #:source-expr e1-concrete
-                                                                                     #:source-context-bound c1-bound
-                                                                                     #:source-context-constraint c1-constraint
-                                                                                     #:source-behavior-constraint b1-constraint
-                                                                                     #:target-context-bound c2-bound
-                                                                                     #:target-context-constraint c2-constraint
-                                                                                     #:target-behavior-constraint b2-constraint
-                                                                                     #:fresh-witness #f
-                                                                                     #:forall (list ))] ; new call to find-weird-behavior with no universal quantification
-                                                           [c1+ (second e-ctx-concrete)]
-                                                           [c2+ (fourth e-ctx-concrete)])
-                                                       (cons c1+ c2+))
+                                                     (let* ([wit ; new call to find-weird-behavior
+                                                                 ; with no universal quantification
+                                                             (find-weird-behavior
+                                                                 comp
+                                                                 #:source-expr e1-concrete
+                                                                 #:source-context-bound c1-bound
+                                                                 #:source-context-constraint c1-constraint
+                                                                 #:source-behavior-constraint b1-constraint
+                                                                 #:target-context-bound c2-bound
+                                                                 #:target-context-constraint c2-constraint
+                                                                 #:target-behavior-constraint b2-constraint
+                                                                 #:fresh-witness #f
+                                                                 #:forall (list ))])
+                                                       (if (unsat? wit)
+                                                           (unsafe:raise-arguments-error
+                                                            'find-weird-behavior
+                                                            "Could not synthesize fresh witness"
+                                                            )
+                                                           (let ([c1+ (language-witness-context (first (first wit)))]
+                                                                 [c2+ (language-witness-context (second (first wit)))]
+                                                                 )
+                                                             (cons c1+ c2+))))
                                                      (cons (second e-ctx-concrete) (fourth e-ctx-concrete)))] ; c12-witness should be completely concrete
                                     [c1-witness (car c12-witness)]
                                     [c2-witness (cdr c12-witness)]
@@ -589,7 +598,7 @@
                                          #:found-core (lambda (w) (language-witness-expression (first w)))))))
 
 
-; find-weird-component query
+; find-weird-computation query
 ; provided as a wrapper to find-weird-behavior
 ; Solve the following synthesis problem:
 ; (\lambda v1).
@@ -617,7 +626,7 @@
                          #:target-context-constraint where-c2
                          #:source-behavior-constraint where-b1
                          #:target-behavior-constraint where-b2
-                         #:forall (list ) ; don't quantify over c2 in changed-behavior
+                         ; don't quantify over c2 in changed-behavior
                          #:count (if witness-count witness-count 1)))))
 
 ; find-weird-component query
@@ -632,26 +641,33 @@
 (define find-weird-component
   (lambda (comp
            #:source-expression-bound [bound-v1 #f]
+           #:source-expr [e1 (make-symbolic-var (language-expression (compiler-source comp))
+                                                bound-v1)]
            #:source-expression-where [where-v1 (lambda (v1) #t)]
            #:source-context-bound [bound-c1 #f]
            #:source-context-where [where-c1 (lambda (v1 c1) #t)]
            #:target-context-bound [bound-c2 #f]
+           #:target-context [c2 (make-symbolic-var (language-context (compiler-target comp)) bound-c2)]
            #:target-context-where [where-c2 (lambda (v1 c2) #t)]
            #:source-behavior-where [where-b1 (lambda (v1 c1 c2 b1) #t)]
            #:target-behavior-where [where-b2 (lambda (v1 c1 c2 b2) #t)]
+           #:capture-nondeterminism [nondet #t]
            #:count [witness-count #f])
     (unwrap-witness witness-count
                     (find-weird-behavior comp
                          #:source-expr-bound bound-v1
+                         #:source-expr e1
                          #:source-expr-constraint where-v1
                          #:source-context-bound bound-c1
                          #:source-context-constraint where-c1
                          #:target-context-bound bound-c2
+                         #:target-context c2
                          #:target-context-constraint where-c2
                          #:source-behavior-constraint where-b1
                          #:target-behavior-constraint where-b2
-                         #:forall (list ) ; don't quantify over c2 in changed-behavior
+                         ; don't quantify over c2 in changed-behavior
                          #:count (if witness-count witness-count 1)
+                         #:capture-nondeterminism nondet
                          #:found-core (lambda (w) (language-witness-context (first w)))))))
 
 
@@ -811,8 +827,7 @@
                              (if (unsat? sol)
                                  #f
                                  ; need to concretize context
-                                 (let* ([e-ctx-concrete (concretize (cons e ctx) sol)]
-                                        )
+                                 (let* ([e-ctx-concrete (concretize (cons e ctx) sol)])
                                    (loop (- num 1)
                                          (cons e-ctx-concrete witness-list)))
                                    ))))])
