@@ -9,7 +9,7 @@
 
 ; SIMP
 (define-grammar simp
-  (num ::= z s)
+  (num ::= z (s num))
   (op ::= + *)
   (exp ::= (op num num) num))
 
@@ -35,8 +35,10 @@
   (match exp
     [(simp (o:op n1:num n2:num))
      (interp-binop op (eval-simp n1) (eval-simp n2))]
-    [(simp n:num)
-     (bonsai->number n)]))
+    [(simp z) 0]
+    [(simp (s n:num))
+     (+ 1 (eval-simp n))]
+    ))
 
 (define test-simp-1
   (eval-simp (simp (+ (* (s z) (s (s z))) z))))
