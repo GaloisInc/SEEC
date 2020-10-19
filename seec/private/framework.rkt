@@ -369,7 +369,7 @@
         #:forall-extra any/c
         #:count integer?
         #:capture-nondeterminism boolean?
-        #:found-core (-> any/c any/c) ; Which part of the witness should not be repeated between examples 
+        #:found-core (-> any/c any/c) 
 )
        (or/c #f (listof (listof language-witness?))) ; lists of pairs of language-witness (source and target)
        )
@@ -403,7 +403,8 @@
            ; the number of different witnesses to return
            #:capture-nondeterminism [nondet #t]
            ; if true, we will quantify over the nondetermism collected when evaluating the source and target program
-           #:found-core [found-core (lambda (w) (language-witness-context (second w)))] ; different target context for each returned witness
+           #:found-core [found-core (lambda (w) (language-witness-context (second w)))]
+           ; Which part of the witness should not be repeated between witnesses
            )
 
     (let*
@@ -417,12 +418,14 @@
          [ccomp (if context-relation
                     (context-relation c1 c2)
                     #t)])
+      (displayln "1")
       (let*-values ([(b1 nondet1) (if nondet
                                       (capture-nondeterminism ((language-evaluate source) p1))
                                       (values ((language-evaluate source) p1) (list )))]
                     [(b2 nondet2) (if nondet
                                       (capture-nondeterminism ((language-evaluate target) p2))
                                       (values ((language-evaluate target) p2) (list )))])
+        (displayln "2")
         (let* ([behavior-relation (compiler-behavior-relation comp)]
                [equality (with-asserts-only (assert (behavior-relation b1 b2)))]
                [language-witnesses (list (language-witness e1 c1 p1 b1) (language-witness e2 c2 p2 b2))]
@@ -443,7 +446,9 @@
                                                 #:guarantee (assert (if debug
                                                                         (! (apply && equality))
                                                                         (apply && equality))))
-                                             (synthesize 
+                                             (begin
+                                               (displayln "3")
+                                               (synthesize 
                                               #:forall (cons vars (cons vars-extra (cons nondet1 nondet2)))
                                               #:assume (assert (and (e1-constraint e1)
                                                                     (c1-constraint e1 c1)
@@ -455,7 +460,7 @@
                                                                )
                                               #:guarantee (assert (if debug
                                                                       (apply && equality)
-                                                                      (! (apply && equality))))))])
+                                                                      (! (apply && equality)))))))])
                                  (if (unsat? sol)
                                        #f
                                      ; need to concretize context
@@ -474,6 +479,7 @@
             ; 2. If the `fresh` flag is true, for each generated expression,
             ; synthesize a new context satisfying the relevant constraints            
             (let* ([exprs (loop count (list ) (list ))]) ; exprs is a list of witness
+              (displayln "4")
               (clear-asserts!)
               (for-each (lambda (arg) (assert arg)) assert-store) ; restore assertion state
               (cond
@@ -483,7 +489,7 @@
                              (let* ([e1-concrete  (first e-ctx-concrete)]
                                     [e2-concrete  (third e-ctx-concrete)]
                                     [c12-witness (if fresh
-                                                     (let ([wit (find-weird-behavior comp
+                                                     (let* ([wit (find-weird-behavior comp
                                                                                      #:source-expr e1-concrete
                                                                                      #:source-context-bound c1-bound
                                                                                      #:source-context-constraint c1-constraint
@@ -493,8 +499,8 @@
                                                                                      #:target-behavior-constraint b2-constraint
                                                                                      #:fresh-witness #f
                                                                                      #:forall (list ))] ; new call to find-weird-behavior with no universal quantification
-                                                           [c1+ (second e-ctx-concrete)]
-                                                           [c2+ (fourth e-ctx-concrete)])
+                                                            [c1+ (language-witness-context (first (first wit)))]
+                                                            [c2+ (language-witness-context (second (first wit)))])
                                                        (cons c1+ c2+))
                                                      (cons (second e-ctx-concrete) (fourth e-ctx-concrete)))] ; c12-witness should be completely concrete
                                     [c1-witness (car c12-witness)]
@@ -617,7 +623,6 @@
                          #:target-context-constraint where-c2
                          #:source-behavior-constraint where-b1
                          #:target-behavior-constraint where-b2
-                         #:forall (list ) ; don't quantify over c2 in changed-behavior
                          #:count (if witness-count witness-count 1)))))
 
 ; find-weird-component query
@@ -649,8 +654,7 @@
                          #:target-context-bound bound-c2
                          #:target-context-constraint where-c2
                          #:source-behavior-constraint where-b1
-                         #:target-behavior-constraint where-b2
-                         #:forall (list ) ; don't quantify over c2 in changed-behavior
+                         #:target-behavior-constraint where-b2                         
                          #:count (if witness-count witness-count 1)
                          #:found-core (lambda (w) (language-witness-context (first w)))))))
 
