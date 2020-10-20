@@ -534,25 +534,32 @@
 (define find-changed-behavior
   (lambda (comp
            v1
-           #:source-context-bound [bound-c1 #f]
+           #:source-context-bound [c1-bound #f]
+           #:source-context [c1 (make-symbolic-var (language-context  (compiler-source comp)) c1-bound)]
            #:source-context-where [where-c1 (lambda (v1 c1) #t)]
-           #:target-context-bound [bound-c2 #f]
+           #:target-context-bound [c2-bound #f]
+           #:target-context [c2 (make-symbolic-var (language-context (compiler-target comp)) c2-bound)]
            #:target-context-where [where-c2 (lambda (v1 c2) #t)]
            #:source-behavior-where [where-b1 (lambda (v1 c1 c2 b1) #t)]
            #:target-behavior-where [where-b2 (lambda (v1 c1 c2 b2) #t)]
-           #:count [witness-count #f])
+           #:debug [debug #f]
+           #:forall-extra [vars-extra (list )]
+           #:count [witness-count #f]
+           #:capture-nondeterminism [nondet #f])
     (unwrap-witness witness-count (find-weird-behavior comp
                          #:source-expr v1
-                         #:source-context-bound bound-c1
+                         #:source-context c1
                          #:source-context-constraint where-c1
-                         #:target-context-bound bound-c2
+                         #:target-context c2
                          #:target-context-constraint where-c2
                          #:source-behavior-constraint where-b1
                          #:target-behavior-constraint where-b2
                          #:fresh-witness #f
+                         #:debug debug
                          #:forall (list ) ; don't quantify over c2 in changed-behavior
+                         #:forall-extra vars-extra
                          #:count (if witness-count witness-count 1)
-                         #:capture-nondeterminism #f
+                         #:capture-nondeterminism nondet
                          #:found-core (lambda (w) (language-witness-context (first w)))))))
 
 
@@ -570,28 +577,36 @@
 (define find-changed-component
   (lambda (comp
            #:source-expression-bound [bound-v1 #f]
+           #:source-expr [e1 (make-symbolic-var (language-expression (compiler-source comp)) bound-v1)]
            #:source-expression-where [where-v1 (lambda (v1) #t)]
            #:source-context-bound [bound-c1 #f]
+           #:source-context [c1 (make-symbolic-var (language-context  (compiler-source comp)) bound-c1)]
            #:source-context-where [where-c1 (lambda (v1 c1) #t)]
            #:target-context-bound [bound-c2 #f]
+           #:target-context [c2 (make-symbolic-var (language-context (compiler-target comp)) bound-c2)]
            #:target-context-where [where-c2 (lambda (v1 c2) #t)]
            #:source-behavior-where [where-b1 (lambda (v1 c1 c2 b1) #t)]
            #:target-behavior-where [where-b2 (lambda (v1 c1 c2 b2) #t)]
-           #:count [witness-count #f])
+           #:debug [debug #f]
+           #:forall-extra [vars-extra (list )]
+           #:count [witness-count #f]
+           #:capture-nondeterminism [nondet #f])
     (unwrap-witness witness-count
                     (find-weird-behavior comp
-                                         #:source-expr-bound bound-v1
+                                         #:source-expr e1
                                          #:source-expr-constraint where-v1
-                                         #:source-context-bound bound-c1
+                                         #:source-context c1
                                          #:source-context-constraint where-c1
-                                         #:target-context-bound bound-c2
+                                         #:target-context c2
                                          #:target-context-constraint where-c2
                                          #:source-behavior-constraint where-b1
                                          #:target-behavior-constraint where-b2
                                          #:fresh-witness #f
+                                         #:debug debug
                                          #:forall (list ) ; don't quantify over c2 in changed-component
+                                         #:forall-extra vars-extra
                                          #:count (if witness-count witness-count 1)
-                                         #:capture-nondeterminism #f
+                                         #:capture-nondeterminism nondet
                                          #:found-core (lambda (w) (language-witness-expression (first w)))))))
 
 
@@ -608,22 +623,30 @@
   (lambda (comp
            v1
            #:source-context-bound [bound-c1 #f]
+           #:source-context [c1 (make-symbolic-var (language-context  (compiler-source comp)) bound-c1)]
            #:source-context-where [where-c1 (lambda (v1 c1) #t)]
            #:target-context-bound [bound-c2 #f]
+           #:target-context [c2 (make-symbolic-var (language-context (compiler-target comp)) bound-c2)]
            #:target-context-where [where-c2 (lambda (v1 c2) #t)]
            #:source-behavior-where [where-b1 (lambda (v1 c1 c2 b1) #t)]
            #:target-behavior-where [where-b2 (lambda (v1 c1 c2 b2) #t)]
-           #:count [witness-count #f])
+           #:debug [debug #f]
+           #:forall-extra [vars-extra (list )]
+           #:count [witness-count #f]
+           #:capture-nondeterminism [nondet #t])
     (unwrap-witness witness-count
                     (find-weird-behavior comp
                          #:source-expr v1
-                         #:source-context-bound bound-c1
+                         #:source-context c1
                          #:source-context-constraint where-c1
-                         #:target-context-bound bound-c2
+                         #:target-context c2
                          #:target-context-constraint where-c2
                          #:source-behavior-constraint where-b1
                          #:target-behavior-constraint where-b2
-                         #:count (if witness-count witness-count 1)))))
+                         #:debug debug
+                         #:forall-extra vars-extra
+                         #:count (if witness-count witness-count 1)
+                         #:capture-nondeterminism nondet))))
 
 ; find-weird-component query
 ; provided as a wrapper to find-weird-behavior
@@ -637,26 +660,35 @@
 (define find-weird-component
   (lambda (comp
            #:source-expression-bound [bound-v1 #f]
+           #:source-expr [e1 (make-symbolic-var (language-expression (compiler-source comp)) bound-v1)]
            #:source-expression-where [where-v1 (lambda (v1) #t)]
            #:source-context-bound [bound-c1 #f]
+           #:source-context [c1 (make-symbolic-var (language-context  (compiler-source comp)) bound-c1)]
            #:source-context-where [where-c1 (lambda (v1 c1) #t)]
            #:target-context-bound [bound-c2 #f]
+           #:target-context [c2 (make-symbolic-var (language-context (compiler-target comp)) bound-c2)]
            #:target-context-where [where-c2 (lambda (v1 c2) #t)]
            #:source-behavior-where [where-b1 (lambda (v1 c1 c2 b1) #t)]
            #:target-behavior-where [where-b2 (lambda (v1 c1 c2 b2) #t)]
-           #:count [witness-count #f])
+           #:debug [debug #f]
+           #:forall-extra [vars-extra (list )]
+           #:count [witness-count #f]
+           #:capture-nondeterminism [nondet #t])
     (unwrap-witness witness-count
                     (find-weird-behavior comp
-                         #:source-expr-bound bound-v1
+                         #:source-expr e1
                          #:source-expr-constraint where-v1
-                         #:source-context-bound bound-c1
+                         #:source-context c1
                          #:source-context-constraint where-c1
-                         #:target-context-bound bound-c2
+                         #:target-context c2
                          #:target-context-constraint where-c2
                          #:source-behavior-constraint where-b1
-                         #:target-behavior-constraint where-b2                         
+                         #:target-behavior-constraint where-b2
+                         #:debug debug
+                         #:forall-extra vars-extra
                          #:count (if witness-count witness-count 1)
-                         #:found-core (lambda (w) (language-witness-context (first w)))))))
+                         #:found-core (lambda (w) (language-witness-context (first w)))
+                         #:capture-nondeterminism nondet))))
 
 
 ; show v1, c2 and b2
