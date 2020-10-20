@@ -1,6 +1,8 @@
 #lang seec
 (provide (all-defined-out))
 
+(require racket/contract)
+
 ; Performance tweak: model integers using 4-bit bitvectors
 (set-bitwidth 4)
 
@@ -146,12 +148,13 @@
          r
          (set-api (cons ,x ,(buggy-concrete-remove r v))))]))
 
-(define (concrete-member? s v)
+(define/contract (concrete-member? s v)
+  (-> set-api-vallist? set-api-value? boolean?)
   (match s
-    [(set-api nil) (set-api #f)]
+    [(set-api nil) #f]
     [(set-api (cons x:value r:vallist))
      (if (equal? x v)
-         (set-api #t)
+         #t
          (concrete-member? r v))]))
 
 (define (concrete-select s)
@@ -216,9 +219,9 @@
   (match xs
     [(set-api nil) #t]
     [(set-api (cons x:integer r:vallist))
-     (match (concrete-member? r x)
-       [(set-api #f) (valid-set? r)]
-       [(set-api #t) #f])]
+     (cond
+       [(concrete-member? r x) (valid-set? r)]
+       [else #f])]
     [_ #f]))
 
 (define (uncurry f)
@@ -321,9 +324,9 @@
 
 
 (define (concrete-two-member-spec? prog res-set)
-  (let ([member1 (concrete-member? res-set (bonsai-integer 1))]
-        [member2 (concrete-member? res-set (bonsai-integer 2))])
-    (and (bonsai->racket member1) (not (bonsai->racket member2)))))
+  (let ([member1 (concrete-member? res-set (set-api 1))]
+        [member2 (concrete-member? res-set (set-api 2))])
+    (and member1 (not member2))))
 
 (define expected-context (set-api (cons (insert 1) (cons (remove 2) nil))))
 
