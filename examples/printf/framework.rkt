@@ -274,7 +274,7 @@
                        )
    displayln)
   )
-#;(find-load-gadget)
+(find-load-gadget)
 
 
 (define (find-add-mem-gadget)
@@ -373,4 +373,4 @@
                        )
    displayln)
   )
-(time (find-add-mem-gadget))
+#;(time (find-add-mem-gadget))
