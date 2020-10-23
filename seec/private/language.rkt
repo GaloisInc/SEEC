@@ -602,8 +602,9 @@
      #`(bonsai-boolean b)]
     [(_ lang:id s:id)
      #`(bonsai-terminal (symbol->enum 's))]
-    [(_ lang:id (unquote e:expr))
-     #`(cond
+    [(_ lang:id (unquote e-lazy:expr)) ; TODO: make this a syntax class with an attribute for the constructor? When e is symbolic, this might be leading to a much bigger symbolic term?
+     #`(let ([e e-lazy]) ; evaluate e-lazy here to a normal form
+       (cond
        [(integer? e)       (bonsai-integer e)]
        [(boolean? e)       (bonsai-boolean e)]
        [(bv? e)            (bonsai-bv e)]
@@ -614,7 +615,7 @@
        [(bonsai? e)        e]
        [else               (raise-argument-error 'make-concrete-term!
                               "(or/c bonsai? integer? boolean? bv? char? string?)"
-                              e)])
+                              e)]))
      ]
     [(_ lang:id (pat ...))
      #`(bonsai-list (list (make-concrete-term! lang pat) ...))]))
