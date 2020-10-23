@@ -1,6 +1,12 @@
 #lang seec
 (require racket/format)
+(require racket/contract)
 (require (file "list-lang.rkt"))
+
+(require (only-in racket/base
+                  raise-argument-error
+                  raise-arguments-error))
+
 (provide (all-defined-out))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Linked List 
@@ -21,7 +27,13 @@
   (attack ::= (change-free-pointer pointer))
   (attacked-complete-interaction ::= (attack complete-interaction)))
 
-      
+(define (pointer->number p)
+  (match p
+    [(linked-list n:natural) n]
+    [_ (raise-argument-error 'pointer->number
+                             "non-null linked-list-pointer?"
+                             p)]
+    ))
 
 (define (empty-state s)
   (linked-list (null null empty)))
@@ -63,7 +75,7 @@
     [(linked-list null)
      #t]
     [(linked-list i:natural)
-     (< (bonsai->number i) n)]))
+     (< i n)]))
 
 ; true if all pointers in heap h are scoped in a heap of size n
 (define (scoped-heap? h n)
@@ -115,7 +127,8 @@
        (append-ll n ptr2 hp)])))
 
 ; push v on top of heap (at the end of the list)
-(define (snoc-heap c h)
+(define/contract (snoc-heap c h)
+  (-> linked-list-cell? linked-list-heap? linked-list-heap?)
   (match h
     [(linked-list empty)
      (linked-list (,c empty))]
@@ -141,10 +154,10 @@
         (let* ([heap-size (length-heap hp)]
                [new-cell (linked-list (,v ,hd))]
                [new-heap (snoc-heap new-cell hp)])
-          (linked-list (,(bonsai-integer heap-size) null ,new-heap)))]
+          (linked-list (,heap-size null ,new-heap)))]
        [(linked-list i:natural); free-list is non-empty, use the head of the free-list.
           (let* ([new-cell (linked-list (,v ,hd))]
-                 [new-hp-fp (overwrite-heap (bonsai->number i) new-cell hp)])
+                 [new-hp-fp (overwrite-heap i new-cell hp)])
             (linked-list (,i ,(second new-hp-fp) ,(first new-hp-fp))))])]))
 
 ; return the nth element in the heap
@@ -166,7 +179,7 @@
               [(linked-list null)
                #f]
               [(linked-list ptr:natural) 
-               (nth-ll-inner (- n 1) (bonsai->number ptr) hp)])))))
+               (nth-ll-inner (- n 1) ptr hp)])))))
 
 (define (nth-ll n s)
   (match s    
@@ -175,7 +188,7 @@
        [(linked-list null)
         #f]
        [(linked-list hd:natural)
-       (nth-ll-inner n (bonsai->number hd) hp)])]))
+       (nth-ll-inner n hd hp)])]))
 
 (define (interpret-interaction-ll ints s)
   (match ints
@@ -206,20 +219,21 @@
         [(linked-list null)
          #f]
         [(linked-list n:natural)
-         (let* ([k-c (nth-heap (bonsai->number n) hp)]
-                [v-c (nth-heap (bonsai->number (cell-pointer k-c)) hp)]
+         (let* ([k-c (nth-heap n hp)]
+                [v-c (nth-heap (pointer->number (cell-pointer k-c)) hp)]
                 [newhd (cell-pointer v-c)])
-             (if (equal? k (bonsai->number (cell-value k-c)))
+             (if (equal? (linked-list ,k) (cell-value k-c))
                  (cell-value v-c)
                  (lookup-ll-inner (- fuel 1) k newhd hp)))])))
 
 ; Bound on fuel provided to recursive functions
 (define rec-bound 10)
 
-(define (lookup-ll k s)
+(define/contract (lookup-ll k s)
+  (-> linked-list-value? linked-list-state? (or/c #f linked-list-value?))
   (match s
     [(linked-list (hd:pointer _:pointer hp:heap))
-     (lookup-ll-inner rec-bound (bonsai->number k) hd hp)]))
+     (lookup-ll-inner rec-bound (value->number k) hd hp)]))
 
 (define (interpret-observation-ll obs s)
   (match obs
@@ -321,7 +335,7 @@
     [(list-api (hd:value tl:vallist))
      (let* ([ii (+ i 1)]
             [h (list->ll-inner ii tl)]
-            [c (linked-list (,hd ,(bonsai-integer ii)))])
+            [c (linked-list (,hd ,ii))])
        (linked-list (,c ,h)))]))
 
 (define (list->ll l)
@@ -351,8 +365,8 @@
     [(list-api (hd:value tl:vallist))
      (match fp 
        [(linked-list n:natural)
-        (let ([hd-ll (nth-heap (bonsai->number n) hp)])
-          (if (equal? (bonsai->number hd) (bonsai->number (cell-value hd-ll)))
+        (let ([hd-ll (nth-heap n hp)])
+          (if (equal? hd (cell-value hd-ll))
               (list-ll-equal?-inner tl (cell-pointer hd-ll) hp)
               #f))]
        [(linked-list null)
@@ -379,7 +393,7 @@
     [(linked-list null)
      -1]
     [(linked-list n:natural)
-     (bonsai->number n)]))
+     n]))
 
 (define (pp-pointer p)
   (match p
@@ -424,10 +438,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define (linked-list-demo)
   (begin
+
     (define state (linked-list (0 null ((0 1) ((1 2) ((2 3) ((3 4) ((4 5) ((5 null) empty)))))))))
     (display-state state)
-    (displayln (lookup-ll (bonsai-integer 2) state))
-    
+    (displayln (lookup-ll (linked-list 2) state))
+
+
     ; interaction demo
     (define interact (linked-list ((mcons 8) ((mcons 7) empty))))
     (define state+i (interpret-interaction-ll interact state))
@@ -446,6 +462,6 @@
     (display-state state+a) 
     (define state+ai (interpret-interaction-ll interact state+a))
     (display-state state+ai)
-    (displayln (lookup-ll (bonsai-integer 8) state+ai))
-    (displayln (lookup-ll (bonsai-integer 8) state+i))))
-
+    (displayln (lookup-ll (linked-list 8) state+ai))
+    (displayln (lookup-ll (linked-list 8) state+i))
+    ))

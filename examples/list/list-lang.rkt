@@ -8,7 +8,7 @@
 
 (provide (all-defined-out))
 
-(define (bonsai->number n)
+#;(define (bonsai->number n)
   (match n
     [(bonsai-integer i) i]
     [_ (raise-argument-error 'bonsai->number "bonsai-integer?" n)]
@@ -34,6 +34,12 @@
   (interaction ::= (method interaction) empty)
   (observation ::= empty? (lookup value))
   (complete-interaction ::= observation (method complete-interaction)))
+
+(define (value->number n)
+  (match n
+    [(list-api i:integer) i]
+    [_ (raise-argument-error 'value->number "list-api-integer?" n)]
+    ))
 
 (define (length-list l)
   (match l
@@ -80,7 +86,7 @@
     [(list-api (kc:value tl:vallist))
      (match tl
        [(list-api (vc:value tll:vallist))
-        (if (equal? (bonsai->number kc) (bonsai->number k))
+        (if (equal? (value->number kc) (value->number k))
             vc
             (abstract-lookup k tll))])]))
 
@@ -125,4 +131,3 @@
       (displayln (interpret-interaction i1 abc))
       (displayln (interpret-interaction i2 abc))
       (displayln (interpret-complete-interaction ci1 abc))))
-

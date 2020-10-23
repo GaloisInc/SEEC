@@ -5,8 +5,10 @@
 (provide ex1
          ex2
          ex3)
+(require seec/private/framework)
 
 ; Do we introduced any new behaviors by compiling store and interactions to linked-list?
+; ERR: ran for close to 15 minutes...
 (define (ex1)
   (find-changed-component alist-to-ll-compiler))
 #;(begin
@@ -21,6 +23,20 @@
   (define q2 (ex2))
   (display-language-witness-alist (first q2))
   (display-language-witness-ll (second q2)))
+
+#;(begin
+  #;(define sol (find-weird-behavior
+   alist-to-attacked-ll-compiler
+;   #:source-expr _ ; symbolic
+;   #:source-context _ ; symbollic
+;   #:target-context _ ; symbolic
+   #:fresh-witness #f
+   #:forall (list )
+   #:capture-nondeterminism #f
+   ))
+  (display-weird-behavior sol displayln)
+  )
+
 
 ; Can we find interesting new behaviors?
 (define (ex3)
