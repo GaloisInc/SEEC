@@ -46,6 +46,7 @@
          list->bonsai-ll
          bonsai->racket
          ; bitvectors
+         integer->bv
          integer->bonsai-bv
          set-bitwidth
 
@@ -291,8 +292,10 @@
               (current-bv-width bv-width))]
       )))
 
+(define (integer->bv n)
+  (integer->bitvector n (bitvector (current-bv-width))))
 (define (integer->bonsai-bv n)
-  (bonsai-bv (integer->bitvector n (bitvector (current-bv-width)))))
+  (bonsai-bv (integer->bv n)))
 
 
 (define-syntax (capture-nondeterminism stx)

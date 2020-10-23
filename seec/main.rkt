@@ -34,6 +34,7 @@
          bonsai-bv
          bonsai-bv?
          bonsai-bv-value
+         integer->bv
          integer->bonsai-bv
          set-bitwidth
 
