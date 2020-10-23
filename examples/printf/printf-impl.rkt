@@ -21,7 +21,6 @@
 
 (provide printf-lang
          printf-impl
-         bonsai->number
          val->number
          val->loc
          conf->acc
@@ -107,18 +106,17 @@
   (fmt-type ::= s d n)
 
   (arglist ::= list<expr>)
-  (expr ::= (LOC ident) (* expr) bvint string)
+  (expr ::= (LOC ident) (* expr) bitvector string)
   #;(mem ::= mnil (mcons ident val mem))
   (mem-elem ::= (ident val))
   (mem ::= list<mem-elem>)
-  (val ::= (LOC ident) bvint string ERR #;(DEREF val))
+  (val ::= (LOC ident) bitvector string ERR #;(DEREF val))
   ; use signed bitvectors to represent integers in certain places
-  (bvint ::= bitvector)
   (ident ::= integer)
   (trace ::= list<constant>)
   (constant ::= string integer (pad-by natural))
   ; a configuration consists of an accumulator and a memory value
-  (config ::= (bvint mem))
+  (config ::= (bitvector mem))
   (context ::= (arglist config))
   (behavior ::= (trace config))
   )
@@ -149,52 +147,59 @@
   (and (integer? n)
        (>= n 0)))
 
-
-(define/contract (bonsai->number n)
-  (-> bonsai-integer? integer?)
-  (bonsai-integer-value n))
-
-(define/contract (bonsai->bv b)
+#;(define/contract (bv->bonsai b)
   (-> bonsai-bv? bv?)
   (bonsai-bv-value b))
 
-(define/contract (bvint->number n)
-  (-> bonsai-bv? integer?)
-  (bitvector->integer (bonsai->bv n)))
-(define/contract (bvint->natural n)
-  (-> bonsai-bv? natural?)
-  (bitvector->natural (bonsai->bv n)))
-(define/contract (number->bvint n)
-  (-> integer? bonsai-bv?)
+(define/contract (offset->number o)
+  (-> printf-lang-offset? integer?)
+  (match o
+    [(printf-lang n:natural) n]
+    ))
+
+#;(define/contract (bitvector->number b)
+  (-> printf-lang-bitvector? integer?)
+  (match b
+    [(printf-lang b+:bitvector)
+     (bitvector->integer b+)]
+    ))
+#;(define/contract (bitvector->natural n)
+  (-> printf-lang-bvint? natural?)
+  (match b
+    [(printf-lang b+:bitvector)
+     (bitvector->natural b+)]
+    ))
+#;(define/contract (number->bvint n)
+  (-> integer? printf-lang-bvint?)
   (integer->bonsai-bv n))
 (define/contract (val->number v)
-  (-> bonsai-bv? integer?)
+  (-> printf-lang-bitvector? integer?)
   (match v
-    #;[(printf-lang n:integer) (bonsai->number n)]
-    [(printf-lang n:bvint) (bvint->number n)]
-    [_ (raise-argument-error 'val->number "(printf-lang bvint)" v)]
+    #;[(printf-lang n:integer) n]
+    [(printf-lang n:bitvector) (bitvector->integer n)]
+    [_ (raise-argument-error 'val->number "printf-lang-bitvector?" v)]
     ))
 (define/contract (val->loc v)
-  (-> loc? bonsai-integer?)
+  (-> loc? printf-lang-ident?)
   (match v
     [(printf-lang (LOC x:ident)) x]
     ))
 (define/contract (conf->mem c)
   (-> printf-lang-config? printf-lang-mem?)
   (match c
-    [(printf-lang (bvint m:mem)) m]
+    [(printf-lang (bitvector m:mem)) m]
     ))
 (define/contract (conf->acc c)
   (-> printf-lang-config? bv?)
   (match c
-    [(printf-lang (acc:bvint mem)) (bonsai->bv acc)]
+    [(printf-lang (acc:bitvector mem)) acc]
     [_ (raise-argument-error 'conf->acc "conf" c)]
     ))
 
 (define/contract (param->offset param)
   (-> printf-lang-parameter? integer?)
   (match param
-    [(printf-lang (o:offset $)) (bonsai->number o)]
+    [(printf-lang (o:offset $)) (offset->number o)]
     ))
 
 
@@ -217,7 +222,7 @@
   (printf-lang (,args ,conf)))
 (define/contract (make-config n m)
   (-> integer? printf-lang-mem? printf-lang-config?)
-  (printf-lang (,(integer->bonsai-bv n) ,m)))
+  (printf-lang (,(integer->bv n) ,m)))
 (define (make-config-triv n)
   (make-config n (printf-lang nil)))
 (define/contract (make-behav t n m)
@@ -260,7 +265,7 @@
 
 
 
-(define/contract (bonsai-string-append s1 s2)
+#;(define/contract (bonsai-string-append s1 s2)
   (-> bonsai-string? bonsai-string? bonsai-string?)
   (bonsai-string (string-append (bonsai-string-value s1) (bonsai-string-value s2))))
 
@@ -323,11 +328,11 @@
   (debug (thunk (printf "(config-add ~a ~a)~n" conf n)))
   (let* ([acc   (conf->acc conf)]
          [m     (conf->mem conf)]
-         [n-bv  (bonsai->bv (number->bvint n))]
-         [acc+n (bonsai-bv (bvadd acc n-bv))]
+         [n-bv  (integer->bv n)]
+         [acc+n (bvadd acc n-bv)]
          )
     (begin
-      ; avoid overflow
+      ; uncomment to avoid overflow
       #;(assert (<= acc acc+n))
       (printf-lang (,acc+n ,m))
       )
@@ -356,9 +361,9 @@
   (-> printf-lang-constant? integer?)
   (debug (thunk (printf "(constant-length ~a)~n" c)))
   (define res (match c
-    [(printf-lang s:string)   (string-length (bonsai-string-value s))]
-    [(printf-lang n:integer)  (string-length (number->string (bonsai->number n)))]
-    [(printf-lang (pad-by n:natural)) (bonsai->number n)]
+    [(printf-lang s:string)   (string-length s)]
+    [(printf-lang n:integer)  (string-length (number->string n))]
+    [(printf-lang (pad-by n:natural)) n]
     ))
   (debug (thunk (printf "Computed constant-length: ~a~n" res)))
   res)
@@ -407,7 +412,7 @@
 (define/contract (print-n-loc conf l)
   (-> printf-lang-config? printf-lang-ident? printf-lang-config?)
   (debug (thunk (printf "(print-n-loc ~a)~n" l)))
-  (let* ([acc (bonsai-bv (conf->acc conf))]
+  (let* ([acc (printf-lang ,(conf->acc conf))]
          [new-mem (mem-update (conf->mem conf) l acc)]
          )
     (printf-lang (,acc ,new-mem))
@@ -421,23 +426,27 @@
 ; empty string and proceed silently.                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(define/contract (unsafe:ident->number l)
+  (-> printf-lang-ident? integer?)
+  (match l
+    [(printf-lang x:integer) x]
+    ))
 
 (define/contract (unsafe:val->integer v)
   (-> printf-lang-val? integer?)
   (debug (thunk (printf "(unsafe:val->integer ~a)~n" v)))
   (define res (match v
-    [(printf-lang n:bvint)       (bvint->number n)]
+    [(printf-lang n:bitvector)       (bitvector->integer n)]
     ; if the value is a location, we interpret the location as an integer
-    [(printf-lang (LOC l:ident)) (bonsai->number l)]
+    [(printf-lang (LOC l:ident))     (unsafe:ident->number l)]
     ; for strings, `s` is a boxed string from string.rkt, aka a list of
     ; characters, aka a list of integers. Therefore, interpreting a string as an
     ; integer is just the integer value of the first character in the string. If
     ; the string is the empty string, instead produce 0.
-    [(printf-lang s:string)      (let ([s+ (bonsai-string-value s)])
-                                   (if (equal? (string-length s+) 0)
-                                       0
-                                       (first s+)
-                                       ))]
+    [(printf-lang s:string)      (if (equal? (string-length s) 0)
+                                     0
+                                     (first s)
+                                     )]
     ))
   (debug (thunk (printf "result of unsafe:val->integer: ~a~n" res)))
   res)
@@ -446,8 +455,8 @@
   (-> printf-lang-val? integer?)
   (debug (thunk (printf "(unsafe:val->natural ~a)~n" v)))
   (define res (match v
-    [(printf-lang n:bvint)       (bvint->natural n)]
-    [_                     (unsafe:val->integer v)]
+    [(printf-lang n:bitvector) (bitvector->natural n)]
+    [_                         (unsafe:val->integer v)]
     ))
   (debug (thunk (printf "result of unsafe:val->integer: ~a~n" res)))
   res)
@@ -462,13 +471,13 @@
       [else      (string "")]
       ))
   (define res (match v
-    [(printf-lang s:string) (bonsai-string-value s)]
+    [(printf-lang s:string) s]
     ; for an integer or location, interpret the integer as a character. In
     ; actuality C would expect a null-terminated string in memory, so it would
     ; actually not stop at the single value, but we aren't modeling that for
     ; now.
-    [(printf-lang n:bvint)       (unsafe:char->string (bvint->number n))]
-    [(printf-lang (LOC l:ident)) (unsafe:char->string (bonsai->number l))]
+    [(printf-lang n:bitvector)       (unsafe:char->string (bitvector->integer n))]
+    [(printf-lang (LOC l:ident)) (unsafe:char->string (unsafe:ident->number l))]
     ))
   (debug (thunk (printf "result of unsafe:val->string: ~a~n" res)))
   res)
@@ -481,15 +490,15 @@
     [(printf-lang v:val)
      (match ftype
        ; if ftype = 'd', interpret the argument as an integer
-       [(printf-lang d) (bonsai-integer (unsafe:val->integer v))]
+       [(printf-lang d) (printf-lang ,(unsafe:val->integer v))]
        ; if ftype = 's', interpret the argument as a string
-       [(printf-lang s) #;(bonsai-string (unsafe:val->string v))
+       [(printf-lang s) #;(printf-lang ,(unsafe:val->string v))
         (match v
-          [(printf-lang s:string) s]
+          [(printf-lang s:string) (printf-lang ,s)]
           [_ (printf-lang ERR)]
           )]
        ; if ftype = 'n', interpret the argument as a location aka an integer
-       [(printf-lang n) (bonsai-integer (unsafe:val->integer v))]
+       [(printf-lang n) (printf-lang ,(unsafe:val->integer v))]
        )]))
   (debug (thunk (printf "result of unsafe:fmt->constant: ~a~n" res)))
   res
@@ -528,11 +537,11 @@
      (match (unsafe:fmt->constant ftype p ctx)
        [(printf-lang ERR)        (printf-lang (nil ,conf))]
        [(printf-lang c:constant)
-        (print-trace conf (safe:pad-constant c (bonsai->number w)))]
+        (print-trace conf (safe:pad-constant c w))]
        )]
 
     [(printf-lang (% (p:parameter ((* o:offset) ftype:fmt-type))))
-     (match (lookup-offset (bonsai->number o) ctx)
+     (match (lookup-offset (offset->number o) ctx)
        ; if o is greater than the length of the argument list, no-op
        [(printf-lang ERR)   (printf-lang (nil ,conf))]
        [(printf-lang v:val)
@@ -582,7 +591,7 @@
          [arg (lookup-offset offset ctx)])
     (and (< offset (bonsai-ll-length (context->arglist ctx)))
          (match (cons ftype arg)
-           [(cons (printf-lang d) (printf-lang bvint))       #t]
+           [(cons (printf-lang d) (printf-lang bitvector))   #t]
            [(cons (printf-lang n) (printf-lang (LOC ident))) #t]
            [(cons (printf-lang s) (printf-lang string))      #t]
            [_                                                #f]
@@ -593,8 +602,8 @@
     [(printf-lang NONE) #t]
     [(printf-lang natural) #t]
     [(printf-lang (* o:offset))
-     (and (< (bonsai->number o) (bonsai-ll-length (context->arglist ctx)))
-          (printf-lang-bvint? (lookup-offset (bonsai->number o) ctx)))]
+     (and (< (offset->number o) (bonsai-ll-length (context->arglist ctx)))
+          (printf-lang-bitvector? (lookup-offset (offset->number o) ctx)))]
     ))
 
 

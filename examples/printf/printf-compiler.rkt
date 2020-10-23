@@ -11,8 +11,6 @@
 (require (only-in racket/base
                   [make-string unsafe:make-string]
                   ))
-(require (only-in seec/private/bonsai2
-                  bonsai-pretty))
 (require (only-in seec/private/string
                   char->string))
 (require (prefix-in safe:
@@ -34,7 +32,7 @@
 (define/contract (compile-val v)
   (-> safe:val? unsafe:val?)
   (match v
-    [(safe:printf-lang n:integer) (integer->bonsai-bv (bonsai-integer-value n))]
+    [(safe:printf-lang n:integer) (unsafe:printf-lang ,(integer->bv n))]
     [_ v]
     ))
 

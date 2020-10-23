@@ -34,7 +34,7 @@
 (define/contract (bv-add-integer b x)
   (-> bv? integer? bv?)
   #;(printf "(bv-add-integer ~a ~a)~n" b x)
-  (bvadd b (bonsai-bv-value (integer->bonsai-bv x)))
+  (bvadd b (integer->bv x))
   )
 
 (define/contract (add-constant-spec c p res)
@@ -48,7 +48,7 @@
 (define/contract (safe:add-constant-spec c p res)
   (-> integer? safe:printf-program? safe:behavior? boolean?)
   #;(printf "(add-constant-spec ~a ~a ~a)~n" c p res)
-  (let* ([acc (safe:conf->acc (safe:program->config p))]
+  (let* ([acc  (safe:conf->acc (safe:program->config p))]
          [acc+ (safe:conf->acc (safe:behavior->config res))]
          )
     (equal? acc+ (+ acc c))
@@ -89,7 +89,7 @@
                                                           ; matching against
                                                           ; string literals does
                                                           ; not work currently
-                                                          (equal? s (safe:printf-lang ""))]
+                                                          (equal? s (string ""))]
                                                          [_ #f]))
                          ))
   (display-gadget g displayln)
@@ -110,13 +110,13 @@
                  (cons (% ((0 $) (NONE d))) nil))))
 
   (define/contract (args-concrete y-val) (-> integer? arglist?)
-    (printf-lang (cons ,(integer->bonsai-bv y-val) (cons "" nil))))
+    (printf-lang (cons ,(integer->bv y-val) (cons "" nil))))
   (define/contract (args-bad y-val) (-> integer? arglist?)
-    (printf-lang (cons ,(integer->bonsai-bv y-val)
-                 (cons ,(integer->bonsai-bv y-val) nil))))
+    (printf-lang (cons ,(integer->bv y-val)
+                 (cons ,(integer->bv y-val) nil))))
   (define/contract (args-bad-2 y-val) (-> integer? arglist?)
-    (printf-lang (cons ,(integer->bonsai-bv y-val)
-                 (cons (* ,(integer->bonsai-bv 0))
+    (printf-lang (cons ,(integer->bv y-val)
+                 (cons (* ,(integer->bv 0))
                  nil))))
 
   (define/contract (context-concrete y-val)
@@ -129,7 +129,7 @@
     (-> context? integer? integer? boolean?)
     #;(begin
       (define m (conf->mem (context->config ctx)))
-      (define y-bv (integer->bonsai-bv y-val))
+      (define y-bv (integer->bv y-val))
       (define (constraint args)
         (match args
           [(printf-lang nil) #f]
@@ -142,7 +142,7 @@
       res
       )
     (equal? (lookup-offset idx ctx)
-            (integer->bonsai-bv y-val))
+            (printf-lang ,(integer->bv y-val)))
     )
 
   #;(parameterize ([debug? #t])
@@ -156,7 +156,7 @@
   (define args-symbolic (printf-lang arglist 4))
   (define context-symbolic
     (printf-lang (,args-symbolic
-                  (,(integer->bonsai-bv acc-val)
+                  (,(integer->bv acc-val)
                    nil))))
 
   ; One of the biggest problems is that we will sometimes synthesize a bogus
@@ -204,13 +204,13 @@
   (define m+ (printf-lang mem 2))
   (define/contract (mem-concrete l y-val)
     (-> ident? integer? mem?)
-    (printf-lang (cons (,l ,(integer->bonsai-bv y-val)) ,m+)))
+    (printf-lang (cons (,l ,(integer->bv y-val)) ,m+)))
 
     
   (define/contract (context-concrete l y-val acc-val)
     (-> ident? integer? integer? context?)
     (printf-lang (,(args-concrete l)
-                  (,(integer->bonsai-bv acc-val)
+                  (,(integer->bv acc-val)
                    ,(mem-concrete l y-val)
                    ))))
 
@@ -225,7 +225,7 @@
   (define-symbolic x-val integer?)
   (define-symbolic acc-val integer?)
   (define-symbolic l-val integer?)
-  (define/contract l ident? (bonsai-integer l-val))
+  (define/contract l ident? (printf-lang ,l-val))
 
   #;(define l-val (printf-lang ident 1))
   (display-gadget
@@ -246,35 +246,12 @@
                        ;   be useful, but in the meantime providing sketches is
                        ;   a reasonable compromise.
                        #:context (context-concrete l x-val acc-val)
-                       #:fresh-witness #f
-#|
-                       #:context-constraint (λ (ctx) 
-                                              (and (match (context->arglist ctx)
-                                                     ; NOTE: ideally we could
-                                                     ; just say that l occurs in
-                                                     ; the arglist, not exactly
-                                                     ; the shape of the arglist
-                                                     [(printf-lang (cons s:string
-                                                                   (cons (* (LOC l+:ident))
-                                                                   arglist)))
-                                                      (equal? l+ l)
-                                                      ]
-                                                     [_ #f])
-                                                   (equal? (integer->bonsai-bv acc-val)
-                                                    (bonsai-bv (conf->acc (context->config ctx))))
-                                                   (match (conf->mem (context->config ctx))
-                                                     [(printf-lang (cons (l+:ident v+:bvint) mem))
-                                                      (and (equal? l+ l)
-                                                           (equal? v+ (integer->bonsai-bv x-val)))]
-                                                     [_ #f])
-                                                   )
-                                               )
-|#                      
+                       #:fresh-witness #f                
                        #:forall (list l-val x-val acc-val)
                        )
    displayln)
   )
-(find-load-gadget)
+#;(find-load-gadget)
 
 
 (define (find-add-mem-gadget)
@@ -292,8 +269,8 @@
                  ,args+)))))
   (define/contract (mem-structure l1 x1 l2 x2 m+)
     (-> ident? integer? ident? integer? mem? mem?)
-    (printf-lang (cons (,l1 ,(integer->bonsai-bv x1))
-                 (cons (,l2 ,(integer->bonsai-bv x2))
+    (printf-lang (cons (,l1 ,(integer->bv x1))
+                 (cons (,l2 ,(integer->bv x2))
                  ,m+))))
 
   (define (add-mem-spec l1 l2 l3 p b)
@@ -303,15 +280,16 @@
       ; 4. check if l3 = l1+l2
     (let* ([cfg (context->config (program->context p))]
            [m   (conf->mem cfg)]
-           [m+  (conf->mem (behavior->config b))]
-           [x1  (lookup-loc l1 m)]
-           [x2  (lookup-loc l2 m)]
-           [x3  (lookup-loc l3 m+)]
-           )
-      (and (bonsai-bv? x1) (bonsai-bv? x2) (bonsai-bv? x3)
-           (equal? (bonsai-bv-value x3)
-                   (bvadd (bonsai-bv-value x1)
-                          (bonsai-bv-value x2))))))
+           [m+  (conf->mem (behavior->config b))])
+      (match (list (lookup-loc l1 m)
+                   (lookup-loc l2 m)
+                   (lookup-loc l3 m+))
+        [(list (printf-lang x1:bitvector)
+               (printf-lang x2:bitvector)
+               (printf-lang x3:bitvector))
+         (equal? x3 (bvadd x1 x2))]
+        )))
+
 
   
   #;(parameterize ([debug? #t])
@@ -336,11 +314,11 @@
   (define-symbolic l1-val integer?)
   (define-symbolic l2-val integer?)
   (define-symbolic l3-val integer?)
-  (define l1 (bonsai-integer l1-val)) ; Note: when I made l1, l2, and l3 purely
+  (define l1 (printf-lang ,l1-val)) ; Note: when I made l1, l2, and l3 purely
                                       ; symbolic and quantified over them, I got
                                       ; bogus answers
-  (define l2 (bonsai-integer l2-val))
-  (define l3 (bonsai-integer l3-val))
+  (define l2 (printf-lang ,l2-val))
+  (define l3 (printf-lang ,l3-val))
   (define-symbolic x1-val integer?)
   (define-symbolic x2-val integer?)
   #;(define-symbolic z-val integer?)
@@ -351,8 +329,8 @@
                  (cons (LOC ,l3)
                  ,(printf-lang arglist 2))))))
   (define mem-symbolic
-    (printf-lang (cons (,l1 ,(integer->bonsai-bv x1-val))
-                 (cons (,l2 ,(integer->bonsai-bv x2-val))
+    (printf-lang (cons (,l1 ,(integer->bv x1-val))
+                 (cons (,l2 ,(integer->bv x2-val))
                  ,(printf-lang mem 1)))))
 
   (define context-structure
@@ -361,16 +339,17 @@
                    ,mem-symbolic))))
 
 
-  (display-gadget
-   (find-gadget printf-impl
+  (define sol (find-gadget printf-impl
                        (λ (p b) (add-mem-spec l1 l2 l3 p b))
+                       #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
+                                                                    (program->context p)))
                        #:expr-bound 7
                        #:context context-structure
                        ; NOTE: SEEC is not very good at synthesizing maps based
                        ; on specifications of their contexts... e.g. on what lookup-loc does
                        #:fresh-witness #f
                        #:forall (list l1-val l2-val l3-val x1-val x2-val)
-                       )
-   displayln)
+                       ))
+    (display-gadget sol displayln)
   )
 #;(time (find-add-mem-gadget))

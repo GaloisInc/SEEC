@@ -18,10 +18,7 @@
 
 (define/contract (racket->constant x)
   (-> (or/c integer? string?) safe:const?)
-  (cond
-    [(integer? x) (bonsai-integer x)]
-    [(string? x)  (bonsai-string  x)]
-    ))
+  (safe:printf-lang ,x))
 (define/contract (mk-trace l)
   (-> (listof (or/c integer? string?)) safe:trace?)
   (list->bonsai-ll (map racket->constant l)))
@@ -34,8 +31,8 @@
 (define fmt-d-n (ll-cons      (safe:printf-lang "foo ")
                 (ll-cons      (safe:printf-lang (% (0 $) NONE d))
                 (ll-singleton (safe:printf-lang (% (1 $) NONE n))))))
-(define bv-neg-1 (bitvector->natural (bonsai-bv-value (integer->bonsai-bv -1))))
-(define fmt-decrement (ll-singleton (unsafe:printf-lang (% ((0 $) (,(bonsai-integer bv-neg-1) s))))))
+(define bv-neg-1 (bitvector->natural (integer->bv -1)))
+(define fmt-decrement (ll-singleton (unsafe:printf-lang (% ((0 $) (,bv-neg-1 s))))))
 
 (define arglist-0   (safe:printf-lang nil))
 (define arglist-d-1 (ll-singleton (safe:printf-lang 32 #;(bv 32))))
