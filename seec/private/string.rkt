@@ -6,6 +6,7 @@
                   [integer->char racket/integer->char]
                   [list->string racket/list->string]
                   [string? racket/string?]
+                  [char? racket/char?]
                   [string-append racket/string-append]
                   ))
 (require (only-in racket/base
@@ -18,69 +19,124 @@
 (require racket/contract)
 
 (provide char?
-         string?
-         symbolic-string?
-         print-char
-         print-string
          char
-         string
+         digit->char
          new-symbolic-char
          new-symbolic-char*
+
+         string?
+         string
+         symbolic-string?
          new-symbolic-string
          new-symbolic-string*
          string-length
          number->string
-         digit->char
          char->string
          string-append
-         string
+
          max-str-len
          min-int
          max-int
-
-         #;(rename-out [bv-max-width string/bv-max-width])
          )
 
+
+(define (string-write b port mode)
+  (case mode
+    [(#f) (string-display b (λ (v) (display v port)))]
+    [(#t) (string-print b (λ (v) (display v port)) (lambda (v) (write v port)))]
+    [else (string-print b (λ (v) (display v port)) (lambda (v) (print v port)))]))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Definitions of characters and strings ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(struct seec-char (digit)
+  #:transparent
+  #:methods gen:custom-write
+  [(define write-proc string-write)])
+
 ;; A (printable, ASCII) character is just a number between 32 and 126
-(define (char? c) (and (integer? c) (<= 32 c 126)))
+(define (char? c)
+  (and (seec-char? c)
+       (integer? (seec-char-digit c))
+       (<= 32 (seec-char-digit c) 126)
+       ))
+
+(struct seec-string (value)
+  #:transparent
+  #:methods gen:custom-write
+  [(define write-proc string-write)])
 
 ;; A string is just a list of characters
-(define (string? s) (and (list? s)
-                         (andmap char? s)))
+(define (string? s)
+  (and (seec-string? s)
+       (list? (seec-string-value s))
+       (andmap char? (seec-string-value s))
+       ))
 
 (define (symbolic-string? s)
-  (and (list? s) (ormap term? s)))
+  (and (string? s) (ormap term? (seec-string-value s))))
 
-(define string-append append)
 
-(define (char->racket c)
-  (if (term? c) ; if c is a symbolic term, then don't do anything special
-      c
-      (racket/integer->char c)
-      ))
-(define (print-char c) (char->racket c))
+(define string-append (λ strs
+  (seec-string (apply append (map seec-string-value strs)))))
+#;(define (string-append s1 s2)
+  (seec-string (append (seec-string-value s) ..)))
+
+(define/contract (char->racket c)
+  (-> char? any/c)
+  (let ([c+ (seec-char-digit c)])
+    (if (term? c+) ; if c is a symbolic term, then don't do anything special
+        c+
+        (racket/integer->char c+)
+        )))
+
+
+;;;;;;;;;;;;;;;;;;;;;
+;; Pretty printing ;;
+;;;;;;;;;;;;;;;;;;;;;
+
+(define (print-char c)
+  (char->racket c))
 (define (print-string s)
   (if (symbolic-string? s)
-      s
-      (racket/string-append "\"" (racket/list->string (map char->racket s)) "\"")))
+      (seec-string-value s)
+      (racket/string-append "\""
+                            (racket/list->string (map char->racket (seec-string-value s)))
+                            "\"")))
+
+(define (string-display str out)
+  (cond
+    [(string? str) (out (print-string str))]
+    [(char? str) (out (print-char str))]
+    ))
+(define (string-print str out recur)
+  (cond
+    [(string? str) (out (print-string str))]
+    [(char? str) (out (print-char str))]
+    ))
+
+
+;;;;;;;;;;;;;;;;;;
+;; Constructors ;;
+;;;;;;;;;;;;;;;;;;
 
 ; You can construct a symbolic character using
 ; (define-symbolic c char?)
 ; or construct a concrete character from a racket char using 
 ; (define c (mk-char c0))
-(define (mk-char c)
-  (racket/char->integer c))
-(define (mk-string s)
-  (map mk-char (racket/string->list s)))
+(define/contract (mk-char c)
+  (-> racket/char? char?)
+  (seec-char (racket/char->integer c)))
+(define/contract (mk-string s)
+  (-> racket/string? string?)
+  (seec-string (map char (racket/string->list s))))
 (define (char->string c)
-  (list c))
-
+  (-> char? string?)
+  (seec-string (list c)))
 
 (define (char c) (mk-char c))
-;  (cond 
-;    [(char? c) c]
-;    [(not (term? c)) (mk-char c)]
-;    ))
 
 ; construct either a concrete OR symbolic string
 ; if the input is already a rosette string, do nothing
@@ -88,19 +144,21 @@
 (define (string s)
   (cond
     [(string? s) s]
-    [(not (term? s)) (mk-string s)]
+    [(racket/string? s) (mk-string s)]
     ))
 
 (define (new-symbolic-char)
   (begin
     (define-symbolic c integer?)
-    (assert (char? c))
-    c))
+    (assert (char? (seec-char c)))
+    (seec-char c)))
 (define (new-symbolic-char*)
   (begin
     (define-symbolic* c integer?)
-    (assert (char? c))
-    c))
+    (assert (char? (seec-char c)))
+    (seec-char c)))
+
+
 ; create a symbolic string of length len
 ; len must not be symbolic or termination could occur
 (define (new-symbolic-string len)
@@ -109,7 +167,7 @@
                               '()
                               (cons (new-symbolic-char*) (make-string (- n 1)))))]
            )
-    (make-string len)))
+    (seec-string (make-string len))))
 (define (new-symbolic-string* len)
   (letrec ([c (new-symbolic-char*)]
            [make-string (lambda (n)
@@ -117,7 +175,7 @@
                               '()
                               (cons c (make-string (- n 1)))))]
            )
-    (make-string len)))
+    (seec-string (make-string len))))
 
 
 
@@ -125,7 +183,7 @@
 ;; functions on strings ;;
 (define/contract (string-length s)
   (-> string? integer?)
-  (length s))
+  (length (seec-string-value s)))
 
 ;; given a number n between 0 and 9 inclusive,
 ;; output the character corresponding to n
@@ -133,9 +191,12 @@
 (define/contract (digit->char n)
   (-> integer? char?)
   (assert (<= 0 n 9))
-  (+ n 48)
+  (seec-char (+ n 48))
   )
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Convert nat to string ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (max-int)
   (cond
@@ -155,7 +216,8 @@
      ]
   ))
 
-(define (nat->string+ x fuel)
+(define/contract (nat->string+ x fuel)
+  (-> integer? integer? string?)
   (define res (cond
     [(< fuel 0)    (raise-argument-error 'nat->string+ "ran out of fuel" fuel)]
     [(negative? x) (raise-argument-error 'nat->string+ "natural?" x)]
@@ -198,7 +260,44 @@
     [else (nat->string+ n (max-str-len))]
   ))
 
+;;;;;;;;;;;
+;; Tests ;;
+;;;;;;;;;;;
 
+(define (test-print)
+  (current-bitwidth 32)
+  (define x (mk-char #\x))
+  (displayln x)
+  (printf "x: ~a~n" x)
+  (printf "char? ~a~n~n" (char? x))
+
+  (define x-str (char->string x))
+  (printf "x-str: ~a~n" x-str)
+  (printf "str? ~a~n~n" (string? x-str))
+
+  (define hello (string "hello"))
+  (printf "hello: ~a~n" hello)
+  (printf "length: ~a~n" (string-length hello))
+  (printf "str? ~a~n~n" (string? hello))
+
+  (define hellox (string-append hello x-str))
+  (printf "hellox: ~a~n" hellox)
+
+  (define twenty (number->string 20))
+  (printf "20: ~a~n" twenty)
+  (displayln "")
+
+  (define c-symbolic (new-symbolic-char))
+  (printf "symbolic: ~a~n" (char->racket c-symbolic))
+  (printf "char? ~a~n~n" (char? c-symbolic))
+
+  (define s-symbolic (new-symbolic-string 3))
+  (printf "symbolic: ~a~n" (seec-string-value s-symbolic))
+  (printf "length: ~a~n" (string-length s-symbolic))
+  (printf "str? ~a~n~n" (string? s-symbolic))
+
+  )
+#;(test-print)
 
 (define (test-number->string)
   (current-bitwidth 64)
