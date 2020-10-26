@@ -18,6 +18,48 @@
 (require "string.rkt"
          "match.rkt")
 
+(provide bonsai?
+         (except-out (struct-out bonsai-null) bonsai-null)
+         (except-out (struct-out bonsai-terminal) bonsai-terminal)
+         (rename-out [match-bonsai-null bonsai-null]
+                     [match-bonsai-terminal bonsai-terminal]
+                     )
+
+         bonsai-depth
+         bonsai-leaves
+         bonsai->racket
+         make-tree!
+
+         ; nondeterminism
+         nondet!
+         capture-nondeterminism
+
+         ; bitvectors
+         integer->bv
+         set-bitwidth
+
+         ; seec-lists
+         seec-list?
+         seec-list-of?
+         seec-cons
+         seec-singleton
+         list->seec
+         seec->list
+         seec-length
+         seec-append
+
+         ; solver interfaces
+         concretize
+         instantiate
+         concretize+
+         expand-solution
+
+         ; utilities
+         enum->symbol
+         symbol->enum
+         register-enum
+         )
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Bonsai data structures ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -207,6 +249,20 @@
 ;;;;;;;;;;;;;;;;;;;;;
 ;; Match expanders ;;
 ;;;;;;;;;;;;;;;;;;;;;
+
+(define-match-expander match-bonsai-null
+  (lambda (stx)
+    (syntax-parse stx
+      [(_)
+       #'(? bonsai-null? _)]))
+  (make-rename-transformer #'bonsai-null))
+
+(define-match-expander match-bonsai-terminal
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ pat)
+       #'(? bonsai-terminal? (! bonsai-terminal-value pat))]))
+  (make-rename-transformer #'bonsai-terminal))
 
 
 ;;;;;;;;;;;;;;;;;;
@@ -399,40 +455,86 @@
 ;; Tests ;;
 ;;;;;;;;;;;
 
-(define (seec-list-tests)
+(module* test rosette/safe
+  (require rackunit)
+  (require (submod ".."))
+  (require seec/private/match)
+  (require "string.rkt")
+  (require racket/contract)
+
+  (define null (bonsai-null))
+  (define term (bonsai-terminal (bv 2 32)))
+  (define bool #t)
+  (define bv+  (integer->bv 4))
+  (define int  5)
+  (define chr  (char #\c))
+  (define str  (string "hello"))
+  (define blst (list term null))
+
+  (test-case
+      "Predicate matches"
+    (check-equal? null (match null [(? bonsai-null? x) x]))
+    (check-equal? term (match term [(? bonsai-terminal? x) x]))
+    (check-equal? bool (match bool [(? (and/c bonsai? boolean?) x) x]))
+    (check-equal? bv+  (match bv+  [(? (and/c bonsai? bv?) x) x]))
+    (check-equal? int  (match int  [(? (and/c bonsai? integer?) x) x]))
+    (check-equal? chr  (match chr  [(? (and/c bonsai? char?) x) x]))
+    (check-equal? str  (match str  [(? (and/c bonsai? string?) x) x]))
+    (check-equal? blst (match blst [(? (and/c bonsai? list?) x) x]))
+    )
+
+  (define ll (list->seec (list str bool)))
+  (test-case
+      "linked list"
+    (check-equal? #t (seec-list? ll))
+    (check-equal? 2 (seec-length ll))
+    )
+
+  (test-case
+    "Match expanders"
+  (check-equal? #t
+                (match null
+                  [(bonsai-null) #t]
+                  [_ #f]))
+  (check-equal? (bonsai-terminal-value term)
+                (match term
+                  [(bonsai-terminal v) v]))
+  )
+
+
   (define test0 (bonsai-null))
   (define test1 (seec-cons #t test0))
   (define test2 (seec-cons (string "hi") test1))
+  (test-case "seec-list operations"
 
-  (check-equal? (seec-list? test2)
-                #t
-                "seec-list? failure")
+    (check-equal? (seec-list? test2)
+                  #t
+                  "seec-list? failure")
 
-  (check-equal? (seec-list-of? boolean? test1)
-                #t
-                "seec-list-of? failure")
+    (check-equal? (seec-list-of? boolean? test1)
+                  #t
+                  "seec-list-of? failure")
 
-  (check-equal? (seec-list-of? boolean? test2)
-                #f
-                "seec-list-of? failure")
- 
-  (check-equal? test2
-                (list->seec (list (string "hi") #t))
-                "list->seec failure")
+    (check-equal? (seec-list-of? boolean? test2)
+                  #f
+                  "seec-list-of? failure")
 
-  (check-equal? (seec->list test2)
-                (list (string "hi") #t)
-                "seec->list failure")
+    (check-equal? test2
+                  (list->seec (list (string "hi") #t))
+                  "list->seec failure")
 
+    (check-equal? (seec->list test2)
+                  (list (string "hi") #t)
+                  "seec->list failure")
 
-  (check-equal? (seec-append test2 test2)
-                (list->seec (list (string "hi") #t (string "hi") #t))
-                "seec-append failure"
-                )
+    (check-equal? (seec-append test2 test2)
+                  (list->seec (list (string "hi") #t (string "hi") #t))
+                  "seec-append failure")
 
-  (check-equal? (seec-length test2)
-                2
-                "seec-length failure"
-                )
-  )
-#;(seec-list-tests)
+    (check-equal? (seec-length test2)
+                  2
+                  "seec-length failure")
+    )
+
+)
+

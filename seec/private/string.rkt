@@ -15,6 +15,8 @@
                   raise-arguments-error))
 (require (only-in racket/base
                   [log unsafe/log]))
+(require "match.rkt")
+(require (for-syntax syntax/parse))
 (require rosette/lib/value-browser)
 (require racket/contract)
 
@@ -76,7 +78,7 @@
        ))
 
 (define (symbolic-string? s)
-  (and (string? s) (ormap term? (seec-string-value s))))
+  (not (empty? (symbolics s))))
 
 
 (define string-append (λ strs
@@ -101,10 +103,11 @@
   (char->racket c))
 (define (print-string s)
   (if (symbolic-string? s)
-      (seec-string-value s)
+      (map print-char (seec-string-value s))
       (racket/string-append "\""
                             (racket/list->string (map char->racket (seec-string-value s)))
                             "\"")))
+
 
 (define (string-display str out)
   (cond
@@ -130,8 +133,12 @@
   (-> racket/char? char?)
   (seec-char (racket/char->integer c)))
 (define/contract (mk-string s)
-  (-> racket/string? string?)
-  (seec-string (map char (racket/string->list s))))
+  (-> (or/c string? racket/string?) string?)
+  (cond
+    [(string? s) s]
+    [(racket/string? s) (seec-string (map char (racket/string->list s)))]
+    ))
+
 (define (char->string c)
   (-> char? string?)
   (seec-string (list c)))
@@ -141,11 +148,8 @@
 ; construct either a concrete OR symbolic string
 ; if the input is already a rosette string, do nothing
 ; if the input is a concrete string, apply mk-string
-(define (string s)
-  (cond
-    [(string? s) s]
-    [(racket/string? s) (mk-string s)]
-    ))
+(define (string s) (mk-string s))
+
 
 (define (new-symbolic-char)
   (begin
@@ -178,8 +182,6 @@
     (seec-string (make-string len))))
 
 
-
-  
 ;; functions on strings ;;
 (define/contract (string-length s)
   (-> string? integer?)
@@ -264,72 +266,77 @@
 ;; Tests ;;
 ;;;;;;;;;;;
 
-(define (test-print)
-  (current-bitwidth 32)
-  (define x (mk-char #\x))
+(module* test rosette/safe
+  (require rackunit)
+  (require (submod ".."))
+
+
+  (current-bitwidth 64)
+  (define x (char #\x))
   (displayln x)
   (printf "x: ~a~n" x)
-  (printf "char? ~a~n~n" (char? x))
-
   (define x-str (char->string x))
   (printf "x-str: ~a~n" x-str)
-  (printf "str? ~a~n~n" (string? x-str))
-
   (define hello (string "hello"))
   (printf "hello: ~a~n" hello)
-  (printf "length: ~a~n" (string-length hello))
-  (printf "str? ~a~n~n" (string? hello))
-
-  (define hellox (string-append hello x-str))
-  (printf "hellox: ~a~n" hellox)
-
-  (define twenty (number->string 20))
-  (printf "20: ~a~n" twenty)
-  (displayln "")
 
   (define c-symbolic (new-symbolic-char))
-  (printf "symbolic: ~a~n" (char->racket c-symbolic))
-  (printf "char? ~a~n~n" (char? c-symbolic))
-
+  (printf "symbolic: ~a~n" c-symbolic)
   (define s-symbolic (new-symbolic-string 3))
-  (printf "symbolic: ~a~n" (seec-string-value s-symbolic))
-  (printf "length: ~a~n" (string-length s-symbolic))
-  (printf "str? ~a~n~n" (string? s-symbolic))
+  (printf "symbolic: ~a~n" s-symbolic)
 
-  )
-#;(test-print)
 
-(define (test-number->string)
-  (current-bitwidth 64)
-  (printf "min-int: ~a~n" (min-int))
-  (printf "max-int: ~a~n" (max-int))
-  (define-symbolic x integer?)
-  (assert (equal? x (min-int)))
-  (define-symbolic x-len integer?)
-  (define s (number->string x))
-  (printf "string: ~a~n" s)
-  #;(render-value/window s)
-  (define s-len (string-length s))
-  (printf "string-length: ~a~n" s-len)
-  #;(render-value/window s-len)
 
-  (define sol (synthesize
-               #:forall '()
-               #:guarantee (assert (equal? s-len x-len))
-               ))
-  (if (unsat? sol)
-      (displayln "Synthesis failed")
-      (begin
-        (displayln "Synthesis succeeded")
-        (define complete-sol (complete-solution sol (symbolics x)))
-        (define x-instance (evaluate x complete-sol))
-        (define s-instance (evaluate s complete-sol))
-        (define x-len-instance (evaluate x-len complete-sol))
-        (printf "x: ~a~n" x-instance)
-        (printf "s: ~a~n" s-instance)
-        (printf "string-length: ~a~n" (evaluate (string-length s) complete-sol))
-        (printf "x-len: ~a~n" x-len-instance)
-        (printf "did synthesis succeed? ~a~n" (equal? (string-length s-instance) x-len-instance))
-        ))
+
+
+  (test-case "char?"
+    (check-equal? #t (char? x) "x")
+    (check-equal? #f (char? x-str) "string")
+    )
+  (test-case "string?"
+    (check-equal? #t (string? x-str) "x (string)")
+    (check-equal? #t (string? hello) "hello")
+    (check-equal? #f (string? x)     "char")
+    )
+
+  (test-case "string functions"
+
+    (check-equal? 5 (string-length hello)      "string length")
+    (check-equal? 3 (string-length s-symbolic) "string length (symbolic)")
+
+    (check-equal? (string "hellox") (string-append hello x-str) "string-append")
+
+    (check-equal? (string "20") (number->string 20) "number->string")
+    )
+
+
 )
+  (define (test-number->string)
+    (current-bitwidth 64)
+    (define-symbolic x integer?)
+    (assert (equal? x (min-int)))
+    (define-symbolic x-len integer?)
+    (define s (number->string x))
+    (define s-len (string-length s))
+
+    (define sol (synthesize
+                 #:forall '()
+                 #:guarantee (assert (equal? s-len x-len))
+                 ))
+
+    (if (unsat? sol)
+        (displayln "Synthesis failed")
+        (begin
+          (displayln "Synthesis succeeded")
+          (define complete-sol (complete-solution sol (symbolics x)))
+          (define x-instance (evaluate x complete-sol))
+          (define s-instance (evaluate s complete-sol))
+          (define x-len-instance (evaluate x-len complete-sol))
+          (printf "x: ~a~n" x-instance)
+          (printf "s: ~a~n" s-instance)
+          (printf "string-length: ~a~n" (evaluate (string-length s) complete-sol))
+          (printf "x-len: ~a~n" x-len-instance)
+          (printf "did synthesis succeed? ~a~n" (equal? (string-length s-instance) x-len-instance))
+          ))
+    )
 #;(test-number->string)
