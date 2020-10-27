@@ -21,8 +21,6 @@
          display-weird-component
          display-gadget
          display-list
-         seec-add
-         seec-subtract
          link
          evaluate
          link-and-evaluate
@@ -55,7 +53,7 @@
                               raise-arguments-error
                               )
                     racket/generator))
-         "bonsai2.rkt")
+         "bonsai3.rkt")
 #|
 
  This file provides structures to reason abstractly about weird machines.
@@ -721,8 +719,8 @@
              'synthesize-fresh-context
              "Could not synthesize a fresh context from the given constraints"
              "language" lang
-             "e" (bonsai-pretty e)
-             "context bound" (bonsai-pretty bound-c)
+             "e" e
+             "context bound" bound-c
 ;             "context-constraint" ctx-constraint
 ;             "valid-constraint"   valid-constraint
              )
@@ -983,15 +981,6 @@
 (define (display-list list)
   (for-each displayln list)
   (void))
-
-(define (seec-add n1 n2)
-  (bonsai-integer (+ (bonsai-integer-value n1)
-                     (bonsai-integer-value n2))))
-
-(define (seec-subtract n1 n2)
-  (bonsai-integer (- (bonsai-integer-value n1)
-                     (bonsai-integer-value n2))))
-
 
 (define (clear-all-queries)
   (begin

@@ -28,7 +28,7 @@
 
          bonsai-depth
          bonsai-leaves
-         bonsai->racket
+         seec->racket
          make-tree!
 
          ; nondeterminism
@@ -44,8 +44,11 @@
          seec-list-of?
          seec-empty?
          seec-empty
+         seec-cons?
          seec-cons
          seec-singleton
+         seec-head
+         seec-tail
          list->seec
          seec->list
          seec-length
@@ -116,12 +119,12 @@
     [else 1]
     ))
 
-(define (bonsai->racket b)
+(define (seec->racket b)
   (cond
     [(bonsai-null? b) #f]
     [(bonsai-terminal? b) (enum->symbol (bonsai-terminal-value b))]
     [(list? b)
-     (map bonsai->racket (filter (λ (b) (not (bonsai-null? b)))
+     (map seec->racket (filter (λ (b) (not (bonsai-null? b)))
                                  b))]
     [else b]
     ))
@@ -290,9 +293,9 @@
           (to-indexed ls)))
 
 
-(define (bonsai-head tree)
+(define (seec-head tree)
   (first tree))
-(define (bonsai-tail tree)
+(define (seec-tail tree)
   (second tree))
 
 (define (seec-empty? tree) (bonsai-null? tree))
@@ -324,7 +327,7 @@
 (define (seec-list? tree)
   (or (seec-empty? tree)
       (and (seec-cons? tree)
-           (seec-list? (bonsai-tail tree)))))
+           (seec-list? (seec-tail tree)))))
 
 
 (define/contract (seec-cons x xs)
@@ -345,7 +348,7 @@
   (cond
     [(seec-empty? l) (list )]
     [(seec-cons? l)
-     (cons (bonsai-head l) (seec->list (bonsai-tail l)))]
+     (cons (seec-head l) (seec->list (seec-tail l)))]
     ))
 
 (define (seec-list-of? tp? tree)
@@ -355,14 +358,14 @@
   (cond
     [(seec-empty? tree) 0]
     [(seec-cons? tree)
-     (+ 1 (seec-length (bonsai-tail tree)))]
+     (+ 1 (seec-length (seec-tail tree)))]
     ))
 (define (seec-append tree1 tree2)
   (cond
     [(seec-empty? tree1) tree2]
     [(seec-cons? tree1)
-     (seec-cons (bonsai-head tree1)
-                (seec-append (bonsai-tail tree1) tree2))]
+     (seec-cons (seec-head tree1)
+                (seec-append (seec-tail tree1) tree2))]
     ))
 
 
