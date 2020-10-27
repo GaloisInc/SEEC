@@ -54,17 +54,17 @@
 (define list2-symbolic (lang boollist2 5))
 #;list2-symbolic
 
-#;(bonsai-ll-length list-ex-2)
+#;(seec-length list-ex-2)
 #;list-ex-1
 #;list-ex-2
-#;(define list-ex-3 (bonsai-ll-append list-ex-1 list-ex-2))
+#;(define list-ex-3 (seec-append list-ex-1 list-ex-2))
 #;(length list-ex-3)
 
 #;(printf "bool-list-length: ~a~n" (bool-list-length list-symbolic))
-#;(printf "bonsai-ll-length: ~a~n" (bonsai-ll-length list-symbolic))
+#;(printf "seec-length: ~a~n" (seec-length list-symbolic))
 #;(render-value/window list-symbolic)
 
-#;(verify (assert (<= 0 (bool-list-length (bonsai-ll-append list-symbolic list-symbolic)) 4)))
+#;(verify (assert (<= 0 (bool-list-length (seec-append list-symbolic list-symbolic)) 4)))
 
 (define (tail l)
   (match l
@@ -74,8 +74,8 @@
 (begin
  (define sol (synthesize
               #:forall '()
-              #:guarantee (assert (equal? (bonsai-ll-length list-symbolic)
-                                          (+ 1 (bonsai-ll-length (bonsai-ll-tail list-symbolic)))))
+              #:guarantee (assert (equal? (seec-length list-symbolic)
+                                          (+ 1 (seec-length (seec-tail list-symbolic)))))
               ))
  (if (unsat? sol)
      (displayln "Failed to synthesize")

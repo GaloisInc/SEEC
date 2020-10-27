@@ -2,7 +2,6 @@
 
 (require seec/private/string)
 (require (only-in racket/base integer->char))
-(require seec/private/bonsai3)
 
 (require rosette/lib/value-browser) ; debugging
 
@@ -121,9 +120,6 @@
 
 
 (define (more-tests)
-  #;(define t (bonsai-list (cons (new-char!) (cons (new-char!) (cons (bonsai-null) '())))))
-  #;(define t (make-string-tree! 2 2))
-  #;(define t (new-string! 5))
   (define t (constants string 5))
   (define x (match t
               [(constants s:string) (equal? s (string "hi"))]
