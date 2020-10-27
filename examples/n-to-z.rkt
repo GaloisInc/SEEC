@@ -1,7 +1,5 @@
 #lang seec
 
-
-
 (define (uncurry f)
   (lambda (ab)
     (match ab
@@ -343,7 +341,8 @@
 
 
 (begin
-  (displayln "Trying find-changed-component on N-TO-Z")
+  (displayln "Trying find-weird-component on N-TO-Z")
+
   (let* ([lsol (time (find-weird-component CN-TO-CZ #:count 3))])
     (map (lambda (w)
            (begin
@@ -371,7 +370,7 @@
 
 #;(begin
   (displayln "(2) Trying to find n+1 in EXPN1")
-  (display-gadget (find-gadget EXPN1 (lambda (v) #t) addn1spec) displayln))
+  (display-gadget (find-gadget EXPN1 addn1spec) displayln))
 
 
 ; (3)
@@ -392,6 +391,6 @@
 
 #;(begin
   (displayln "(3) Trying to find n+m in EXPN2")
-  (display-gadget (find-gadget EXPN2 (lambda (v) #t) addnmspec) displayln))
+  (display-gadget (find-gadget EXPN2) addnmspec) displayln))
 
 

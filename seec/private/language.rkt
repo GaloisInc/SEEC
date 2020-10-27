@@ -155,13 +155,13 @@
         ; test if pattern is a tuple of patterns
         [(list? pattern)
          (let ([pattern-length (length pattern)])
-           (and (list? tree)
+           (and (bonsai-list? tree)
                 (andmap-indexed
                  (λ (i tree-i)
                    (cond
                      [(< i pattern-length) (syntax-match? lang (list-ref pattern i) tree-i)]
                      [else (bonsai-null? tree-i)]))
-                 tree)))]
+                 (bonsai-list-nodes tree))))]
 
         [(equal? 'any pattern)
          (bonsai? tree)]
@@ -349,7 +349,7 @@
     (pattern (cons p-first p-rest)
              #:declare p-first    (term lang-name terminals)
              #:declare p-rest     (term lang-name terminals)
-             #:attr match-pattern #'(list p-first.match-pattern p-rest.match-pattern)
+             #:attr match-pattern #'(bonsai-list p-first.match-pattern p-rest.match-pattern)
              #:attr stx-pattern   #'(cons p-first.stx-pattern p-rest.stx-pattern)
              #:attr depth         (datum->syntax
                                    #'((~datum 'cons) p-first p-rest)
@@ -357,7 +357,7 @@
                                               (syntax->datum #'p-rest.depth)))))
     (pattern (p ...)
              #:declare p (term lang-name terminals)
-             #:attr match-pattern #'(list p.match-pattern ...)
+             #:attr match-pattern #'(bonsai-list p.match-pattern ...)
              #:attr stx-pattern   #'(p.stx-pattern ...)
              #:attr depth         (datum->syntax
                                    #'(p ...)
@@ -607,7 +607,7 @@
                                        ;  doing  it  here  would add  a  lot  of
                                        ; unnecessary noise on symbolic terms.
     [(_ lang:id (pat ...))
-     #`(list (make-concrete-term! lang pat) ...)]))
+     #`(bonsai-list (list (make-concrete-term! lang pat) ...))]))
 
 (define-syntax (make-term! stx)
   (syntax-parse stx
@@ -664,11 +664,13 @@
            seec/private/bonsai3)
   (require (for-syntax syntax/parse))
 
+
   (define-grammar test-grammar
     (base     ::= integer natural boolean bitvector)
     (op       ::= + - and or)
-    (exp      ::= base (op exp exp))
+    (exp      ::= base (op exp exp) (Var integer))
     (prog     ::= list<exp>))
+
 
   (test-case
       "Concrete term constructors"
@@ -676,9 +678,10 @@
                   (test-grammar +))
     (check-equal? (bonsai-terminal (symbol->enum 'and))
                   (test-grammar and))
-    (check-equal? (list (bonsai-terminal (symbol->enum '+))
-                        42
-                        #f)
+    (check-equal? (bonsai-list
+                   (list (bonsai-terminal (symbol->enum '+))
+                         42
+                         #f))
                   (test-grammar (+ 42 #f)))
     )
 
@@ -742,7 +745,12 @@
     (match-check
      (test-grammar integer 1)
      (test-grammar n:natural)
-     (>= n 0)))
+     (>= n 0))
+    (match-check
+     (test-grammar exp 3)
+     (test-grammar (Var x:integer))
+     (= x 0))
+    )
 
   (test-case "Types"
      (check-equal? (test-grammar-base? (test-grammar 5)) #t)

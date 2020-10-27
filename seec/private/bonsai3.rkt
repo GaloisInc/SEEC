@@ -22,8 +22,10 @@
 (provide bonsai?
          (except-out (struct-out bonsai-null) bonsai-null)
          (except-out (struct-out bonsai-terminal) bonsai-terminal)
+         (except-out (struct-out bonsai-list) bonsai-list)
          (rename-out [match-bonsai-null bonsai-null]
                      [match-bonsai-terminal bonsai-terminal]
+                     [match-bonsai-list bonsai-list]
                      )
 
          bonsai-depth
@@ -90,6 +92,23 @@
     [(#f) (bonsai-display b (λ (v) (display v port)))]
     [(#t) (bonsai-print b (λ (v) (display v port)) (lambda (v) (write v port)))]
     [else (bonsai-print b (λ (v) (display v port)) (lambda (v) (print v port)))]))
+(define (bonsai-list-equal l r recur)
+  (let ([ll (length (bonsai-list-nodes l))]
+        [lr (length (bonsai-list-nodes r))])
+    (cond
+      [(= ll lr) (recur (bonsai-list-nodes l)
+                        (bonsai-list-nodes r))]
+      [(< ll lr) (and (recur (bonsai-list-nodes l)
+                             (take (bonsai-list-nodes r) ll))
+                      (andmap bonsai-null?
+                              (drop (bonsai-list-nodes r) ll)))]
+      [(> ll lr) (and (recur (take (bonsai-list-nodes l) lr)
+                             (bonsai-list-nodes r))
+                      (andmap bonsai-null?
+                              (drop (bonsai-list-nodes l) lr)))])))
+(define (bonsai-list-hash l recur)
+  (recur (bonsai-list-nodes l)))
+
 
 (struct bonsai-terminal (value)
   #:transparent
@@ -99,6 +118,15 @@
   #:transparent
   #:methods gen:custom-write
   [(define write-proc bonsai-write)])
+(struct bonsai-list (nodes)
+  #:transparent
+  #:methods gen:custom-write
+  [(define write-proc bonsai-write)]
+  #:methods gen:equal+hash
+  [(define equal-proc bonsai-list-equal)
+   (define hash-proc  bonsai-list-hash)
+   (define hash2-proc bonsai-list-hash)])
+
 
 ; A bonsai data structure is either: (1) a list of bonsai data structures; (2) bonsai-terminals;
 ;                                    (3) a primitive type: integer, boolean, char, string, bitvector
@@ -110,16 +138,15 @@
       (char? b)
       (string? b)
       (bv? b)
-      (and (list? b)
-           (andmap bonsai? b))
+      (and (bonsai-list? b)
+           (andmap bonsai? (bonsai-list-nodes b)))
       ))
 
 (define (bonsai-depth b)
   (cond
-    [(list? b)
-     (let ([children (map bonsai-depth b)])
+    [(bonsai-list? b)
+     (let ([children (map bonsai-depth (bonsai-list-nodes b))])
        (+ 1 (apply max children)))]
-    [(bonsai-null? b) 0]
     [else 1]))
 
 ; Count the number of leaves in a bonsai tree
@@ -134,9 +161,9 @@
   (cond
     [(bonsai-null? b) #f]
     [(bonsai-terminal? b) (enum->symbol (bonsai-terminal-value b))]
-    [(list? b)
-     (map seec->racket (filter (λ (b) (not (bonsai-null? b)))
-                                 b))]
+    [(bonsai-list? b)
+     (map seec->racket (filter (lambda (b) (not (bonsai-null? b)))
+                                 (bonsai-list-nodes b)))]
     [else b]
     ))
 
@@ -257,7 +284,7 @@
 (define (make-tree! depth width)
   (cond
     [(<= depth 0) (bonsai-null)]
-    [(havoc!) (make-list width (λ () (make-tree! (- depth 1) width)))]
+    [(havoc!) (bonsai-list (make-list width (λ () (make-tree! (- depth 1) width))))]
     [(havoc!) (new-term!)]
     [(havoc!) (new-integer!)]
     [(havoc!) (new-natural!)]
@@ -287,6 +314,16 @@
        #'(? bonsai-terminal? (! bonsai-terminal-value pat))]))
   (make-rename-transformer #'bonsai-terminal))
 
+(define-match-expander match-bonsai-list
+  (lambda (stx)
+    (syntax-parse stx
+      [(_ pat ...)
+       (with-syntax ([len (datum->syntax stx (length (syntax->list #'(pat ...))))])
+         #'(? bonsai-list?
+              (! (lambda (blist) (take (bonsai-list-nodes blist) len))
+                 (list pat ...))))]))
+  (make-rename-transformer #'bonsai-list))
+
 
 ;;;;;;;;;;;;;;;;;;
 ;; Linked lists ;;
@@ -305,11 +342,6 @@
           (to-indexed ls)))
 
 
-(define (seec-head tree)
-  (first tree))
-(define (seec-tail tree)
-  (second tree))
-
 (define (seec-empty? tree) (bonsai-null? tree))
 
 ; The given tree a seec-list/bonsai-linked-list of the shape
@@ -321,13 +353,14 @@
 ;   - xs matches the pattern as
 ;   - each yi is null
 (define (seec-cons-match? syntax-match-a? syntax-match-as? tree)
-  (and (list? tree)
+  (and (bonsai-list? tree)
+       (list? (bonsai-list-nodes tree))
        (andmap-indexed
         (λ (i tree-i) (cond
                         [(= i 0) (syntax-match-a? tree-i)]
                         [(= i 1) (syntax-match-as? tree-i)]
                         [else (bonsai-null? tree-i)]))
-        tree)))
+        (bonsai-list-nodes tree))))
 (define (seec-list-match? syntax-match-lang? a tree)
   (or (seec-empty? tree)
       (seec-cons-match? (curry syntax-match-lang? a)
@@ -335,16 +368,22 @@
                         tree)))
 
 (define (seec-cons? tree)
-  (seec-cons-match? bonsai? (λ (x) (bonsai? x)) tree))
+  (seec-cons-match? bonsai? bonsai? tree))
+(define (seec-head tree)
+  (first (bonsai-list-nodes tree)))
+(define (seec-tail tree)
+  (second (bonsai-list-nodes tree)))
+
 (define (seec-list? tree)
   (or (seec-empty? tree)
       (and (seec-cons? tree)
+           (bonsai? (seec-head tree))
            (seec-list? (seec-tail tree)))))
-
 
 (define/contract (seec-cons x xs)
   (-> bonsai? seec-list? seec-list?)
-  (list x xs))
+  (bonsai-list (list x xs))) ; This is `list` here, not a cons, because
+                             ; seec-lists are made up of cons cells
 (define seec-empty (bonsai-null))
 (define/contract (seec-singleton x)
   (-> bonsai? seec-list?)
@@ -367,17 +406,18 @@
   (andmap tp? (seec->list tree)))
 
 (define (seec-length tree)
+  (-> seec-list? integer?)
   (cond
     [(seec-empty? tree) 0]
     [(seec-cons? tree)
      (+ 1 (seec-length (seec-tail tree)))]
     ))
-(define (seec-append tree1 tree2)
+(define/contract (seec-append tree1 tree2)
+  (-> seec-list? seec-list? seec-list?)
   (cond
     [(seec-empty? tree1) tree2]
-    [(seec-cons? tree1)
-     (seec-cons (seec-head tree1)
-                (seec-append (seec-tail tree1) tree2))]
+    [else (seec-cons (seec-head tree1)
+                     (seec-append (seec-tail tree1) tree2))]
     ))
 
 
@@ -444,12 +484,13 @@
     [(integer? b)       (out b)]
     [(boolean? b)       (out b)]
     [(bv? b)            (out b)]
-    [(list? b)          (out "(")
-                        (let ([nodes (filter (lambda (n) (not (bonsai-null? n))) b)])
-                          (unless (empty? nodes)
-                            (bonsai-display (first nodes) out)
-                            (map (λ (n) (out " ") (bonsai-display n out)) (rest nodes))))
-                        (out ")")]
+    [(bonsai-list? b)
+     (out "(")
+     (let ([nodes (filter (lambda (n) (not (bonsai-null? n))) (bonsai-list-nodes b))])
+       (unless (empty? nodes)
+         (bonsai-display (first nodes) out)
+         (map (λ (n) (out " ") (bonsai-display n out)) (rest nodes))))
+     (out ")")]
     [(char? b)   (out b)]
     [(string? b) (out b)]
     ))
@@ -462,12 +503,13 @@
      (out ")")]
     [(bonsai-null? b)
      (out "(bonsai-null)")]
-    [(list? b)
-     (out "(list ")
-     (unless (empty? b)
-       (recur (first b))
-       (map (λ (n) (out " ") (recur n)) (rest b)))
-     (out ")")]
+    [(bonsai-list? b)
+     (out "(bonsai-list (list ")
+     (let ([nodes (bonsai-list-nodes b)])
+       (unless (empty? nodes)
+         (recur (first nodes))
+         (map (λ (n) (out " ") (recur n)) (rest nodes))))
+     (out "))")]
     [else (recur b)]
     ))
 
@@ -490,7 +532,7 @@
   (define int  5)
   (define chr  (char #\c))
   (define str  (string "hello"))
-  (define blst (list term null))
+  (define blst (bonsai-list (list term null)))
 
   (test-case
       "Predicate matches"
@@ -501,7 +543,7 @@
     (check-equal? int  (match int  [(? (and/c bonsai? integer?) x) x]))
     (check-equal? chr  (match chr  [(? (and/c bonsai? char?) x) x]))
     (check-equal? str  (match str  [(? (and/c bonsai? string?) x) x]))
-    (check-equal? blst (match blst [(? (and/c bonsai? list?) x) x]))
+    (check-equal? blst (match blst [(? bonsai-list? x) x]))
     )
 
   (define ll (list->seec (list str bool)))
