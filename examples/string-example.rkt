@@ -2,7 +2,7 @@
 
 (require seec/private/string)
 (require (only-in racket/base integer->char))
-(require seec/private/bonsai2)
+(require seec/private/bonsai3)
 
 (require rosette/lib/value-browser) ; debugging
 
@@ -23,7 +23,7 @@
 (displayln hi-desired)
 #;(displayln c-desired)
 #;(match hi-desired
-  [(constants (STR s:string)) (print-string (bonsai-string-value s))]
+  [(constants (STR s:string)) (print-string s)]
   )
 #;(match c-desired
   [(constants (CHAR c:char)) (displayln c)]
@@ -80,12 +80,12 @@
   (define (is-char)
     (match symbolic-exp
       #;[(constants (CHAR c:char)) #t]
-      [(constants (CHAR c:char)) (equal? (bonsai-char-value c) (char #\y))]
+      [(constants (CHAR c:char)) (equal? c (char #\y))]
       [_ #f]))
   (define (is-string)
     (match symbolic-exp
       #;[(constants (STR s:string)) #t]
-      [(constants (STR s:string)) (equal? (bonsai-string-value s) (string "hello"))]
+      [(constants (STR s:string)) (equal? s (string "hello"))]
       [_ #f]))
   (define (is-bool)
     (match symbolic-exp
@@ -126,20 +126,20 @@
   #;(define t (new-string! 5))
   (define t (constants string 5))
   (define x (match t
-              [(constants s:string) (equal? (bonsai-string-value s) (string "hi"))]
-              #;[(constants s:string) (equal? (string-length (bonsai-string-value s)) 3)]
+              [(constants s:string) (equal? s (string "hi"))]
+              #;[(constants s:string) (equal? (string-length s) 3)]
               [_ #f]))
   (displayln x)
-  #;(displayln (string-length (bonsai-string-value t)))
-  #;(displayln (print-string (bonsai-string-value t)))
+  #;(displayln (string-length t))
+  #;(displayln (print-string t))
   #;(displayln t)
-  #;(displayln (= (string-length (bonsai-string-value t)) 3))
-  #;(displayln (equal? (bonsai-string-value t) (string "")))
-  #;(displayln (string? (bonsai-string-value t)))
+  #;(displayln (= (string-length t) 3))
+  #;(displayln (equal? t (string "")))
+  #;(displayln (string? t))
 
   #;(define x (constants string 4))
   #;(match t
-    [(constants s:string) (equal? (bonsai-string-value s) (string "x"))]
+    [(constants s:string) (equal? s (string "x"))]
     [_ #f]
     )
   (displayln #t)
@@ -163,5 +163,8 @@
   (match b
     [(constants #t) #t]
     [_ #f])
+
+  (define X (constants const 2))
+  (displayln (equal? X (constants (BOOL #t))))
   )
-#;(pattern-matching-tests)
+(pattern-matching-tests)

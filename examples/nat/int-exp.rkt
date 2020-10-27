@@ -21,10 +21,10 @@
   (match exp
     [(int-exp n:integer) (int-exp ,n)]
     [(int-exp (+ l:exp r:exp))
-     (int-exp ,(seec-add (int-eval l)
-                         (int-eval r)))]
+     (int-exp ,(+ (int-eval l)
+                  (int-eval r)))]
     [(int-exp (neg? c:exp t:exp f:exp))
-     (if (< (seec->int (int-eval c)) 0)
+     (if (< (int-eval c) 0)
          (int-eval t)
          (int-eval f))]))
 

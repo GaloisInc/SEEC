@@ -11,8 +11,8 @@
   (match exp
     [(nat-exp n:natural) exp]
     [(nat-exp (+ l:exp r:exp))
-     (nat-exp ,(seec-add (eval l)
-                         (eval r)))]))
+     (nat-exp ,(+ (eval l)
+                  (eval r)))]))
 
 (define-language nat-lang
   #:grammar    nat-exp

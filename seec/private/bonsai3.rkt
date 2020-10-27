@@ -29,7 +29,18 @@
          bonsai-depth
          bonsai-leaves
          seec->racket
+
+         ; utilities
          make-tree!
+         havoc!
+         new-boolean!
+         new-bv!
+         new-integer!
+         new-natural!
+         new-char!
+         new-string!
+         new-term!
+         make-list
 
          ; nondeterminism
          nondet!
@@ -242,10 +253,10 @@
       '()))
 
 ; Make a bonsai tree of given depth and width. Both depth and width should be
-; positive integers
+; concrete positive integers
 (define (make-tree! depth width)
-  (assert (> depth 0))
   (cond
+    [(<= depth 0) (bonsai-null)]
     [(havoc!) (make-list width (λ () (make-tree! (- depth 1) width)))]
     [(havoc!) (new-term!)]
     [(havoc!) (new-integer!)]
@@ -256,6 +267,7 @@
     [(havoc!) (new-string! depth)]
     [else     (bonsai-null)]
     ))
+
 
 ;;;;;;;;;;;;;;;;;;;;;
 ;; Match expanders ;;
@@ -544,6 +556,7 @@
                   2
                   "seec-length failure")
     )
+
 
 )
 
