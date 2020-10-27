@@ -114,7 +114,7 @@
         (displayln instance)
         ))
   )
-#;(synthesize-string-in-lang)
+(synthesize-string-in-lang)
 
 
 
@@ -144,7 +144,7 @@
     )
   (displayln #t)
   )
-#;(more-tests)
+(more-tests)
 
 (define (pattern-matching-tests)
   (define t (constants string 1))
