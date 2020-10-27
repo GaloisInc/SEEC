@@ -5,7 +5,7 @@
          enumerate
          make-generator)
 
-(require "bonsai2.rkt"
+(require "bonsai3.rkt"
          "match.rkt"
          (only-in "string.rkt"
                   char
@@ -139,45 +139,45 @@
       (cond
         ; tree patterns
         [(equal? 'nil pattern)
-         (bonsai-null? tree)]
+         (seec-empty? tree)]
         [(and (list? pattern)
               (= (length pattern) 3)
               (equal? (first pattern) 'cons))
-         (bonsai-cons-match?
+         (seec-cons-match?
           (curry syntax-match? lang (second pattern))
           (curry syntax-match? lang (third pattern))
           tree)]
 
         [(symbol-is-polymorphic-type? "list" pattern)
          (let* ([a (extract-polymorphic-type-symbol "list" pattern)])
-           (bonsai-linked-list-match? (curry syntax-match? lang) a tree))]
+           (seec-list-match? (curry syntax-match? lang) a tree))]
 
         ; test if pattern is a tuple of patterns
         [(list? pattern)
          (let ([pattern-length (length pattern)])
-           (and (bonsai-list? tree)
+           (and (list? tree)
                 (andmap-indexed
                  (λ (i tree-i)
                    (cond
                      [(< i pattern-length) (syntax-match? lang (list-ref pattern i) tree-i)]
                      [else (bonsai-null? tree-i)]))
-                 (bonsai-list-nodes tree))))]
+                 tree)))]
 
         [(equal? 'any pattern)
          (bonsai? tree)]
         [(equal? 'integer pattern)
-         (bonsai-integer? tree)]
+         (integer? tree)]
         [(equal? 'natural pattern)
-         (and (bonsai-integer? tree)
-              (>= (bonsai-integer-value tree) 0))]
+         (and (integer? tree)
+              (>= tree 0))]
         [(equal? 'char pattern)
-         (bonsai-char? tree)]
+         (char? tree)]
         [(equal? 'string pattern)
-         (bonsai-string? tree)]
+         (string? tree)]
         [(equal? 'boolean pattern)
-         (bonsai-boolean? tree)]
+         (boolean? tree)]
         [(equal? 'bitvector pattern)
-         (bonsai-bv? tree)]
+         (bv? tree)]
         [(member pattern (grammar-nonterminals lang))
          (let ([productions (cdr (assoc pattern (grammar-productions lang)))])
            #;(printf "productions: ~a~n" productions)
@@ -264,7 +264,7 @@
                          (or (equal? (syntax->datum (after-colon #'n)) 'natural)
                              (equal? (syntax->datum (after-colon #'n)) 'integer))
                          )
-             #:attr match-pattern #`(bonsai-integer #,(before-colon #'n))
+             #:attr match-pattern (before-colon #'n)
              #:attr stx-pattern   (after-colon #'n)
              #:attr depth         #'1)
     (pattern n:id ; (lang-name n:boolean)
@@ -272,7 +272,7 @@
                          (syntax-has-colon? #'n)
                          (equal? (syntax->datum (after-colon #'n)) 'boolean)
                          )
-             #:attr match-pattern #`(bonsai-boolean #,(before-colon #'n))
+             #:attr match-pattern (before-colon #'n)
              #:attr stx-pattern   #'boolean
              #:attr depth         #'1)
     (pattern n:id ; (lang-name n:bitvector)
@@ -280,7 +280,7 @@
                          (syntax-has-colon? #'n)
                          (equal? (syntax->datum (after-colon #'n)) 'bitvector)
                          )
-             #:attr match-pattern #`(bonsai-bv #,(before-colon #'n))
+             #:attr match-pattern (before-colon #'n)
              #:attr stx-pattern   #'bitvector
              #:attr depth         #'1)
     (pattern n:id ; (lang-name n:char)
@@ -288,7 +288,7 @@
                          (syntax-has-colon? #'n)
                          (equal? (syntax->datum (after-colon #'n)) 'char)
                          )
-             #:attr match-pattern #`(bonsai-char #,(before-colon #'n))
+             #:attr match-pattern (before-colon #'n)
              #:attr stx-pattern   #'char
              #:attr depth         #'1)
     (pattern n:id ; (lang-name n:string)
@@ -296,7 +296,7 @@
                          (syntax-has-colon? #'n)
                          (equal? (syntax->datum (after-colon #'n)) 'string)
                          )
-             #:attr match-pattern #`(bonsai-string #,(before-colon #'n))
+             #:attr match-pattern (before-colon #'n)
              #:attr stx-pattern   #'string
              #:attr depth         #'1)
 
@@ -311,34 +311,34 @@
              #:attr depth         #'1)
     (pattern n:integer
              #:when (and (set-member? terminals 'natural) (>= (syntax->datum #'n) 0))
-             #:attr match-pattern #'(bonsai-integer (? (λ (v) (equal? n v)) _))
+             #:attr match-pattern #'(? (λ (v) (equal? n v)) _)
              #:attr stx-pattern   #'integer
              #:attr depth         #'1)
     (pattern n:integer
              #:when (set-member? terminals 'integer)
-             #:attr match-pattern #'(bonsai-integer (? (λ (v) (equal? n v)) _))
+             #:attr match-pattern #'(? (λ (v) (equal? n v)) _)
              #:attr stx-pattern   #'integer
              #:attr depth         #'1)
     (pattern c:char
              #:when (set-member? terminals 'char)
-             #:attr match-pattern #'(bonsai-char (? (λ (v) (equal? c v)) _))
+             #:attr match-pattern #'(? (λ (v) (equal? c v)) _)
              #:attr stx-pattern   #'char
              #:attr depth         #'1)
     (pattern s:string
              #:when (set-member? terminals 'string)
-             #:attr match-pattern #'(bonsai-string (? (λ (v) (equal? s v)) _))
+             #:attr match-pattern #'(? (λ (v) (equal? s v)) _)
              #:attr stx-pattern   #'string
              #:attr depth         #'1)
     (pattern b:boolean
              #:when (set-member? terminals 'boolean)
-             #:attr match-pattern #'(bonsai-boolean (? (λ (v) (equal? b v)) _))
+             #:attr match-pattern #'(? (λ (v) (equal? b v)) _)
              #:attr stx-pattern   #'boolean
              #:attr depth         #'1)
 
     (pattern (bv b)
              #:declare b integer
              #:when (set-member? terminals 'bitvector)
-             #:attr match-pattern #'(bonsai-bv (? (λ (v) (equal? b v)) _))
+             #:attr match-pattern #'(? (λ (v) (equal? b v)) _)
              #:attr stx-pattern   #'bitvector
              #:attr depth         #'1)
     (pattern nil
@@ -349,7 +349,7 @@
     (pattern (cons p-first p-rest)
              #:declare p-first    (term lang-name terminals)
              #:declare p-rest     (term lang-name terminals)
-             #:attr match-pattern #'(bonsai-list p-first.match-pattern p-rest.match-pattern)
+             #:attr match-pattern #'(list p-first.match-pattern p-rest.match-pattern)
              #:attr stx-pattern   #'(cons p-first.stx-pattern p-rest.stx-pattern)
              #:attr depth         (datum->syntax
                                    #'((~datum 'cons) p-first p-rest)
@@ -357,7 +357,7 @@
                                               (syntax->datum #'p-rest.depth)))))
     (pattern (p ...)
              #:declare p (term lang-name terminals)
-             #:attr match-pattern #'(bonsai-list p.match-pattern ...)
+             #:attr match-pattern #'(list p.match-pattern ...)
              #:attr stx-pattern   #'(p.stx-pattern ...)
              #:attr depth         (datum->syntax
                                    #'(p ...)
@@ -586,42 +586,30 @@
     #:literals (unquote)
     #:literal-sets (builtin-terminals)
     [(_ lang:id nil)
-     #'(bonsai-null)]
+     #'seec-empty]
     [(_ lang:id (cons p-first p-rest))
-     #`(bonsai-list (list (make-concrete-term! lang p-first) (make-concrete-term! lang p-rest)))]
+     #`(seec-cons (make-concrete-term! lang p-first) (make-concrete-term! lang p-rest))]
     [(_ lang:id (bv b))
-     #`(integer->bonsai-bv b)]
+     #`(integer->bv b)]
 
     [(_ lang:id n:integer)
-     #`(bonsai-integer n)]
+     #'n]
     [(_ lang:id c:char)
-     #`(bonsai-char (char c))]
+     #'(char c)]
     [(_ lang:id s:string)
-     #`(bonsai-string (string s))]
+     #'(string s)]
     [(_ lang:id b:boolean)
-     #`(bonsai-boolean b)]
+     #'b]
     [(_ lang:id s:id)
      #`(bonsai-terminal (symbol->enum 's))]
-    [(_ lang:id (unquote e-lazy:expr)) ; TODO: make this a syntax class with an attribute for the constructor? When e is symbolic, this might be leading to a much bigger symbolic term?
-     #`(let ([e e-lazy]) ; evaluate e-lazy here to a normal form
-       (cond
-       [(integer? e)       (bonsai-integer e)]
-       [(boolean? e)       (bonsai-boolean e)]
-       [(bv? e)            (bonsai-bv e)]
-       [(char? e)          (bonsai-char e)]
-       [(string? e)        (bonsai-string e)]
-       [(racket/char? e)   (bonsai-char (char e))]
-       [(racket/string? e) (bonsai-string (string e))]
-       [(bonsai? e)        e]
-       [else               (raise-argument-error 'make-concrete-term!
-                              "(or/c bonsai? integer? boolean? bv? char? string?)"
-                              e)]))
-     ]
+    [(_ lang:id (unquote e:expr)) #'e] ; TODO: do  we want to add a check that e
+                                       ;  has bonsai?  type? If  so, I'm  afraid
+                                       ;  doing  it  here  would add  a  lot  of
+                                       ; unnecessary noise on symbolic terms.
     [(_ lang:id (pat ...))
-     #`(bonsai-list (list (make-concrete-term! lang pat) ...))]))
+     #`(list (make-concrete-term! lang pat) ...)]))
 
 (define-syntax (make-term! stx)
-  #;(printf "make-term! ~a ~n" stx)
   (syntax-parse stx
     [(_ lang:id pat depth:expr)
      #`(let ([tree (make-tree! depth (grammar-max-width lang))])
@@ -660,6 +648,10 @@
                            [t (unsafe:in-producer generator #f)])
                           t))]))
 
+;;;;;;;;;;;
+;; TESTS ;;
+;;;;;;;;;;;
+
 (module* test rosette/safe
   (require rackunit)
   (require (only-in racket/base
@@ -669,7 +661,7 @@
                     current-continuation-marks))
   (require (submod ".."))
   (require seec/private/match
-           seec/private/bonsai2)
+           seec/private/bonsai3)
   (require (for-syntax syntax/parse))
 
   (define-grammar test-grammar
@@ -684,11 +676,11 @@
                   (test-grammar +))
     (check-equal? (bonsai-terminal (symbol->enum 'and))
                   (test-grammar and))
-    (check-equal? (bonsai-list
-                   (list (bonsai-terminal (symbol->enum '+))
-                         (bonsai-integer 42)
-                         (bonsai-boolean #f)))
-                  (test-grammar (+ 42 #f))))
+    (check-equal? (list (bonsai-terminal (symbol->enum '+))
+                        42
+                        #f)
+                  (test-grammar (+ 42 #f)))
+    )
 
   (define-syntax (match-check stx)
     (syntax-parse stx
@@ -703,28 +695,27 @@
     (match-check
      (test-grammar 5)
      (test-grammar i:integer)
-     (eq? 5 (bonsai-integer-value i)))
+     (eq? 5 i))
     (match-check
      (test-grammar -5)
      (test-grammar i:integer)
-     (eq? -5 (bonsai-integer-value i)))
+     (eq? -5 i))
     (match-check
      (test-grammar 5)
      (test-grammar n:natural)
-     (eq? 5 (bonsai-integer-value n)))
+     (eq? 5 n))
     (match-check
      (test-grammar #t)
      (test-grammar b:boolean)
-     (bonsai-boolean-value b))
+     b)
     (match-check
      (test-grammar #f)
      (test-grammar b:boolean)
-     (not (bonsai-boolean-value b)))
-    ; TODO: change bv to to-bv ?
+     (not b))
     (match-check
      (test-grammar (bv 3))
      (test-grammar b:bitvector)
-     (eq? (integer->bonsai-bv 3) b))
+     (eq? (integer->bv 3) b))
     (match-check
      (test-grammar (+ 5 #f))
      (test-grammar exp)
@@ -747,11 +738,11 @@
     (match-check
      (test-grammar integer 1)
      (test-grammar i:integer)
-     (bonsai-integer? i))
+     (integer? i))
     (match-check
      (test-grammar integer 1)
      (test-grammar n:natural)
-     (>= (bonsai-integer-value n) 0)))
+     (>= n 0)))
 
   (test-case "Types"
      (check-equal? (test-grammar-base? (test-grammar 5)) #t)

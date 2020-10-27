@@ -7,7 +7,8 @@
                   make-parameter
                   parameterize
                   write-string
-                  values))
+                  values
+                  ))
 (require (only-in racket/base
                   raise-argument-error
                   raise-arguments-error))
@@ -41,12 +42,17 @@
          ; seec-lists
          seec-list?
          seec-list-of?
+         seec-empty?
+         seec-empty
          seec-cons
          seec-singleton
          list->seec
          seec->list
          seec-length
          seec-append
+         ; seec-list-utilities
+         seec-cons-match?
+         seec-list-match?
 
          ; solver interfaces
          concretize
@@ -58,6 +64,7 @@
          enum->symbol
          symbol->enum
          register-enum
+         andmap-indexed
          )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -234,6 +241,7 @@
 ; Make a bonsai tree of given depth and width. Both depth and width should be
 ; positive integers
 (define (make-tree! depth width)
+  (assert (> depth 0))
   (cond
     [(havoc!) (make-list width (λ () (make-tree! (- depth 1) width)))]
     [(havoc!) (new-term!)]
@@ -287,6 +295,8 @@
 (define (bonsai-tail tree)
   (second tree))
 
+(define (seec-empty? tree) (bonsai-null? tree))
+
 ; The given tree a seec-list/bonsai-linked-list of the shape
 ; (list<ty> ::= nil (x:ty l:list<ty>))
 ; that is, it is a bonsai tree that is either null, or has the shape
@@ -295,7 +305,7 @@
 ;   - x matches the pattern a 
 ;   - xs matches the pattern as
 ;   - each yi is null
-(define (bonsai-cons-match? syntax-match-a? syntax-match-as? tree)
+(define (seec-cons-match? syntax-match-a? syntax-match-as? tree)
   (and (list? tree)
        (andmap-indexed
         (λ (i tree-i) (cond
@@ -303,58 +313,54 @@
                         [(= i 1) (syntax-match-as? tree-i)]
                         [else (bonsai-null? tree-i)]))
         tree)))
-(define (bonsai-linked-list-match? syntax-match-lang? a tree)
-  (or (bonsai-null? tree)
-      (bonsai-cons-match? (curry syntax-match-lang? a)
-                          (curry bonsai-linked-list-match? syntax-match-lang? a)
-                          tree)))
+(define (seec-list-match? syntax-match-lang? a tree)
+  (or (seec-empty? tree)
+      (seec-cons-match? (curry syntax-match-lang? a)
+                        (curry seec-list-match? syntax-match-lang? a)
+                        tree)))
 
-(define (bonsai-cons? tree)
-  (bonsai-cons-match? bonsai? (λ (x) (bonsai? x)) tree))
+(define (seec-cons? tree)
+  (seec-cons-match? bonsai? (λ (x) (bonsai? x)) tree))
 (define (seec-list? tree)
-  (or (bonsai-null? tree)
-      (and (bonsai-cons? tree)
+  (or (seec-empty? tree)
+      (and (seec-cons? tree)
            (seec-list? (bonsai-tail tree)))))
 
 
 (define/contract (seec-cons x xs)
   (-> bonsai? seec-list? seec-list?)
   (list x xs))
+(define seec-empty (bonsai-null))
 (define/contract (seec-singleton x)
   (-> bonsai? seec-list?)
-  (seec-cons x (bonsai-null)))
+  (seec-cons x seec-empty))
 (define/contract (list->seec l)
   (-> (listof bonsai?) seec-list?)
   (cond
-    [(empty? l) (bonsai-null)]
+    [(empty? l) seec-empty]
     [else (seec-cons (first l) (list->seec (rest l)))]
     ))
 (define/contract (seec->list l)
   (-> seec-list? (listof bonsai?))
   (cond
-    [(bonsai-null? l) (list )]
-    [(bonsai-cons? l)
+    [(seec-empty? l) (list )]
+    [(seec-cons? l)
      (cons (bonsai-head l) (seec->list (bonsai-tail l)))]
     ))
 
 (define (seec-list-of? tp? tree)
-  (cond
-    [(bonsai-null? tree) #t]
-    [(bonsai-cons? tree)
-     (and (tp? (bonsai-head tree))
-          (seec-list-of? tp? (bonsai-tail tree)))]
-    ))
+  (andmap tp? (seec->list tree)))
 
 (define (seec-length tree)
   (cond
-    [(bonsai-null? tree) 0]
-    [(bonsai-cons? tree)
+    [(seec-empty? tree) 0]
+    [(seec-cons? tree)
      (+ 1 (seec-length (bonsai-tail tree)))]
     ))
 (define (seec-append tree1 tree2)
   (cond
-    [(bonsai-null? tree1) tree2]
-    [(bonsai-cons? tree1)
+    [(seec-empty? tree1) tree2]
+    [(seec-cons? tree1)
      (seec-cons (bonsai-head tree1)
                 (seec-append (bonsai-tail tree1) tree2))]
     ))
