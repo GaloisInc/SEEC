@@ -180,7 +180,6 @@
          (bv? tree)]
         [(member pattern (grammar-nonterminals lang))
          (let ([productions (cdr (assoc pattern (grammar-productions lang)))])
-           #;(printf "productions: ~a~n" productions)
            (ormap (λ (pat) (syntax-match? lang pat tree)) productions))]
         [(member pattern (grammar-terminals lang))
          (and (bonsai-terminal? tree)
@@ -258,49 +257,7 @@
              #:attr match-pattern #'_
              #:attr stx-pattern   #'n
              #:attr depth         #'1)
-    (pattern n:id ; (lang-name n:natural) or (lang-name n:integer)
-             #:when (and (syntax? #'n)
-                         (syntax-has-colon? #'n)
-                         (or (equal? (syntax->datum (after-colon #'n)) 'natural)
-                             (equal? (syntax->datum (after-colon #'n)) 'integer))
-                         )
-             #:attr match-pattern (before-colon #'n)
-             #:attr stx-pattern   (after-colon #'n)
-             #:attr depth         #'1)
-    (pattern n:id ; (lang-name n:boolean)
-             #:when (and (syntax? #'n)
-                         (syntax-has-colon? #'n)
-                         (equal? (syntax->datum (after-colon #'n)) 'boolean)
-                         )
-             #:attr match-pattern (before-colon #'n)
-             #:attr stx-pattern   #'boolean
-             #:attr depth         #'1)
-    (pattern n:id ; (lang-name n:bitvector)
-             #:when (and (syntax? #'n)
-                         (syntax-has-colon? #'n)
-                         (equal? (syntax->datum (after-colon #'n)) 'bitvector)
-                         )
-             #:attr match-pattern (before-colon #'n)
-             #:attr stx-pattern   #'bitvector
-             #:attr depth         #'1)
-    (pattern n:id ; (lang-name n:char)
-             #:when (and (syntax? #'n)
-                         (syntax-has-colon? #'n)
-                         (equal? (syntax->datum (after-colon #'n)) 'char)
-                         )
-             #:attr match-pattern (before-colon #'n)
-             #:attr stx-pattern   #'char
-             #:attr depth         #'1)
-    (pattern n:id ; (lang-name n:string)
-             #:when (and (syntax? #'n)
-                         (syntax-has-colon? #'n)
-                         (equal? (syntax->datum (after-colon #'n)) 'string)
-                         )
-             #:attr match-pattern (before-colon #'n)
-             #:attr stx-pattern   #'string
-             #:attr depth         #'1)
-
-    (pattern n:id ; (lang-name n:X) for X a non-builtin type
+    (pattern n:id ; (lang-name n:X) for X a type
              #:when (and (syntax? #'n)
                          (syntax-has-colon? #'n)
                          (is-type? terminals (after-colon #'n))

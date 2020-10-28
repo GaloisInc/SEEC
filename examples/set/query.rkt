@@ -34,8 +34,8 @@
 (define (add1-concrete? prog res)
   (match (cons prog res)
     [(cons (cons _ init-set) (cons _ res-set))
-     (equal? (bonsai-ll-length res-set)
-             (+ 1 (bonsai-ll-length init-set)))
+     (equal? (seec-length res-set)
+             (+ 1 (seec-length init-set)))
      ]
     [_ #f]
     ))
