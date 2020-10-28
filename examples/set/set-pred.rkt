@@ -3,7 +3,7 @@
 (provide (all-defined-out))
 (set-bitwidth 4)
 
-(define (bonsai->number n)
+#;(define (bonsai->number n)
   (match n
     [(bonsai-integer i) i]
     ))
@@ -292,6 +292,7 @@
           (displayln "decoder...")
           (displayln c-decoder)))
     ))
+
 
 ; Natural numbers in set from definition of z and +
 ; NOTE: this would not work in buggy set
