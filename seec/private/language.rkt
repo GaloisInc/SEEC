@@ -270,12 +270,12 @@
              #:attr depth         #'1)
     (pattern c:char
              #:when (set-member? terminals 'char)
-             #:attr match-pattern #'(bonsai-char (? (λ (v) (equal? c v)) _))
+             #:attr match-pattern #'(bonsai-char (? (λ (v) (equal? (char c) v)) _))
              #:attr stx-pattern   #'char
              #:attr depth         #'1)
     (pattern s:string
              #:when (set-member? terminals 'string)
-             #:attr match-pattern #'(bonsai-string (? (λ (v) (equal? s v)) _))
+             #:attr match-pattern #'(bonsai-string (? (λ (v) (equal? (string s) v)) _))
              #:attr stx-pattern   #'string
              #:attr depth         #'1)
     (pattern b:boolean
