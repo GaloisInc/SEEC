@@ -7,6 +7,12 @@
     [(bonsai-integer i) i]
     ))
 
+(define (uncurry f)
+  (lambda (ab)
+    (match ab
+      [(cons a b)
+       (f a b)])))
+ 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Define a language of API calls for a set datastructure
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -268,6 +274,26 @@
 ;; Expected:
 ;;; decoder: (set-api (member? 1))
 ;;; gadget: (set-api (if (member? 1) (seq (remove 1) nop) (seq (insert 1) nop)))
+
+(define-language set-lang
+  #:grammar set-api
+  #:expression interaction #:size 4
+  #:context set #:size 3
+  #:link cons
+  #:evaluate (uncurry interpret-interaction))
+
+
+(define-attack obs-int
+  #:grammar set-api
+  #:gadget interaction #:size 4
+  #:evaluate-gadget interpret-interaction
+  #:decoder observation #:size 2
+  #:evaluate-decoder interpret-dec)
+
+(define funs (list (lambda (x) x) (lambda (x) (not x))))
+(displayln (find-related-gadgets set-lang obs-int funs))
+
+
 (define (test-spec-member)
   (begin
     (define spec (lambda (x) (not x)))
@@ -587,3 +613,44 @@
           (displayln "decoder...")
           (displayln c-decoder)))))
 
+
+#|
+What we have: a list of individual specifications of type
+\x. S_i x
+
+s.t. forall s
+   S_i D s == D (G_i s)
+
+
+D can be parameterized by the type of what we are decoding:
+assume S_i takes 2 imput and returns one (e.g. +), 
+for type S/G: t -> t'
+
+S_i (D_t s) == D_t' (G_i s)
+
+
+We also want to be able to give relation specifcations between multiple S.
+assume Si : ti -> ti' and Sj : tj -> tj'
+
+
+\S. \x:t. F S0 ... Sn x
+
+then it should be the case that forall s, 
+     F G_0  ...  G_n (D_t s)
+
+e.g. \S_s S_p x, S_s S_p x = S_p S_s x
+which goes to 
+  (G_s G_p x) = (G_p G_s x)
+rather than 
+
+find_related_gadgets: language -> list(n) specification -> (bool x list(n) nat x nat) -> rel_spec -> list(n) gadget
+
+synthesize
+#:forall x
+#:guarantee 
+(and (decoder_i' (gadget_i set) = spec_i (decoder_i set))
+     ...
+     rel_spec list_gadget set)
+
+
+|#

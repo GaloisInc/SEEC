@@ -2,7 +2,9 @@
 @(require scribble/core)
 @(require scribble-math)
 @title{The SEEC framework}
+@section{SEEC @racket[language]}
 
+@section{SEEC @racket[compiler]}
 
 @section{@racket[find-weird-behavior]}
 SEEC's @racket[find-weird-behavior] function is a built-in query that attempts to find emergent behaviors in a target language with respect to compilation from a source language.

@@ -3,6 +3,7 @@
 (provide current-default-bound
          define-language
          refine-language
+         define-attack
          define-compiler
          (struct-out language)
          (struct-out compiler)
@@ -12,6 +13,7 @@
          find-weird-component
          find-weird-behavior
          find-gadget
+         find-related-gadgets
          (struct-out solution)
          unpack-language-witness
          unpack-language-witnesses
@@ -115,6 +117,19 @@
 ; evaluate : program -> behavior
 (struct language (expression context link evaluate))
 
+
+; An attack over a language is
+; gadget: predsyn
+; decoder: predsyn
+; evaluate-gadget: context -> gadget -> context
+; evaluate-decoder: context -> decoder -> T
+(struct attack (gadget evaluate-gadget decoder evaluate-decoder))
+
+
+
+
+  
+
 (define (link language expr context)
   ((language-link language) expr context))
 
@@ -136,6 +151,19 @@
              #:with gen #'nt
              #:with pred #'p
              #:with bound #'n)))
+
+(define-syntax (define-attack stx)
+  (syntax-parse stx
+    [(_ name
+        #:grammar grammar
+        #:gadget gadget:predsyn
+        #:evaluate-gadget eval-gadget
+        #:decoder decoder:predsyn
+        #:evaluate-decoder eval-decoder)
+     #'(define name
+         (let* ([predgadget (define-predsyn grammar gadget.gen gadget.pred gadget.bound)]
+                [preddecoder (define-predsyn grammar decoder.gen decoder.pred decoder.bound)])
+           (attack predgadget eval-gadget preddecoder eval-decoder)))]))
 
 (define-syntax (define-language stx)
   (syntax-parse stx
@@ -160,7 +188,7 @@
         #:evaluate   eval)
      #'(define (name expr-tuple ctx-tuple)         
          (let* ([predexp (define-predsyn grammar expr (first expr-tuple) (second expr-tuple))]
-                [predctx (define-predsyn grammar ctxt (first ctx-tuple) (second expr-tuple))])
+                [predctx (define-predsyn grammar ctxt (first ctx-tuple) (second gadget-tuple))])
            (language predexp predctx link eval)))]))
 
 
@@ -714,6 +742,57 @@
   (-> any/c (listof language-witness?) boolean?)
   (ormap (λ (w) (equal? e (language-witness-expression w)))
          witness-list))
+
+
+
+
+
+
+; this is the single-type version, i.e. all funs T -> T and there's a single decoder of type context -> T
+(define/contract find-related-gadgets
+  (->* (language?
+        attack?
+        (listof (-> any/c any/c)))
+       (#:valid (-> any/c boolean?))
+       (or/c #f (listof any/c)))
+  (lambda (lang
+           attack 
+           funs ; lists of unary racket functions representing the specification of each gadget 
+           #:valid [rel-spec (lambda (x) #t)]) ; predicate over a list of gadget representing the relation-specification they have to adhere to
+    (let* ([decoder (make-symbolic-var (attack-decoder attack))] ; make a single decoder in the single-type version
+           [gadgets (map (lambda (f) (make-symbolic-var (attack-gadget attack))) funs)]  ; for each function, we create a symbolic gadget
+           [eval-gadget (attack-evaluate-gadget attack)]
+           [eval-dec    (attack-evaluate-decoder attack)]
+           [ctx (make-symbolic-var (language-context lang))]
+           [fgs (map cons funs gadgets)]
+          #;[fun-gadget-asserts (map (lambda (fg)
+                                      (with-asserts-only
+                                        (assert
+                                         (equal?
+                                          (eval-dec decoder (eval-gadget (cdr fg) ctx))
+                                          ((car fg) (eval-dec decoder ctx))))))
+                                    fgs)]
+           [sol (synthesize #:forall ctx
+                            #:guarantee (map (lambda (fg)
+                                        (assert
+                                         (equal?
+                                          (eval-dec decoder (eval-gadget (cdr fg) ctx))
+                                          ((car fg) (eval-dec decoder ctx))))) fgs))])
+                                         #;(and fun-gadget-asserts)
+      (if (unsat? sol)
+          (begin
+            (displayln "Synthesis failed")
+            #f)
+          (begin
+            (displayln "Synthesis succeeded")
+            (concretize (cons decoder gadgets) sol))))))
+           
+
+
+
+
+
+
 
 ; `es` is a list of pairs of expressions and contexts
 (define (expr-in-expr-list? e es)
