@@ -11,8 +11,6 @@
 (require (only-in racket/base
                   [make-string unsafe:make-string]
                   ))
-(require (only-in seec/private/bonsai2
-                  bonsai-pretty))
 (require (only-in seec/private/string
                   char->string))
 (require (prefix-in safe:
@@ -147,9 +145,6 @@
   (and (integer? n)
        (>= n 0)))
 
-#;(define/contract (bv->bonsai b)
-  (-> bonsai-bv? bv?)
-  (bonsai-bv-value b))
 
 (define/contract (offset->number o)
   (-> printf-lang-offset? integer?)
@@ -445,7 +440,7 @@
     ; the string is the empty string, instead produce 0.
     [(printf-lang s:string)      (if (equal? (string-length s) 0)
                                      0
-                                     (first s)
+                                     (char->ascii (first (string->char-list s)))
                                      )]
     ))
   (debug (thunk (printf "result of unsafe:val->integer: ~a~n" res)))
@@ -569,7 +564,7 @@
 
      (let* ([b1 (interp-fmt-elt-unsafe f1 (make-context args conf))]
             [b2 (interp-fmt-unsafe f+ args (behavior->config b1))]
-            [t+ (bonsai-ll-append (behavior->trace b1) (behavior->trace b2))]
+            [t+ (seec-append (behavior->trace b1) (behavior->trace b2))]
             )
        (printf-lang (,t+ ,(behavior->config b2))))
      ]
@@ -589,7 +584,7 @@
   (-> printf-lang-parameter? printf-lang-fmt-type? context? boolean?)
   (let* ([offset (param->offset p)]
          [arg (lookup-offset offset ctx)])
-    (and (< offset (bonsai-ll-length (context->arglist ctx)))
+    (and (< offset (seec-length (context->arglist ctx)))
          (match (cons ftype arg)
            [(cons (printf-lang d) (printf-lang bitvector))   #t]
            [(cons (printf-lang n) (printf-lang (LOC ident))) #t]
@@ -602,7 +597,7 @@
     [(printf-lang NONE) #t]
     [(printf-lang natural) #t]
     [(printf-lang (* o:offset))
-     (and (< (offset->number o) (bonsai-ll-length (context->arglist ctx)))
+     (and (< (offset->number o) (seec-length (context->arglist ctx)))
           (printf-lang-bitvector? (lookup-offset (offset->number o) ctx)))]
     ))
 

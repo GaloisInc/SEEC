@@ -49,7 +49,7 @@
   (match l
     [(safe:printf-lang nil) l]
     [(safe:printf-lang (cons e:expr l+:arglist))
-     (ll-cons (compile-expr e) (compile-arglist l+))]
+     (seec-cons (compile-expr e) (compile-arglist l+))]
     ))
 
 (define/contract (compile-mem m)

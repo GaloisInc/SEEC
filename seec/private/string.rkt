@@ -35,6 +35,8 @@
          number->string
          char->string
          string-append
+         string->char-list
+         char->ascii
 
          max-str-len
          min-int
@@ -64,6 +66,9 @@
        (integer? (seec-char-digit c))
        (<= 32 (seec-char-digit c) 126)
        ))
+(define/contract (char->ascii c)
+  (-> char? integer?)
+  (seec-char-digit c))
 
 (struct seec-string (value)
   #:transparent
@@ -195,6 +200,10 @@
   (assert (<= 0 n 9))
   (seec-char (+ n 48))
   )
+
+(define/contract (string->char-list s)
+  (-> string? (listof char?))
+  (seec-string-value s))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Convert nat to string ;;

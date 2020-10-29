@@ -11,8 +11,6 @@
 (require (only-in racket/base
                   [make-string unsafe:make-string]
                   ))
-(require (only-in seec/private/bonsai2
-                  bonsai-pretty))
 (require (only-in seec/private/string
                   char->string))
 
@@ -426,8 +424,8 @@
   (define res (let* ([c-len (constant-length c)]
          )
     (cond
-      [(<= w c-len) (ll-singleton c)]
-      [else         (ll-cons (printf-lang (pad-by ,(- w c-len))) (ll-singleton c))]
+      [(<= w c-len) (seec-singleton c)]
+      [else         (seec-cons (printf-lang (pad-by ,(- w c-len))) (seec-singleton c))]
       )))
   (debug (thunk (printf "result of pad-constant: ~a~n" res)))
   res)
@@ -497,7 +495,7 @@
         (match (interp-fmt f+ args conf+)
           [(printf-lang ERR) (printf-lang ERR)]
           [(printf-lang (t2:trace conf++:config))
-           (printf-lang (,(bonsai-ll-append t1 t2) ,conf++))]
+           (printf-lang (,(seec-append t1 t2) ,conf++))]
           )]
        )
 
@@ -513,13 +511,13 @@
 #|||||||||||||||||||||||||||||||||||||#
 
 
-; p is the parameter offset as a bonsai number
+; p is the parameter offset
 ; ftype is the format type associated with the parameter
 (define/contract (parameter-consistent-with-arglist p ftype ctx)
   (-> printf-lang-parameter? printf-lang-fmt-type? printf-lang-context? boolean?)
   (let* ([offset (param->offset p)]
          [arg (lookup-offset offset ctx)])
-    (and (< offset (bonsai-ll-length (context->arglist ctx)))
+    (and (< offset (seec-length (context->arglist ctx)))
          (match (cons ftype arg)
            [(cons (printf-lang d) (printf-lang integer))       #t]
            [(cons (printf-lang n) (printf-lang (LOC ident))) #t]
@@ -532,7 +530,7 @@
     [(printf-lang NONE) #t]
     [(printf-lang natural) #t]
     [(printf-lang (* o:offset))
-     (and (< (offset->number o) (bonsai-ll-length (context->arglist ctx)))
+     (and (< (offset->number o) (seec-length (context->arglist ctx)))
           (printf-lang-integer? (lookup-offset (offset->number o) ctx)))]
     ))
 

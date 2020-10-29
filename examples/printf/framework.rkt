@@ -200,7 +200,7 @@
     (printf-lang (cons (% ((0 $) ((* 1) s))) nil)))
   (define args+ (printf-lang arglist 2))
   (define/contract (args-concrete l) (-> ident? arglist?)
-    (printf-lang (cons "" (cons (* (LOC ,l)) ,args+))))
+    (printf-lang (cons "" (cons (* (LOC ,l)) nil #;,args+))))
   (define m+ (printf-lang mem 2))
   (define/contract (mem-concrete l y-val)
     (-> ident? integer? mem?)
@@ -246,7 +246,7 @@
                        ;   be useful, but in the meantime providing sketches is
                        ;   a reasonable compromise.
                        #:context (context-concrete l x-val acc-val)
-                       #:fresh-witness #f                
+                       #:fresh-witness #f
                        #:forall (list l-val x-val acc-val)
                        )
    displayln)
