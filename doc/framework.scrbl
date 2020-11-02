@@ -62,7 +62,7 @@ A SEEC @racket[compiler] describes how expressions of a SEEC @racket[language] c
 (define-compiler [name]
   #:source s 
   #:target t
-  #:behavior-relation beh-rel
+  #:behavior-relation b-rel
   #:context-relation ctx-rel
   #:compile c)
 }|
@@ -81,7 +81,7 @@ A SEEC @racket[compiler] describes how expressions of a SEEC @racket[language] c
 	               "The SEEC language representing the target of the compiler")
 
         (list  @racket[#:behavior-relation]
-	               "beh-rel is a function from a source behavior and a target behavior to a boolean"
+	               "b-rel is a function from a source behavior and a target behavior to a boolean"
                        "A predicate indicating how source and target behaviors are related")
         (list  @racket[#:context-relation]
                         "ctx-rel is a function from a source context and a target context to a boolean"
@@ -96,22 +96,34 @@ A SEEC @racket[attack] describe the capabilities of an attacker observing and in
 
 @codeblock|{
 (define-language [name]
-  #:grammar [grammar]
-  #:gadget [non-terminal]
-  #:evaluate-gadget [function]
-  #:decoder [non-terminal]
-  #:evaluate-decoder [function])
+  #:grammar grammar
+  #:gadget gadget
+  #:evaluate-gadget eval-gadget
+  #:decoder decoder
+  #:evaluate-decoder eval-decoder)
 }|
 
 
 
 @tabular[#:sep @hspace[1]
-  (list (list  @racket[name] "The identifier that will be used to refer to the language being defined")
-        (list  @racket[#:grammar] "The SEEC grammar from which the syntax of the attack is taken")
-	(list  @racket[#:gadget] "The non-terminal of the grammar corresponding to expressions in the language")
-        (list  @racket[#:evaluate-gadget] "The non-terminal of the grammar corresponding to contexts in the language")
-        (list  @racket[#:decoder] "A Racket function combining a context and an expression as a program")
-        (list  @racket[#:evaluate-decover] "A Racket function evaluating a program into a behavior"))]
+  (list (list  @racket[name]
+               "name is a string"
+               "The identifier that will be used to refer to the language being defined")
+        (list  @racket[#:grammar]
+	       "grammar is a SEEC grammar"
+	       "The SEEC grammar from which the syntax of the attack is taken")
+	(list  @racket[#:gadget]
+	       "gadget is a non-terminal from the grammar"
+	       "The non-terminal of the grammar corresponding to the language of gadgets")
+        (list  @racket[#:evaluate-gadget]
+	       "eval-gadget is a Racket function from gadget and context to context"
+               "A Racket function applying a gadget on a context")	
+        (list  @racket[#:decoder]
+	                "decoder is a non-terminal from the grammar"
+		        "The non-terminal of the grammar corresponding to the language of decoders")
+        (list  @racket[#:evaluate-decover]
+	       "eval-decoder is a Racket function from decoder and context to some value"
+	       "A Racket function decoding the context as data"))]
 
 
 @section{@racket[find-weird-behavior]}
