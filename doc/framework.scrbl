@@ -2,9 +2,117 @@
 @(require scribble/core)
 @(require scribble-math)
 @title{The SEEC framework}
-@section{SEEC @racket[language]}
+@section{SEEC structures}
 
-@section{SEEC @racket[compiler]}
+
+The SEEC provide provides facilities to define @racket[language], @racket[compiler] and @racket[attack] structures which maps different elements of systems being modeled to the concepts used by SEEC queries.
+
+TODO: refer to the weird machine paper for terminology
+
+@subsection{@racket[grammar]}
+
+A SEEC model begins with a grammar of terms, expressed in BNF notation. 
+
+@subsection{@racket[language]}
+
+A SEEC @racket[language] contains the syntactical and semantical model of a system as a programming language.
+A @racket[language] structure consists of two syntactic categories representing expressions and contexts, and of two racket functions, the first linking an expression
+and a context as a complete program, and the second evaluating the program into a behavior.
+
+A language can be defined using the SEEC command \racket[define-language]:
+@codeblock|{
+(define-language [name]
+  #:grammar grammar
+  #:expression exp
+  #:context ctx
+  #:link link
+  #:evaluate eval)
+}|
+
+
+
+@tabular[#:sep @hspace[1]
+  (list (list  @racket[name]
+                       "name is a string"
+                       "The identifier that will be used to refer to the language being defined")
+        (list  @racket[#:grammar]
+	               "grammar is a SEEC grammar"
+	               "The SEEC grammar from which the syntax of the language is taken")
+	(list  @racket[#:expression]
+	               "exp is a non-terminal of grammar"
+	               "The non-terminal of the grammar corresponding to expressions in the language")
+        (list  @racket[#:context]
+	              "ctx is a non-terminal of grammar"
+	              "The non-terminal of the grammar corresponding to contexts in the language")
+        (list  @racket[#:link]
+	              "link is a Racket function from context and expression to program"
+	              "A Racket function combining a context and an expression as a program")
+        (list  @racket[#:evaluate]
+	              "eval is a Racket function from program to behavior"
+                        "A Racket function evaluating a program into a behavior"))]
+
+
+
+@subsection{@racket[compiler]}
+
+A SEEC @racket[compiler] describes how expressions of a SEEC @racket[language] can be converted into expressions of another @racket[language], and how to relate behaviors and contexts between the two @racket[language]s
+
+
+@codeblock|{
+(define-compiler [name]
+  #:source s 
+  #:target t
+  #:behavior-relation beh-rel
+  #:context-relation ctx-rel
+  #:compile c)
+}|
+
+
+
+@tabular[#:sep @hspace[1]
+  (list (list  @racket[name]
+                      "name is a string"
+                      "The identifier that will be used to refer to the language being defined")
+        (list  @racket[#:source]
+	               "s is a SEEC language"
+	               "The SEEC language representing the source of the compiler")
+	(list  @racket[#:target]
+	               "t is a SEEC language"
+	               "The SEEC language representing the target of the compiler")
+
+        (list  @racket[#:behavior-relation]
+	               "beh-rel is a function from a source behavior and a target behavior to a boolean"
+                       "A predicate indicating how source and target behaviors are related")
+        (list  @racket[#:context-relation]
+                        "ctx-rel is a function from a source context and a target context to a boolean"
+                       "A predicate indicating how source and target contexts are related")
+        (list  @racket[#:compile]
+			"c is a function from source to target expressions"
+                      "A Racket function evaluating a program into a behavior"))]
+
+@subsection{@racket[attack]}
+
+A SEEC @racket[attack] describe the capabilities of an attacker observing and interacting with a system. 
+
+@codeblock|{
+(define-language [name]
+  #:grammar [grammar]
+  #:gadget [non-terminal]
+  #:evaluate-gadget [function]
+  #:decoder [non-terminal]
+  #:evaluate-decoder [function])
+}|
+
+
+
+@tabular[#:sep @hspace[1]
+  (list (list  @racket[name] "The identifier that will be used to refer to the language being defined")
+        (list  @racket[#:grammar] "The SEEC grammar from which the syntax of the attack is taken")
+	(list  @racket[#:gadget] "The non-terminal of the grammar corresponding to expressions in the language")
+        (list  @racket[#:evaluate-gadget] "The non-terminal of the grammar corresponding to contexts in the language")
+        (list  @racket[#:decoder] "A Racket function combining a context and an expression as a program")
+        (list  @racket[#:evaluate-decover] "A Racket function evaluating a program into a behavior"))]
+
 
 @section{@racket[find-weird-behavior]}
 SEEC's @racket[find-weird-behavior] function is a built-in query that attempts to find emergent behaviors in a target language with respect to compilation from a source language.
@@ -180,3 +288,9 @@ Use the @racket[#:forall] argument to limit the variables being quantified over.
 @subsubsection{The witnessed behavior is @racket[ERROR] and/or the witnessed context is incompatible with the synthesized expression}
 
 If this happens when given a concrete context argument, set @racket[fresh-witness] to false, which will stop the query from generating a new argument and instead reuse the one provided. Otherwise, add a @racket[valid] constraint or @racket[context-constraint] to limit the search to contexts that provide meaningful results.
+
+
+@section{@racket[find-related-gadgets]}
+
+
+@subsection{@racket[find-related-gadgets] options}
