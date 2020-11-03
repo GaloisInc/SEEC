@@ -90,8 +90,4 @@ See the READMEs in those subdirectories for more information about the case stud
 
 # Acknowledgment
 
-This material is based upon work supported by the United States
-Air Force and DARPA under Contract No. PA1903-02-AIMEE-FP-008. Any
-opinions, findings and conclusions or recommendations expressed in
-this material are those of the author(s) and do not necessarily reflect
-the views of the United States Air Force and DARPA.
+This material is based upon work supported by DARPA Contract No. PA1903-02-AIMEE-FP-008. Any opinions, findings and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of DARPA.
