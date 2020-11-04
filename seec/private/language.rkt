@@ -1,6 +1,7 @@
 #lang rosette/safe
 
 (provide define-grammar
+         extend-grammar
          syntax-match?
          enumerate
          make-generator)
@@ -34,6 +35,7 @@
                               set-intersect
                               set-empty?
                               hash
+                              make-immutable-hash
                               hash-set
                               hash->list
                               values
@@ -50,6 +52,7 @@
                               string-prefix?
                               string-suffix?
                               string-trim))))
+
 
 (struct grammar (nonterminals
                   terminals
@@ -88,6 +91,34 @@
                             [new-prods      (unsafe:hash-set productions nt (rest production))]
                             [new-prod-width (apply max prod-width (map max-width (rest production)))])
                        (unsafe:values new-nts new-meta new-prods new-prod-width))))
+
+  (let* ([terminals (unsafe:set-subtract metavars nonterminals)]
+         )
+       (unsafe:for ([mv (unsafe:in-set metavars)])
+                   (register-enum mv))
+       (grammar (unsafe:set->list nonterminals)
+                (unsafe:set->list terminals)
+                (unsafe:hash->list productions)
+                prod-max-width)
+       )
+  )
+
+(define (make-extended-grammar parent rules)
+  (define-values (nonterminals metavars productions prod-max-width)
+    (unsafe:for/fold ([nonterminals (unsafe:list->set (grammar-nonterminals parent))]
+                      [metavars     (unsafe:set-union (unsafe:list->set builtin-nonterminals)
+                                                      (unsafe:list->set (grammar-terminals parent))
+                                                      (unsafe:list->set (grammar-nonterminals parent)))]
+                      [productions  (unsafe:make-immutable-hash (grammar-productions parent))]
+                      [prod-width   (grammar-max-width parent)])
+             ([production (unsafe:in-list rules)])
+             (let* ([nt         (first production)]
+                    [new-nts    (unsafe:set-add nonterminals nt)] ; maybe change this?
+                    [new-meta   (unsafe:set-union metavars
+                                                  (unsafe:list->set (flatten production)))]
+                    [new-prods  (unsafe:hash-set productions nt (rest production))]
+                    [new-prod-width (apply max prod-width (map max-width (rest production)))])
+               (unsafe:values new-nts new-meta new-prods new-prod-width))))
 
   (let* ([terminals (unsafe:set-subtract metavars nonterminals)]
          )
@@ -418,7 +449,6 @@
       [p:production (attribute p.terminals)]
       )
     )
-
   )
 
 
@@ -443,42 +473,10 @@
        ...)
      ]))
 
-(define-syntax (define-grammar stx)
+(define-syntax (define-grammar-match-expander stx)
   (syntax-parse stx
-    #:datum-literals (::=)
-    [(_ name:id (nt:nonterminal ::= prod:production ...) ...)
-     (let* ([prods         (syntax->datum #'((nt prod ...) ...))]
-            [nts           (list->set (syntax->datum #'(nt ...)))]
-            [terminals     (prods->terminals prods)]
-            [builtin-nts   (set->list (set-intersect terminals (list->set builtin-nonterminals)))]
-            )
-       (with-syntax ([terminalstx #`(apply set '(#,@(set->list terminals)))]
-                     [ntstx       #`(apply set '(#,@(set->list nts)))])
-         #`(begin
-             (define lang-struct
-               (make-grammar '#,prods))
-
-             ; Throw an exception if any reserved keywords from
-             ; `builtin-keywords` occured in the grammar
-             (let ([keywords-in-nonterminals
-                    (unsafe:set-intersect (grammar-nonterminals lang-struct)
-                                          builtin-keywords)]
-                   [keywords-in-terminals
-                    (unsafe:set-intersect (grammar-terminals lang-struct)
-                                          builtin-keywords)]
-                   )
-               (cond
-                 [(not (unsafe:set-empty? (unsafe:set-union keywords-in-nonterminals
-                                                            keywords-in-terminals)))
-                  (unsafe:raise-arguments-error 'define-grammar
-                                                "Illegal use of reserved keywords"
-                                                "keywords used as nonterminals" keywords-in-nonterminals
-                                                "keywords used as terminals" keywords-in-terminals
-                                                )]
-                 ))
-
-
-             (define-match-expander name
+    [(_ name:id grammar terminalstx ntstx)
+     #`(define-match-expander name
                ; The first argument of the match-expander is the behavior used
                ; with the `match` construct. That is, the match pattern
                ;
@@ -507,7 +505,7 @@
                     #'(? (λ (t) (syntax-match? name 'pat.stx-pattern t)) pat.match-pattern)]))
                (lambda (stx)
                  (syntax-parse stx
-                   [n:id #'lang-struct]
+                   [n:id #'grammar]
                    [(_ pat)
                     #:declare pat (concrete-term
                                    #,(syntax->string #'name)
@@ -518,7 +516,53 @@
                     #:declare pat (term #,(syntax->string #'name)
                                         terminalstx)
                     #'(make-term! name pat depth)]
-                   )))
+                   )))]))
+
+(define-syntax (check-reserved-keywords stx)
+  (syntax-parse stx
+    [(_ grammar)
+             ; Throw an exception if any reserved keywords from
+             ; `builtin-keywords` occured in the grammar
+             #`(let ([keywords-in-nonterminals
+                    (unsafe:set-intersect (grammar-nonterminals grammar)
+                                          builtin-keywords)]
+                   [keywords-in-terminals
+                    (unsafe:set-intersect (grammar-terminals grammar)
+                                          builtin-keywords)]
+                   )
+               (cond
+                 [(not (unsafe:set-empty? (unsafe:set-union keywords-in-nonterminals
+                                                            keywords-in-terminals)))
+                  (unsafe:raise-arguments-error 'define-grammar
+                                                "Illegal use of reserved keywords"
+                                                "keywords used as nonterminals" keywords-in-nonterminals
+                                                "keywords used as terminals" keywords-in-terminals
+                                                )]
+                 ))
+             ]))
+
+
+(define-syntax (define-grammar stx)
+  (syntax-parse stx
+    #:datum-literals (::=)
+    [(_ name:id (nt:nonterminal ::= prod:production ...) ...)
+     (let* ([prods         (syntax->datum #'((nt prod ...) ...))]
+            [nts           (list->set (syntax->datum #'(nt ...)))]
+            [terminals     (prods->terminals prods)]
+            [builtin-nts   (set->list (set-intersect terminals (list->set builtin-nonterminals)))]
+            )
+       (with-syntax ([terminalstx #`(apply set '(#,@(set->list terminals)))]
+                     [ntstx       #`(apply set '(#,@(set->list nts)))]
+                     )
+         #`(begin
+             (define lang-struct (make-grammar '#,prods))
+
+             ; Throw an exception if any reserved keywords from
+             ; `builtin-keywords` occured in the grammar
+             (check-reserved-keywords lang-struct)
+
+             ; Define the match expander
+             (define-grammar-match-expander name lang-struct terminalstx ntstx)
 
              ; Add predicates for each nonterminal
              ;
@@ -530,6 +574,40 @@
              (define-nonterminal-predicates name #,@builtin-nts)
 
              )))]))
+
+(define-syntax (extend-grammar stx)
+  (syntax-parse stx
+    #:datum-literals (::=)
+    [(_ name:id parent:id (nt:nonterminal ::= prod:production ...) ...)
+     (let* ([prods         (syntax->datum #'((nt prod ...) ...))]
+            [nts           (list->set (syntax->datum #'(nt ...)))]
+            [terminals     (prods->terminals prods)]
+            [builtin-nts   (set->list (set-intersect terminals (list->set builtin-nonterminals)))]
+            )
+       (with-syntax ([terminalstx #`(apply set '(#,@(set->list terminals)))]
+                     [ntstx       #`(apply set '(#,@(set->list nts)))]
+                     )
+         #`(begin
+             (define lang-struct (make-extended-grammar parent '#,prods))
+
+             ; Throw an exception if any reserved keywords from
+             ; `builtin-keywords` occured in the grammar
+             (check-reserved-keywords lang-struct)
+
+             ; Define the match expander
+             (define-grammar-match-expander name lang-struct terminalstx ntstx)
+
+             ; Add predicates for each nonterminal
+             ;
+             ; Usage: For each user-defined or builtin nonterminal `nt` that
+             ; occurs in the grammar `name`, we define a function `name-nt?`
+             ; that takes `x` of any type and returns a boolean---`#t` if `x`
+             ; matches the pattern `(name nt)` and `#f` otherwise
+             (define-nonterminal-predicates name nt ...)
+             (define-nonterminal-predicates name #,@builtin-nts)
+
+             )))]))
+
 
 (define-syntax (make-concrete-term! stx)
   (syntax-parse stx
@@ -615,10 +693,18 @@
     (exp      ::= base (op exp exp))
     (prog     ::= list<exp>))
 
+  (extend-grammar test-grammar-extra test-grammar
+     (foo     ::= base op FOO)
+     )
+
   (test-case
       "Concrete term constructors"
     (check-equal? (bonsai-terminal (symbol->enum '+))
                   (test-grammar +))
+    (check-equal? (bonsai-terminal (symbol->enum 'FOO))
+                  (test-grammar-extra FOO))
+    (check-equal? (bonsai-terminal (symbol->enum '+))
+                  (test-grammar-extra +))
     (check-equal? (bonsai-terminal (symbol->enum 'and))
                   (test-grammar and))
     (check-equal? (bonsai-list
