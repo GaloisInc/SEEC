@@ -7,7 +7,6 @@
 
 The SEEC provide provides facilities to define @racket[language], @racket[compiler] and @racket[attack] structures which maps different elements of systems being modeled to the concepts used by SEEC queries.
 
-TODO: refer to the weird machine paper for terminology
 
 @subsection{@racket[grammar]}
 
@@ -21,7 +20,7 @@ and a context as a complete program, and the second evaluating the program into 
 
 A language can be defined using the SEEC command \racket[define-language]:
 @codeblock|{
-(define-language [name]
+(define-language name
   #:grammar grammar
   #:expression exp
   #:context ctx
@@ -30,24 +29,25 @@ A language can be defined using the SEEC command \racket[define-language]:
 }|
 
 
+@subsubsection{@racket[define-language] options}
 
 @tabular[#:sep @hspace[1]
   (list (list  @racket[name]
                        "name is a string"
                        "The identifier that will be used to refer to the language being defined")
-        (list  @racket[#:grammar]
+        (list  @racket[#:grammar grammar]
 	               "grammar is a SEEC grammar"
 	               "The SEEC grammar from which the syntax of the language is taken")
-	(list  @racket[#:expression]
+	(list  @racket[#:expression exp]
 	               "exp is a non-terminal of grammar"
 	               "The non-terminal of the grammar corresponding to expressions in the language")
-        (list  @racket[#:context]
+        (list  @racket[#:context ctx]
 	              "ctx is a non-terminal of grammar"
 	              "The non-terminal of the grammar corresponding to contexts in the language")
-        (list  @racket[#:link]
+        (list  @racket[#:link link]
 	              "link is a Racket function from context and expression to program"
 	              "A Racket function combining a context and an expression as a program")
-        (list  @racket[#:evaluate]
+        (list  @racket[#:evaluate eval]
 	              "eval is a Racket function from program to behavior"
                         "A Racket function evaluating a program into a behavior"))]
 
@@ -59,7 +59,7 @@ A SEEC @racket[compiler] describes how expressions of a SEEC @racket[language] c
 
 
 @codeblock|{
-(define-compiler [name]
+(define-compiler name
   #:source s 
   #:target t
   #:behavior-relation b-rel
@@ -68,25 +68,25 @@ A SEEC @racket[compiler] describes how expressions of a SEEC @racket[language] c
 }|
 
 
-
+@subsubsection{@racket[define-compiler] options}
 @tabular[#:sep @hspace[1]
   (list (list  @racket[name]
                       "name is a string"
                       "The identifier that will be used to refer to the language being defined")
-        (list  @racket[#:source]
+        (list  @racket[#:source s]
 	               "s is a SEEC language"
 	               "The SEEC language representing the source of the compiler")
-	(list  @racket[#:target]
+	(list  @racket[#:target t]
 	               "t is a SEEC language"
 	               "The SEEC language representing the target of the compiler")
 
-        (list  @racket[#:behavior-relation]
+        (list  @racket[#:behavior-relation b-rel]
 	               "b-rel is a function from a source behavior and a target behavior to a boolean"
                        "A predicate indicating how source and target behaviors are related")
-        (list  @racket[#:context-relation]
+        (list  @racket[#:context-relation ctx-rel]
                         "ctx-rel is a function from a source context and a target context to a boolean"
                        "A predicate indicating how source and target contexts are related")
-        (list  @racket[#:compile]
+        (list  @racket[#:compile c]
 			"c is a function from source to target expressions"
                       "A Racket function evaluating a program into a behavior"))]
 
@@ -95,33 +95,33 @@ A SEEC @racket[compiler] describes how expressions of a SEEC @racket[language] c
 A SEEC @racket[attack] describe the capabilities of an attacker observing and interacting with a system. 
 
 @codeblock|{
-(define-language [name]
+(define-attack name
   #:grammar grammar
-  #:gadget gadget
+  #:gadget g
   #:evaluate-gadget eval-gadget
-  #:decoder decoder
+  #:decoder d
   #:evaluate-decoder eval-decoder)
 }|
 
 
-
+@subsubsection{@racket[define-attack] options}
 @tabular[#:sep @hspace[1]
   (list (list  @racket[name]
                "name is a string"
                "The identifier that will be used to refer to the language being defined")
-        (list  @racket[#:grammar]
+        (list  @racket[#:grammar grammar]
 	       "grammar is a SEEC grammar"
 	       "The SEEC grammar from which the syntax of the attack is taken")
-	(list  @racket[#:gadget]
-	       "gadget is a non-terminal from the grammar"
+	(list  @racket[#:gadget g]
+	       "g is a non-terminal from the grammar"
 	       "The non-terminal of the grammar corresponding to the language of gadgets")
-        (list  @racket[#:evaluate-gadget]
+        (list  @racket[#:evaluate-gadget eval-gadget]
 	       "eval-gadget is a Racket function from gadget and context to context"
                "A Racket function applying a gadget on a context")	
-        (list  @racket[#:decoder]
-	                "decoder is a non-terminal from the grammar"
+        (list  @racket[#:decoder d]
+	                "d is a non-terminal from the grammar"
 		        "The non-terminal of the grammar corresponding to the language of decoders")
-        (list  @racket[#:evaluate-decover]
+        (list  @racket[#:evaluate-decoder eval-decoder]
 	       "eval-decoder is a Racket function from decoder and context to some value"
 	       "A Racket function decoding the context as data"))]
 
@@ -303,6 +303,43 @@ If this happens when given a concrete context argument, set @racket[fresh-witnes
 
 
 @section{@racket[find-related-gadgets]}
+SEEC's @racket[find-related-gadgets] is a built-in query that attempts to find a decoder and a series of gadgets that embeds and manipulates data in the state of a system being modeled.
+Given functions @${f_1}, ..., @${f_n} of type @racket[context] to @${\tau}, it attemps to synthesize decoder @${D} and gadget @${G_1}, ..., @${G_n} such that, for each @${i \in 0 ... n},
+@$${\forall c, f_i (D\; c) = D (G_i\; c)} 
+
 
 
 @subsection{@racket[find-related-gadgets] options}
+
+@tabular[#:sep @hspace[1]
+  (list (list  @racket[lang]
+	               "lang is a SEEC language"
+	               "The SEEC language from which the contexts are taken")
+	(list  @racket[attack]
+	               "attack is a SEEC attack"
+	               "The SEEC attack from which the decoder and gadgets are taken")
+        (list  @racket[funs-spec]
+	              "funs-spec is a list of Racket functions"
+	              "The list of functions specification that we expect the gadgets to emulate")
+        (list  @racket[#:valid rel-spec]
+	              "link is a Racket function from context and expression to program"
+	              "A Racket function combining a context and an expression as a program")
+        (list  @racket[#:decoder-bound n]
+	              "n is a positive integer"
+	              "set the upper bound on the size of decoders")
+       @:{ (list  @racket[#:decoder-constraint p]
+	              "p is a predicate on decoders and sets"
+	              "only synthesize decoder @${D} satisfying @{p\; D\;s}")}
+        (list  @racket[#:decoder d]
+	              "d is a decoder"
+	              "instead of synthesizing a completely symbolic decoder, synthesize the symbolic variables in d")
+        (list  @racket[#:gadgets-bound n]
+	              "n is either a positive integer or a list of positive integer"
+	              "set the upper bound on the size of all gadgets or of each gadget individually (#f can be provided to keep default)")
+        @;{(list  @racket[#:gadgets-constraint p]
+	              "p is a list of predicate on gadgets and sets"
+	              "only synthesize @${G_i} satisfying @{p\;G_i\;s}")}
+        (list  @racket[#:gadgets gs]
+	              "gs is a list of gadgets"
+	              "instead of synthesizing completely symbolic gadgets, synthesize the symbolic variables in gs (#f can be provided to keep a fully symbolic gadget)")		      
+		      )]
