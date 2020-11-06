@@ -29,7 +29,6 @@
                      )
 
          bonsai-depth
-         bonsai-leaves
          seec->racket
 
          ; utilities
@@ -109,8 +108,6 @@
 (define (bonsai-list-hash l recur)
   (recur (bonsai-list-nodes l)))
 
-
-
 (struct bonsai-terminal (value)
   #:transparent
   #:methods gen:custom-write
@@ -149,14 +146,6 @@
      (let ([children (map bonsai-depth (bonsai-list-nodes b))])
        (+ 1 (apply max children)))]
     [else 1]))
-
-; Count the number of leaves in a bonsai tree
-(define (bonsai-leaves b)
-  (cond
-    [(list? b) (foldl + 0 (map bonsai-leaves b))]
-    [(bonsai-null? b) 0]
-    [else 1]
-    ))
 
 (define (seec->racket b)
   (cond
