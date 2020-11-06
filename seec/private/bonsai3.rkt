@@ -110,6 +110,7 @@
   (recur (bonsai-list-nodes l)))
 
 
+
 (struct bonsai-terminal (value)
   #:transparent
   #:methods gen:custom-write
@@ -380,6 +381,7 @@
            (bonsai? (seec-head tree))
            (seec-list? (seec-tail tree)))))
 
+; TODO: get rid of contracts?
 (define/contract (seec-cons x xs)
   (-> bonsai? seec-list? seec-list?)
   (bonsai-list (list x xs))) ; This is `list` here, not a cons, because
@@ -481,9 +483,6 @@
      (out (enum->symbol (bonsai-terminal-value b)))]
     [(bonsai-null? b)
      (out "*null*")]
-    [(integer? b)       (out b)]
-    [(boolean? b)       (out b)]
-    [(bv? b)            (out b)]
     [(bonsai-list? b)
      (out "(")
      (let ([nodes (filter (lambda (n) (not (bonsai-null? n))) (bonsai-list-nodes b))])
@@ -491,8 +490,12 @@
          (bonsai-display (first nodes) out)
          (map (λ (n) (out " ") (bonsai-display n out)) (rest nodes))))
      (out ")")]
-    [(char? b)   (out b)]
-    [(string? b) (out b)]
+    #;[(integer? b)       (out b)]
+    #;[(boolean? b)       (out b)]
+    #;[(bv? b)            (out b)]
+    #;[(char? b)   (out b)]
+    #;[(string? b) (out b)]
+    [else (out b)]
     ))
 
 (define (bonsai-print b out recur)

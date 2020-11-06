@@ -134,7 +134,6 @@
 ; return #t if if `pattern` is a type compatible with the grammar `lang` and
 ; `tree` is a data structure of that type.
 (define (syntax-match? lang pattern tree)
-  #;(printf "(syntax-match? ~a ~a ~a)~n" lang pattern tree)
     (for/all [(tree tree)]
       (cond
         ; tree patterns
@@ -147,10 +146,6 @@
           (curry syntax-match? lang (second pattern))
           (curry syntax-match? lang (third pattern))
           tree)]
-
-        [(symbol-is-polymorphic-type? "list" pattern)
-         (let* ([a (extract-polymorphic-type-symbol "list" pattern)])
-           (seec-list-match? (curry syntax-match? lang) a tree))]
 
         ; test if pattern is a tuple of patterns
         [(list? pattern)
@@ -178,6 +173,9 @@
          (boolean? tree)]
         [(equal? 'bitvector pattern)
          (bv? tree)]
+        [(symbol-is-polymorphic-type? "list" pattern)
+         (let* ([a (extract-polymorphic-type-symbol "list" pattern)])
+           (seec-list-match? (curry syntax-match? lang) a tree))]
         [(member pattern (grammar-nonterminals lang))
          (let ([productions (cdr (assoc pattern (grammar-productions lang)))])
            (ormap (λ (pat) (syntax-match? lang pat tree)) productions))]
