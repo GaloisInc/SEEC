@@ -333,6 +333,8 @@
 (define bool-funs (list (lambda (x) x) (lambda (x) (not x))))
 
 (define empty-funs (list #f #f))
+
+; OS TODO: eq could be change into dec, where the client has to manually insert calls to the decoder
 (define boolean-axioms
   (lambda (eq symbols x)
       (let ([id-s (first symbols)]
@@ -481,9 +483,20 @@
 ;;; gadget-succ (set-api (seq (insert 0) nop))
 (define int-pred-succ-funs (list (lambda (n) (- n 1)) (lambda (n) (+ n 1))))
 
+(define int-pred-succ-axioms
+  (lambda (eq symbols x)
+      (let ([pred-s (first symbols)]
+            [succ-s (second symbols)])
+        (and (eq (succ-s (pred-s x)) (pred-s (succ-s x)))
+             (not (eq x (pred-s x)))
+             (not (eq x (succ-s x)))))))
+
+
 (define (test-spec-count-int)
     (display-related-gadgets (find-related-gadgets set-lang dec-int int-pred-succ-funs) displayln))
 
+(define (test-spec-count-int-axioms)
+    (display-related-gadgets (find-related-gadgets set-lang dec-int empty-funs #:valid int-pred-succ-axioms) displayln))
 
 #;(define (test-spec-count-int)
   (begin
