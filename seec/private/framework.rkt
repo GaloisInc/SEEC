@@ -753,8 +753,8 @@
 (define/contract find-related-gadgets
   (->* (language?
         attack?
-        (listof (-> any/c any/c)))
-       (#:valid (-> any/c boolean?)
+        (listof (or/c #f (-> any/c any/c))))
+       (#:valid (-> any/c any/c any/c boolean?)
         #:decoder-bound (or/c #f integer?)
         #:decoder any/c
         #:gadgets-bound (or/c (or/c #f integer?) (listof (or/c #f integer?)))
@@ -763,9 +763,10 @@
   (lambda (lang
            attack 
            funs ; lists of unary racket functions representing the specification of each gadget
-           #:valid [rel-spec (lambda (x) #t)] ; predicate over a list of gadget representing the relation-specification they have to adhere to
-           #:decoder-bound [dec-bound #f]
-           #:decoder [decoder (make-symbolic-var (attack-decoder attack) dec-bound)] ; make a single decoder in the single-type version          
+           #:valid [rel-spec (lambda (eq symbols x) #t)]
+           ; predicate over a list of gadgets representing the relation-specification they have to adhere to
+           ; eq is a relation between \tau that is replaced by a relation between states up-to \tau decoder
+           #:decoder-bound [dec-bound #f]           #:decoder [decoder (make-symbolic-var (attack-decoder attack) dec-bound)] ; make a single decoder in the single-type version          
            #:gadgets-bound [gadgets-bound #f]
            #:gadgets [gadgets  (let ([gadgets-bounds (if (list? gadgets-bound) ; if a single bound (or no bound) is provided, repeat it |funs| times
                                                          gadgets-bound
@@ -776,7 +777,12 @@
     (let* ([eval-gadget (attack-evaluate-gadget attack)]
            [eval-dec    (attack-evaluate-decoder attack)]
            [ctx (make-symbolic-var (language-context lang))]
-           [fgs (map cons funs gadgets)]
+           [equiv-ctx (lambda (r l)
+                        (equal? (eval-dec decoder r)
+                                (eval-dec decoder l)))]
+           [gadgets-lambda (map (lambda (g)
+                                 (lambda (ctx)
+                                   (eval-gadget g ctx))) gadgets)]
           #;[fun-gadget-asserts (map (lambda (fg)
                                       (with-asserts-only
                                         (assert
@@ -785,11 +791,15 @@
                                           ((car fg) (eval-dec decoder ctx))))))
                                     fgs)]
           [sol (synthesize #:forall ctx
-                           #:guarantee (map (lambda (fg)
-                                        (assert
-                                         (equal?
-                                          (eval-dec decoder (eval-gadget (cdr fg) ctx))
-                                          ((car fg) (eval-dec decoder ctx))))) fgs))])
+                           #:guarantee  (cons
+                                          (assert (rel-spec equiv-ctx gadgets-lambda ctx))
+                                          (map (lambda (f g)
+                                                 (assert (if f
+                                                     (equal?
+                                                      (eval-dec decoder (eval-gadget g ctx))
+                                                      (f (eval-dec decoder ctx)))
+                                                     #t)))
+                                              funs gadgets)))])
                                          #;(and fun-gadget-asserts)
       (if (unsat? sol)
           (begin

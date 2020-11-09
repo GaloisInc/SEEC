@@ -319,8 +319,8 @@ Given functions @${f_1}, ..., @${f_n} of type @racket[context] to @${\tau}, it a
 	               "attack is a SEEC attack"
 	               "The SEEC attack from which the decoder and gadgets are taken")
         (list  @racket[funs-spec]
-	              "funs-spec is a list of Racket functions"
-	              "The list of functions specification that we expect the gadgets to emulate")
+	              "funs-spec is a list of Racket functions (or #f)"
+	              "The list of functions specification that we expect the gadgets to emulate. #f can be provided to indicate a gadget not constrained by functional specification")
         (list  @racket[#:valid rel-spec]
 	              "link is a Racket function from context and expression to program"
 	              "A Racket function combining a context and an expression as a program")

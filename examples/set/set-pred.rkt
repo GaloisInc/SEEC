@@ -332,8 +332,23 @@
 ;;; gadget: (set-api (if (member? 1) (seq (remove 1) nop) (seq (insert 1) nop)))
 (define bool-funs (list (lambda (x) x) (lambda (x) (not x))))
 
+(define empty-funs (list #f #f))
+(define boolean-axioms
+  (lambda (eq symbols x)
+      (let ([id-s (first symbols)]
+            [neg-s (second symbols)])
+        (and (eq x (id-s x))
+             (eq x (neg-s (neg-s x)))
+             (not (eq x (neg-s x)))))))
+
+
 (define (test-spec-member)
     (display-related-gadgets (find-related-gadgets set-lang obs-int bool-funs) displayln))
+
+(define (test-spec-member-axioms)
+    (display-related-gadgets (find-related-gadgets set-lang obs-int empty-funs #:valid boolean-axioms) displayln))
+
+
 
 #;(define (test-spec-member)
   (begin
@@ -410,9 +425,19 @@
 ;;; gadget-pred (set-api (seq (remove 0) nop))
 ;;; gadget-succ (set-api (seq (insert 0) nop))
 (define nat-pred-succ-funs (list (lambda (n) (max 0 (- n 1))) (lambda (n) (+ 1 n))))
+(define nat-pred-succ-axioms
+  (lambda (eq symbols x)
+      (let ([pred-s (first symbols)]
+            [succ-s (second symbols)])
+        (and (eq x (pred-s (succ-s x)))
+             (not (eq x (succ-s x)))))))
 
 (define (test-spec-buggy-count)
   (display-related-gadgets (find-related-gadgets set-lang dec-buggy-int nat-pred-succ-funs) displayln))
+
+(define (test-spec-buggy-count-axioms)
+  (display-related-gadgets (find-related-gadgets set-lang dec-buggy-int empty-funs #:valid nat-pred-succ-axioms) displayln))
+
 
 
 #;(define (test-spec-buggy-count)
