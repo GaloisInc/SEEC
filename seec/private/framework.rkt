@@ -3,6 +3,7 @@
 (provide current-default-bound
          define-language
          refine-language
+         define-attack
          define-compiler
          (struct-out language)
          (struct-out compiler)
@@ -12,6 +13,7 @@
          find-weird-component
          find-weird-behavior
          find-gadget
+         find-related-gadgets
          (struct-out solution)
          unpack-language-witness
          unpack-language-witnesses
@@ -113,6 +115,19 @@
 ; evaluate : program -> behavior
 (struct language (expression context link evaluate))
 
+
+; An attack over a language is
+; gadget: predsyn
+; decoder: predsyn
+; evaluate-gadget: context -> gadget -> context
+; evaluate-decoder: context -> decoder -> T
+(struct attack (gadget evaluate-gadget decoder evaluate-decoder))
+
+
+
+
+  
+
 (define (link language expr context)
   ((language-link language) expr context))
 
@@ -134,6 +149,19 @@
              #:with gen #'nt
              #:with pred #'p
              #:with bound #'n)))
+
+(define-syntax (define-attack stx)
+  (syntax-parse stx
+    [(_ name
+        #:grammar grammar
+        #:gadget gadget:predsyn
+        #:evaluate-gadget eval-gadget
+        #:decoder decoder:predsyn
+        #:evaluate-decoder eval-decoder)
+     #'(define name
+         (let* ([predgadget (define-predsyn grammar gadget.gen gadget.pred gadget.bound)]
+                [preddecoder (define-predsyn grammar decoder.gen decoder.pred decoder.bound)])
+           (attack predgadget eval-gadget preddecoder eval-decoder)))]))
 
 (define-syntax (define-language stx)
   (syntax-parse stx
@@ -158,7 +186,7 @@
         #:evaluate   eval)
      #'(define (name expr-tuple ctx-tuple)         
          (let* ([predexp (define-predsyn grammar expr (first expr-tuple) (second expr-tuple))]
-                [predctx (define-predsyn grammar ctxt (first ctx-tuple) (second expr-tuple))])
+                [predctx (define-predsyn grammar ctxt (first ctx-tuple) (second gadget-tuple))])
            (language predexp predctx link eval)))]))
 
 
@@ -367,7 +395,7 @@
         #:forall-extra any/c
         #:count integer?
         #:capture-nondeterminism boolean?
-        #:found-core (-> any/c any/c) ; Which part of the witness should not be repeated between examples 
+        #:found-core (-> any/c any/c) 
 )
        (or/c #f (listof (listof language-witness?))) ; lists of pairs of language-witness (source and target)
        )
@@ -401,7 +429,8 @@
            ; the number of different witnesses to return
            #:capture-nondeterminism [nondet #t]
            ; if true, we will quantify over the nondetermism collected when evaluating the source and target program
-           #:found-core [found-core (lambda (w) (language-witness-context (second w)))] ; different target context for each returned witness
+           #:found-core [found-core (lambda (w) (language-witness-context (second w)))]
+           ; Which part of the witness should not be repeated between witnesses
            )
 
     (let*
@@ -441,7 +470,7 @@
                                                 #:guarantee (assert (if debug
                                                                         (! (apply && equality))
                                                                         (apply && equality))))
-                                             (synthesize 
+                                               (synthesize 
                                               #:forall (cons vars (cons vars-extra (cons nondet1 nondet2)))
                                               #:assume (assert (and (e1-constraint e1)
                                                                     (c1-constraint e1 c1)
@@ -481,28 +510,24 @@
                              (let* ([e1-concrete  (first e-ctx-concrete)]
                                     [e2-concrete  (third e-ctx-concrete)]
                                     [c12-witness (if fresh
-                                                     (let* ([wit ; new call to find-weird-behavior
-                                                                 ; with no universal quantification
-                                                             (find-weird-behavior
-                                                                 comp
-                                                                 #:source-expr e1-concrete
-                                                                 #:source-context-bound c1-bound
-                                                                 #:source-context-constraint c1-constraint
-                                                                 #:source-behavior-constraint b1-constraint
-                                                                 #:target-context-bound c2-bound
-                                                                 #:target-context-constraint c2-constraint
-                                                                 #:target-behavior-constraint b2-constraint
-                                                                 #:fresh-witness #f
-                                                                 #:forall (list ))])
-                                                       (if (unsat? wit)
-                                                           (unsafe:raise-arguments-error
-                                                            'find-weird-behavior
-                                                            "Could not synthesize fresh witness"
-                                                            )
-                                                           (let ([c1+ (language-witness-context (first (first wit)))]
-                                                                 [c2+ (language-witness-context (second (first wit)))]
-                                                                 )
-                                                             (cons c1+ c2+))))
+                                                     (let* ([wit (find-weird-behavior comp
+                                                                                     #:source-expr e1-concrete
+                                                                                     #:source-context-bound c1-bound
+                                                                                     #:source-context-constraint c1-constraint
+                                                                                     #:source-behavior-constraint b1-constraint
+                                                                                     #:target-context-bound c2-bound
+                                                                                     #:target-context-constraint c2-constraint
+                                                                                     #:target-behavior-constraint b2-constraint
+                                                                                     #:fresh-witness #f
+                                                                                     #:forall (list ))]) ; new call to find-weird-behavior with no universal quantification
+                                                            (if (wit)
+                                                                (let ([c1+ (language-witness-context (first (first wit)))]
+                                                                      [c2+ (language-witness-context (second (first wit)))])
+                                                                  (cons c1+ c2+))
+                                                                (unsafe:raise-arguments-error
+                                                                 'find-weird-behavior
+                                                                 "Could not synthesize fresh witness"
+                                                                 )))
                                                      (cons (second e-ctx-concrete) (fourth e-ctx-concrete)))] ; c12-witness should be completely concrete
                                     [c1-witness (car c12-witness)]
                                     [c2-witness (cdr c12-witness)]
@@ -535,25 +560,32 @@
 (define find-changed-behavior
   (lambda (comp
            v1
-           #:source-context-bound [bound-c1 #f]
+           #:source-context-bound [c1-bound #f]
+           #:source-context [c1 (make-symbolic-var (language-context  (compiler-source comp)) c1-bound)]
            #:source-context-where [where-c1 (lambda (v1 c1) #t)]
-           #:target-context-bound [bound-c2 #f]
+           #:target-context-bound [c2-bound #f]
+           #:target-context [c2 (make-symbolic-var (language-context (compiler-target comp)) c2-bound)]
            #:target-context-where [where-c2 (lambda (v1 c2) #t)]
            #:source-behavior-where [where-b1 (lambda (v1 c1 c2 b1) #t)]
            #:target-behavior-where [where-b2 (lambda (v1 c1 c2 b2) #t)]
-           #:count [witness-count #f])
+           #:debug [debug #f]
+           #:forall-extra [vars-extra (list )]
+           #:count [witness-count #f]
+           #:capture-nondeterminism [nondet #f])
     (unwrap-witness witness-count (find-weird-behavior comp
                          #:source-expr v1
-                         #:source-context-bound bound-c1
+                         #:source-context c1
                          #:source-context-constraint where-c1
-                         #:target-context-bound bound-c2
+                         #:target-context c2
                          #:target-context-constraint where-c2
                          #:source-behavior-constraint where-b1
                          #:target-behavior-constraint where-b2
                          #:fresh-witness #f
+                         #:debug debug
                          #:forall (list ) ; don't quantify over c2 in changed-behavior
+                         #:forall-extra vars-extra
                          #:count (if witness-count witness-count 1)
-                         #:capture-nondeterminism #f
+                         #:capture-nondeterminism nondet
                          #:found-core (lambda (w) (language-witness-context (first w)))))))
 
 
@@ -571,28 +603,36 @@
 (define find-changed-component
   (lambda (comp
            #:source-expression-bound [bound-v1 #f]
+           #:source-expr [e1 (make-symbolic-var (language-expression (compiler-source comp)) bound-v1)]
            #:source-expression-where [where-v1 (lambda (v1) #t)]
            #:source-context-bound [bound-c1 #f]
+           #:source-context [c1 (make-symbolic-var (language-context  (compiler-source comp)) bound-c1)]
            #:source-context-where [where-c1 (lambda (v1 c1) #t)]
            #:target-context-bound [bound-c2 #f]
+           #:target-context [c2 (make-symbolic-var (language-context (compiler-target comp)) bound-c2)]
            #:target-context-where [where-c2 (lambda (v1 c2) #t)]
            #:source-behavior-where [where-b1 (lambda (v1 c1 c2 b1) #t)]
            #:target-behavior-where [where-b2 (lambda (v1 c1 c2 b2) #t)]
-           #:count [witness-count #f])
+           #:debug [debug #f]
+           #:forall-extra [vars-extra (list )]
+           #:count [witness-count #f]
+           #:capture-nondeterminism [nondet #f])
     (unwrap-witness witness-count
                     (find-weird-behavior comp
-                                         #:source-expr-bound bound-v1
+                                         #:source-expr e1
                                          #:source-expr-constraint where-v1
-                                         #:source-context-bound bound-c1
+                                         #:source-context c1
                                          #:source-context-constraint where-c1
-                                         #:target-context-bound bound-c2
+                                         #:target-context c2
                                          #:target-context-constraint where-c2
                                          #:source-behavior-constraint where-b1
                                          #:target-behavior-constraint where-b2
                                          #:fresh-witness #f
-                                         #:forall (list ) ; don't quantify over c2 in changed-behavior
+                                         #:debug debug
+                                         #:forall (list ) ; don't quantify over c2 in changed-component
+                                         #:forall-extra vars-extra
                                          #:count (if witness-count witness-count 1)
-                                         #:capture-nondeterminism #f
+                                         #:capture-nondeterminism nondet
                                          #:found-core (lambda (w) (language-witness-expression (first w)))))))
 
 
@@ -609,23 +649,30 @@
   (lambda (comp
            v1
            #:source-context-bound [bound-c1 #f]
+           #:source-context [c1 (make-symbolic-var (language-context  (compiler-source comp)) bound-c1)]
            #:source-context-where [where-c1 (lambda (v1 c1) #t)]
            #:target-context-bound [bound-c2 #f]
+           #:target-context [c2 (make-symbolic-var (language-context (compiler-target comp)) bound-c2)]
            #:target-context-where [where-c2 (lambda (v1 c2) #t)]
            #:source-behavior-where [where-b1 (lambda (v1 c1 c2 b1) #t)]
            #:target-behavior-where [where-b2 (lambda (v1 c1 c2 b2) #t)]
-           #:count [witness-count #f])
+           #:debug [debug #f]
+           #:forall-extra [vars-extra (list )]
+           #:count [witness-count #f]
+           #:capture-nondeterminism [nondet #t])
     (unwrap-witness witness-count
                     (find-weird-behavior comp
                          #:source-expr v1
-                         #:source-context-bound bound-c1
+                         #:source-context c1
                          #:source-context-constraint where-c1
-                         #:target-context-bound bound-c2
+                         #:target-context c2
                          #:target-context-constraint where-c2
                          #:source-behavior-constraint where-b1
                          #:target-behavior-constraint where-b2
-                         ; don't quantify over c2 in changed-behavior
-                         #:count (if witness-count witness-count 1)))))
+                         #:debug debug
+                         #:forall-extra vars-extra
+                         #:count (if witness-count witness-count 1)
+                         #:capture-nondeterminism nondet))))
 
 ; find-weird-component query
 ; provided as a wrapper to find-weird-behavior
@@ -639,34 +686,36 @@
 (define find-weird-component
   (lambda (comp
            #:source-expression-bound [bound-v1 #f]
-           #:source-expr [e1 (make-symbolic-var (language-expression (compiler-source comp))
-                                                bound-v1)]
+           #:source-expr [e1 (make-symbolic-var (language-expression (compiler-source comp)) bound-v1)]
            #:source-expression-where [where-v1 (lambda (v1) #t)]
            #:source-context-bound [bound-c1 #f]
+           #:source-context [c1 (make-symbolic-var (language-context  (compiler-source comp)) bound-c1)]
            #:source-context-where [where-c1 (lambda (v1 c1) #t)]
            #:target-context-bound [bound-c2 #f]
            #:target-context [c2 (make-symbolic-var (language-context (compiler-target comp)) bound-c2)]
            #:target-context-where [where-c2 (lambda (v1 c2) #t)]
            #:source-behavior-where [where-b1 (lambda (v1 c1 c2 b1) #t)]
            #:target-behavior-where [where-b2 (lambda (v1 c1 c2 b2) #t)]
-           #:capture-nondeterminism [nondet #t]
-           #:count [witness-count #f])
+           #:debug [debug #f]
+           #:forall-extra [vars-extra (list )]
+           #:count [witness-count #f]
+           #:capture-nondeterminism [nondet #t])
     (unwrap-witness witness-count
                     (find-weird-behavior comp
-                         #:source-expr-bound bound-v1
                          #:source-expr e1
                          #:source-expr-constraint where-v1
-                         #:source-context-bound bound-c1
+                         #:source-context c1
                          #:source-context-constraint where-c1
                          #:target-context-bound bound-c2
                          #:target-context c2
                          #:target-context-constraint where-c2
                          #:source-behavior-constraint where-b1
                          #:target-behavior-constraint where-b2
-                         ; don't quantify over c2 in changed-behavior
+                         #:debug debug
+                         #:forall-extra vars-extra
                          #:count (if witness-count witness-count 1)
-                         #:capture-nondeterminism nondet
-                         #:found-core (lambda (w) (language-witness-context (first w)))))))
+                         #:found-core (lambda (w) (language-witness-context (first w)))
+                         #:capture-nondeterminism nondet))))
 
 
 ; show v1, c2 and b2
@@ -692,6 +741,57 @@
   (-> any/c (listof language-witness?) boolean?)
   (ormap (λ (w) (equal? e (language-witness-expression w)))
          witness-list))
+
+
+
+
+
+
+; this is the single-type version, i.e. all funs T -> T and there's a single decoder of type context -> T
+(define/contract find-related-gadgets
+  (->* (language?
+        attack?
+        (listof (-> any/c any/c)))
+       (#:valid (-> any/c boolean?))
+       (or/c #f (listof any/c)))
+  (lambda (lang
+           attack 
+           funs ; lists of unary racket functions representing the specification of each gadget 
+           #:valid [rel-spec (lambda (x) #t)]) ; predicate over a list of gadget representing the relation-specification they have to adhere to
+    (let* ([decoder (make-symbolic-var (attack-decoder attack))] ; make a single decoder in the single-type version
+           [gadgets (map (lambda (f) (make-symbolic-var (attack-gadget attack))) funs)]  ; for each function, we create a symbolic gadget
+           [eval-gadget (attack-evaluate-gadget attack)]
+           [eval-dec    (attack-evaluate-decoder attack)]
+           [ctx (make-symbolic-var (language-context lang))]
+           [fgs (map cons funs gadgets)]
+          #;[fun-gadget-asserts (map (lambda (fg)
+                                      (with-asserts-only
+                                        (assert
+                                         (equal?
+                                          (eval-dec decoder (eval-gadget (cdr fg) ctx))
+                                          ((car fg) (eval-dec decoder ctx))))))
+                                    fgs)]
+           [sol (synthesize #:forall ctx
+                            #:guarantee (map (lambda (fg)
+                                        (assert
+                                         (equal?
+                                          (eval-dec decoder (eval-gadget (cdr fg) ctx))
+                                          ((car fg) (eval-dec decoder ctx))))) fgs))])
+                                         #;(and fun-gadget-asserts)
+      (if (unsat? sol)
+          (begin
+            (displayln "Synthesis failed")
+            #f)
+          (begin
+            (displayln "Synthesis succeeded")
+            (concretize (cons decoder gadgets) sol))))))
+           
+
+
+
+
+
+
 
 ; `es` is a list of pairs of expressions and contexts
 (define (expr-in-expr-list? e es)
