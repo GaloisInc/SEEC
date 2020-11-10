@@ -17,7 +17,6 @@
          ; bonsai types
          bonsai?
          bonsai-depth
-         bonsai-leaves
 
          bonsai-null
          bonsai-null?

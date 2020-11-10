@@ -358,7 +358,7 @@
                         tree)))
 
 (define (seec-cons? tree)
-  (seec-cons-match? bonsai? bonsai? tree))
+  (seec-cons-match? (λ (x) #t) (λ (x) #t) tree))
 (define (seec-head tree)
   (first (bonsai-list-nodes tree)))
 (define (seec-tail tree)
@@ -371,22 +371,22 @@
            (seec-list? (seec-tail tree)))))
 
 ; TODO: get rid of contracts?
-(define/contract (seec-cons x xs)
-  (-> bonsai? seec-list? seec-list?)
+(define (seec-cons x xs)
+  #;(-> bonsai? seec-list? seec-list?)
   (bonsai-list (list x xs))) ; This is `list` here, not a cons, because
                              ; seec-lists are made up of cons cells
 (define seec-empty (bonsai-null))
-(define/contract (seec-singleton x)
-  (-> bonsai? seec-list?)
+(define (seec-singleton x)
+  #;(-> bonsai? seec-list?)
   (seec-cons x seec-empty))
-(define/contract (list->seec l)
-  (-> (listof bonsai?) seec-list?)
+(define (list->seec l)
+  #;(-> (listof bonsai?) seec-list?)
   (cond
     [(empty? l) seec-empty]
     [else (seec-cons (first l) (list->seec (rest l)))]
     ))
-(define/contract (seec->list l)
-  (-> seec-list? (listof bonsai?))
+(define (seec->list l)
+  #;(-> seec-list? (listof bonsai?))
   (cond
     [(seec-empty? l) (list )]
     [(seec-cons? l)
@@ -397,14 +397,14 @@
   (andmap tp? (seec->list tree)))
 
 (define (seec-length tree)
-  (-> seec-list? integer?)
+  #;(-> seec-list? integer?)
   (cond
     [(seec-empty? tree) 0]
     [(seec-cons? tree)
      (+ 1 (seec-length (seec-tail tree)))]
     ))
-(define/contract (seec-append tree1 tree2)
-  (-> seec-list? seec-list? seec-list?)
+(define (seec-append tree1 tree2)
+  #;(-> seec-list? seec-list? seec-list?)
   (cond
     [(seec-empty? tree1) tree2]
     [else (seec-cons (seec-head tree1)
@@ -476,8 +476,8 @@
      (out "(")
      (let ([nodes (filter (lambda (n) (not (bonsai-null? n))) (bonsai-list-nodes b))])
        (unless (empty? nodes)
-         (bonsai-display (first nodes) out)
-         (map (λ (n) (out " ") (bonsai-display n out)) (rest nodes))))
+         (out (first nodes))
+         (map (λ (n) (out " ") (out n)) (rest nodes))))
      (out ")")]
     #;[(integer? b)       (out b)]
     #;[(boolean? b)       (out b)]
