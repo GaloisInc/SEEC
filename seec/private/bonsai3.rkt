@@ -92,19 +92,18 @@
     [(#t) (bonsai-print b (λ (v) (display v port)) (lambda (v) (write v port)))]
     [else (bonsai-print b (λ (v) (display v port)) (lambda (v) (print v port)))]))
 (define (bonsai-list-equal l r recur)
-  (let ([ll (length (bonsai-list-nodes l))]
-        [lr (length (bonsai-list-nodes r))])
+  (let* ([l-nodes (bonsai-list-nodes l)]
+         [r-nodes (bonsai-list-nodes r)]
+         [ll (length l-nodes)]
+         [lr (length r-nodes)])
     (cond
-      [(= ll lr) (recur (bonsai-list-nodes l)
-                        (bonsai-list-nodes r))]
-      [(< ll lr) (and (recur (bonsai-list-nodes l)
-                             (take (bonsai-list-nodes r) ll))
+      [(= ll lr) (recur l-nodes r-nodes)]
+      [(< ll lr) (and (recur l-nodes (take r-nodes ll))
                       (andmap bonsai-null?
-                              (drop (bonsai-list-nodes r) ll)))]
-      [(> ll lr) (and (recur (take (bonsai-list-nodes l) lr)
-                             (bonsai-list-nodes r))
+                              (drop r-nodes ll)))]
+      [(> ll lr) (and (recur (take l-nodes lr) r-nodes)
                       (andmap bonsai-null?
-                              (drop (bonsai-list-nodes l) lr)))])))
+                              (drop l-nodes lr)))])))
 (define (bonsai-list-hash l recur)
   (recur (bonsai-list-nodes l)))
 
@@ -136,7 +135,8 @@
       (char? b)
       (string? b)
       (bv? b)
-      (and (bonsai-list? b)
+      (bonsai-list? b)
+      #;(and (bonsai-list? b)
            (andmap bonsai? (bonsai-list-nodes b)))
       ))
 
@@ -343,6 +343,7 @@
 ;   - xs matches the pattern as
 ;   - each yi is null
 (define (seec-cons-match? syntax-match-a? syntax-match-as? tree)
+  (for/all [(tree tree)]
   (and (bonsai-list? tree)
        (list? (bonsai-list-nodes tree))
        (andmap-indexed
@@ -350,7 +351,7 @@
                         [(= i 0) (syntax-match-a? tree-i)]
                         [(= i 1) (syntax-match-as? tree-i)]
                         [else (bonsai-null? tree-i)]))
-        (bonsai-list-nodes tree))))
+        (bonsai-list-nodes tree)))))
 (define (seec-list-match? syntax-match-lang? a tree)
   (or (seec-empty? tree)
       (seec-cons-match? (curry syntax-match-lang? a)
@@ -479,11 +480,6 @@
          (out (first nodes))
          (map (λ (n) (out " ") (out n)) (rest nodes))))
      (out ")")]
-    #;[(integer? b)       (out b)]
-    #;[(boolean? b)       (out b)]
-    #;[(bv? b)            (out b)]
-    #;[(char? b)   (out b)]
-    #;[(string? b) (out b)]
     [else (out b)]
     ))
 
