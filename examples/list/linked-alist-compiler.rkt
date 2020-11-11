@@ -97,9 +97,9 @@
   (display-state s)
 
   ; Change the free pointer to a symbolic pointer
-  #;(define new-fp 3)
+  #;(define new-fp 9)
   #;(define-symbolic new-fp integer?)
-  #;(define new-fp (linked-list pointer 1))
+  (define new-fp (linked-list pointer 1))
   (define a (linked-list (change-free-pointer ,new-fp)))
   (define s+ (interpret-attack-ll a s))
   (display-state s+)
