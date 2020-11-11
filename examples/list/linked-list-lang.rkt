@@ -118,13 +118,15 @@
 ; n1:natural, ptr2:pointer, hp:heap
 ; append l2 at the end of l1
 (define (append-ll n1 ptr2 hp)
-  (let ([hd1 (nth-heap n1 hp)])        
+  (for/all ([hp hp]) ; this for/all helps with efficiency
+  (for/all ([hd1 (nth-heap n1 hp)]) ; this for/all ensures we can iterate over
+                                    ; concrete cells in the heap
     (match hd1
       [(linked-list (v:value null))
        (let ([newhd1 (linked-list (,v ,ptr2))])
-         (overwrite-heap n1 newhd1 hp))]
+         (first (overwrite-heap n1 newhd1 hp)))]
       [(linked-list (_:value n:natural))
-       (append-ll n ptr2 hp)])))
+       (append-ll n ptr2 hp)]))))
 
 ; push v on top of heap (at the end of the list)
 (define/contract (snoc-heap c h)
@@ -163,8 +165,8 @@
 ; return the nth element in the heap
 (define (nth-heap n hp)
   (match hp
-    [(linked-list (hd-c:cell tl-hp:heap))          
-     (if (equal? n 0)         
+    [(linked-list (hd-c:cell tl-hp:heap))
+     (if (equal? n 0)
            (linked-list ,hd-c)
            (nth-heap (- n 1) tl-hp))]))
 
