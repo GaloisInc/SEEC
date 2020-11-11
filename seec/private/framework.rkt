@@ -758,7 +758,12 @@
         #:decoder-bound (or/c #f integer?)
         #:decoder any/c
         #:gadgets-bound (or/c (or/c #f integer?) (listof (or/c #f integer?)))
-        #:gadgets (listof any/c))
+        #:gadgets (listof any/c)
+        #:context-bound (or/c #f integer?)
+        #:context any/c
+        #:debug boolean?
+        #:forall any/c
+        #:forall-extra any/c)
        (or/c #f (listof any/c)))
   (lambda (lang
            attack 
@@ -771,28 +776,30 @@
            #:gadgets [gadgets  (let ([gadgets-bounds (if (list? gadgets-bound) ; if a single bound (or no bound) is provided, repeat it |funs| times
                                                          gadgets-bound
                                                          (map (lambda (f) gadgets-bound) funs))])                                   
-                               (map (lambda (f b) (make-symbolic-var (attack-gadget attack) b)) funs gadgets-bounds))] ; for each function, we create a symbolic gadget
-
+                                 (map (lambda (f b) (make-symbolic-var (attack-gadget attack) b)) funs gadgets-bounds))] ; for each function, we create a symbolic gadget
+           #:context-bound [bound-c #f]
+           #:context [ctx (make-symbolic-var (language-context lang) bound-c)]
+           #:debug  [debug #f]
+           ; Synthesize a decoder, gadgets and contexts that respect the functional specifications but not the relational one.
+           #:forall [vars (if debug
+                              (list )
+                              ctx)]
+           #:forall-extra [vars-extra (list )]
            ) 
-    (let* ([eval-gadget (attack-evaluate-gadget attack)]
+    (let* ([assert-store (asserts)] ; save assertion state on entry
+           [eval-gadget (attack-evaluate-gadget attack)]
            [eval-dec    (attack-evaluate-decoder attack)]
-           [ctx (make-symbolic-var (language-context lang))]
            [equiv-ctx (lambda (r l)
                         (equal? (eval-dec decoder r)
                                 (eval-dec decoder l)))]
            [gadgets-lambda (map (lambda (g)
                                  (lambda (ctx)
                                    (eval-gadget g ctx))) gadgets)]
-          #;[fun-gadget-asserts (map (lambda (fg)
-                                      (with-asserts-only
-                                        (assert
-                                         (equal?
-                                          (eval-dec decoder (eval-gadget (cdr fg) ctx))
-                                          ((car fg) (eval-dec decoder ctx))))))
-                                    fgs)]
-          [sol (synthesize #:forall ctx
+          [sol (synthesize #:forall (cons vars vars-extra)
                            #:guarantee  (cons
-                                          (assert (rel-spec equiv-ctx gadgets-lambda ctx))
+                                         (assert (if debug
+                                                     (not (rel-spec equiv-ctx gadgets-lambda ctx))
+                                                     (rel-spec equiv-ctx gadgets-lambda ctx)))
                                           (map (lambda (f g)
                                                  (assert (if f
                                                      (equal?
@@ -801,13 +808,16 @@
                                                      #t)))
                                               funs gadgets)))])
                                          #;(and fun-gadget-asserts)
-      (if (unsat? sol)
-          (begin
-            (displayln "Synthesis failed")
-            #f)
-          (begin
-            (displayln "Synthesis succeeded")
-            (concretize (cons decoder gadgets) sol))))))
+      (let ([ret (if (unsat? sol)
+                    (begin
+                      (displayln "Synthesis failed")
+                      #f)
+                    (begin
+                      (displayln "Synthesis succeeded")
+                      (concretize (cons decoder gadgets) sol)))])
+        (clear-asserts!)
+        (for-each (lambda (arg) (assert arg)) assert-store) ; restore assertion state
+        ret))))
            
 
 

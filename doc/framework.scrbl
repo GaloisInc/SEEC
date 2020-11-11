@@ -361,4 +361,22 @@ SEEC will interpret the query sourcing its @racket[context] from @racket[lang] a
         (list  @racket[#:gadgets]
 	              "a list of gadgets"
 	              "instead of synthesizing completely symbolic gadgets, synthesize the symbolic variables in the provided argument (#f can be provided to keep a fully symbolic gadget)")		      
+        (list @racket[#:context-bound]
+					"a positive integer"
+					"set the upper bound on the size of the context"
+				)
+		      
+        (list @racket[#:context]
+					"a context"
+					"instead of quantifying over all contexts, quantify over all symbolilic variables in the provided context (if any)"
+				)
+			   (list @racket[#:debug]
+					 "a boolean flag"
+					 "if true, instead of synthesizing a decoder and gadgets that satisfies the specification, instead synthesize a decoder, gadgets and a context that satisfies the functional specifications but not the relational specifications; this will synthesize counterexamples that help debug the SEEC model"
+				)
+			   (list @racket[#:forall]
+					 "any Rosette expression"
+					 "instead of quantifying over all contexts, instead only quantify over the free variables in the provided argument; useful when synthesizing gadgets from sketches of contexts"
+				)
+
 		      )]
