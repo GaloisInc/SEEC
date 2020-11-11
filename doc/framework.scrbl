@@ -13,7 +13,7 @@ The SEEC provide provides facilities to define @racket[language], @racket[compil
 
 @subsection{@racket[grammar]}
 
-A SEEC model begins with a grammar of terms, expressed in BNF notation. 
+A SEEC grammars allow users to define custom program syntax on which a system's model is based. For example, the following code describe the syntax of an API implementing a set represented as a list of integer:
 
 @codeblock|{
 (define-grammar set-api
@@ -53,7 +53,7 @@ A SEEC @racket[language] contains the syntactical and semantical model of a syst
 A @racket[language] structure consists of two syntactic categories representing expressions and contexts, and of two racket functions, the first linking an expression
 and a context as a complete program, and the second evaluating the program into a behavior.
 
-A language can be defined using the SEEC command @racket[define-language], for example
+A language can be defined using the SEEC command @racket[define-language], for example:
 @codeblock|{
 (define-language name
   #:grammar set-api
@@ -64,7 +64,7 @@ A language can be defined using the SEEC command @racket[define-language], for e
 }|
 
 
-@subsubsection{@racket[define-language] options}
+@subsubsection{@racket[define-language] arguments}
 
 @tabular[#:sep @hspace[1]
   (list (list  @racket[#:grammar ]
@@ -84,6 +84,7 @@ A language can be defined using the SEEC command @racket[define-language], for e
                         "A Racket function evaluating a program into a behavior"))]
 
 
+Optional arguments @racket[#:size n] and @racket[#:where p] can be provided to @racket[#:expression] and @racket[#:context] to bound by @racket[n] the size of AST being considered, and to prune all AST not respecting predicate @racket[p], respectively. 
 
 @subsection{@racket[compiler]}
 
@@ -100,7 +101,7 @@ A SEEC @racket[compiler] describes how expressions of a SEEC @racket[language] c
 }|
 
 
-@subsubsection{@racket[define-compiler] options}
+@subsubsection{@racket[define-compiler] arguments}
 @tabular[#:sep @hspace[1]
   (list (list  @racket[#:source]
 	               "a SEEC language"
@@ -133,7 +134,7 @@ A SEEC @racket[attack] describe the capabilities of an attacker observing and in
 }|
 
 
-@subsubsection{@racket[define-attack] options}
+@subsubsection{@racket[define-attack] arguments}
 @tabular[#:sep @hspace[1]
   (list (list  @racket[#:grammar]
 	       "a SEEC grammar"
@@ -150,7 +151,7 @@ A SEEC @racket[attack] describe the capabilities of an attacker observing and in
         (list  @racket[#:evaluate-decoder]
 	       "a Racket function from decoder and context to some value"
 	       "A Racket function decoding the context as data"))]
-
+Just as with @racket[define-language], optional arguments @racket[#:size n] and @racket[#:where p] can be provided to @racket[#:gadget] and @racket[#:decoder] to further refine the class of AST under consideration.
 
 @section{@racket[find-weird-behavior]}
 SEEC's @racket[find-weird-behavior] function is a built-in query that attempts to find emergent behaviors in a target language with respect to compilation from a source language.

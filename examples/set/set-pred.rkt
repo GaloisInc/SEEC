@@ -351,31 +351,6 @@
     (display-related-gadgets (find-related-gadgets set-lang obs-int empty-funs #:valid boolean-axioms) displayln))
 
 
-
-#;(define (test-spec-member)
-  (begin
-    (define spec (lambda (x) (not x)))
-    (define decoder (set-api observation 2))
-    (define gadget (set-api interaction 4))
-    (define set (set-api set 3))
-    (define sol (synthesize
-                 #:forall set
-                 #:guarantee (assert
-                              (equal?
-                               (interpret-dec decoder (interpret-interaction gadget set))
-                               (spec (interpret-dec decoder set))))))
-    (if (unsat? sol)
-        (displayln "Synthesis failed")
-        (begin
-          (displayln "Synthesis succeeded")
-          (define c-gadget (concretize gadget sol))
-          (displayln "gadget...")
-          (displayln c-gadget)
-          (define c-decoder (concretize decoder sol))
-          (displayln "decoder...")
-          (displayln c-decoder)))
-    ))
-
 ; Natural numbers in set from definition of z and +
 ; NOTE: this would not work in buggy set
 ;; Expected:
@@ -386,37 +361,6 @@
 
 (define (test-spec-count)
     (display-related-gadgets (find-related-gadgets set-lang dec-int nat-z-succ-funs) displayln))
-
-
-#;(define (test-spec-count)
-  (begin
-    (define spec-z (lambda n 0))
-    (define spec-succ (lambda (n) (+ 1 n)))
-    (define decoder (set-api dec 2))
-    (define gadget-z (set-api interaction 3))
-    (define gadget-succ (set-api interaction 3))
-    (define set (set-api set 5))
-    (define sol (synthesize
-                 #:forall set
-                 #:guarantee (assert
-                              (and (equal?
-                                    (interpret-dec decoder (interpret-interaction gadget-succ set))
-                                    (spec-succ (interpret-dec decoder set)))
-                                   (equal?
-                                    (interpret-dec decoder (interpret-interaction gadget-z set))
-                                    (spec-z (interpret-dec decoder set)))))))
-    (if (unsat? sol)
-        (displayln "Synthesis failed")
-        (begin
-          (displayln "Synthesis succeeded")
-          (define c-gadget-succ (concretize gadget-succ sol))
-          (define c-gadget-z (concretize gadget-z sol))
-          (displayln "gadget z and succ...")
-          (displayln c-gadget-z)
-          (displayln c-gadget-succ)
-          (define c-decoder (concretize decoder sol))
-          (displayln "decoder...")
-          (displayln c-decoder)))))
 
 
 
@@ -439,40 +383,6 @@
 
 (define (test-spec-buggy-count-axioms)
   (display-related-gadgets (find-related-gadgets set-lang dec-buggy-int empty-funs #:valid nat-pred-succ-axioms) displayln))
-
-
-
-#;(define (test-spec-buggy-count)
-  (begin
-    (define spec-pred (lambda (n) (max 0 (- n 1))))
-    (define spec-succ (lambda (n) (+ n 1)))
-    (define decoder (set-api dec 2))
-    (define gadget-pred (set-api interaction 3))
-   (define gadget-succ (set-api interaction 3))
-    (define set (set-api set 5))
-    (define sol (synthesize
-                 #:forall set
-
-                 #:guarantee (assert
-                              (and (equal?
-                                    (interpret-dec decoder (interpret-buggy-interaction gadget-succ set))
-                                    (spec-succ (interpret-dec decoder set)))
-                                   (equal?
-                                    (interpret-dec decoder (interpret-buggy-interaction gadget-pred set))
-                                    (spec-pred (interpret-dec decoder set)))))))
-    (if (unsat? sol)
-        (displayln "Synthesis failed")
-        (begin
-          (displayln "Synthesis succeeded")
-          (define c-gadget-succ (concretize gadget-succ sol))
-          (define c-gadget-pred (concretize gadget-pred sol))
-          (displayln "gadget pred and succ...")
-          (displayln c-gadget-pred)
-          (displayln c-gadget-succ)
-          (define c-decoder (concretize decoder sol))
-          (displayln "decoder...")
-          (displayln c-decoder))))
-  )
 
 
 ; Integers in set from -1 and +1
@@ -498,40 +408,6 @@
 (define (test-spec-count-int-axioms)
     (display-related-gadgets (find-related-gadgets set-lang dec-int empty-funs #:valid int-pred-succ-axioms) displayln))
 
-#;(define (test-spec-count-int)
-  (begin
-    (define spec-pred (lambda (n) (- n 1)))
-    (define spec-succ (lambda (n) (+ n 1)))
-   (define decoder (set-api dec 3))
-    (define gadget-pred (set-api interaction 3))
-   (define gadget-succ (set-api interaction 3))
-    (define set (set-api set 5))
-  (define sol (synthesize
-                 #:forall set
-                 #:guarantee (assert
-                              (and (equal?
-                                    (interpret-dec decoder (interpret-interaction gadget-succ set))
-                                    (spec-succ (interpret-dec decoder set)))
-                                   (equal?
-                                    (interpret-dec decoder (interpret-interaction gadget-pred set))
-                                    (spec-pred (interpret-dec decoder set)))))))
-    (if (unsat? sol)
-        (displayln "Synthesis failed")
-        (begin
-          (displayln "Synthesis succeeded")
-          (define c-set (concretize set sol))
-          (define c-gadget-succ (concretize gadget-succ sol))
-          (define c-gadget-pred (concretize gadget-pred sol))
-          (displayln "gadget pred and succ...")
-          (displayln c-gadget-pred)
-          (displayln c-gadget-succ)
-          (define c-decoder (concretize decoder sol))
-          (displayln "decoder...")
-          (displayln c-decoder)))))
-
-
-(define (test-spec-count-fold)
-  (display-related-gadgets (find-related-gadgets set-lang dec-fold-int nat-z-succ-funs) displayln))
 
 ; Natural numbers in sets from 0 and +1
 ; where the decoder is a fold over state
@@ -539,39 +415,9 @@
 ;;; decoder (set-api (fold (add (if-el-eq 1 1 0) var-value) 0))
 ;;; gadget-pred (set-api (seq (remove 1) nop))
 ;;; gadget-succ (set-api (seq (insert 1) nop))
-#;(define (test-spec-count-fold)
-  (begin
-    (define spec-z 0)
-    (define spec-succ (lambda (n) (+ 1 n)))
-    (define decoder (set-api dec-fold 4))
-    (define gadget-z (set-api interaction 3))
-    (define gadget-succ (set-api interaction 3))
-    (define set (set-api set 5))
-    (define sol (synthesize
-                 #:forall set
-                 #:guarantee (assert
-                              (and (equal?
-                                    (interpret-dec-fold decoder (interpret-interaction gadget-succ set))
-                                    (spec-succ (interpret-dec-fold decoder set)))
-                                   (equal?
-                                    (interpret-dec-fold decoder (interpret-interaction gadget-z set))
-                                    spec-z)))))
-    (if (unsat? sol)
-        (displayln "Synthesis failed")
-        (begin
-          (displayln "Synthesis succeeded")
-          (define c-gadget-succ (concretize gadget-succ sol))
-          (define c-gadget-z (concretize gadget-z sol))
-          (displayln "gadget z and succ...")
-          (displayln c-gadget-z)
-          (displayln c-gadget-succ)
-          (define c-decoder (concretize decoder sol))
-          (displayln "decoder...")
-          (displayln c-decoder)))))
+(define (test-spec-count-fold)
+  (display-related-gadgets (find-related-gadgets set-lang dec-fold-int nat-z-succ-funs) displayln))
 
-
-(define (test-spec-buggy-count-fold)
-    (display-related-gadgets (find-related-gadgets set-lang dec-fold-buggy-int nat-pred-succ-funs) displayln))
  
 ; Natural numbers in buggy-sets from nat-pred and +1
 ; where the decoder is a fold over state
@@ -579,36 +425,8 @@
 ;;; decoder (set-api (fold (add (if-el-eq 1 1 0) var-value) 0))
 ;;; gadget-pred (set-api (seq (remove 1) nop))
 ;;; gadget-succ (set-api (seq (insert 1) nop))
-#;(define (test-spec-buggy-count-fold)
-  (begin
-    (define spec-pred (lambda (n) (max 0 (- n 1))))
-    (define spec-succ (lambda (n) (+ n 1)))
-    (define decoder (set-api dec-fold 4))
-    (define gadget-pred (set-api interaction 3))
-    (define gadget-succ (set-api interaction 3))
-   (define set (set-api set 5))
-   (define sol (synthesize
-                 #:forall set
-                 #:guarantee (assert
-                              (and (equal?
-                                    (interpret-dec-fold decoder (interpret-buggy-interaction gadget-succ set))
-                                    (spec-succ (interpret-dec-fold decoder set)))
-                                   (equal?
-                                    (interpret-dec-fold decoder (interpret-buggy-interaction gadget-pred set))
-                                    (spec-pred (interpret-dec-fold decoder set)))))))
-    (if (unsat? sol)
-        (displayln "Synthesis failed")
-        (begin
-
-          (displayln "Synthesis succeeded")
-          (define c-gadget-succ (concretize gadget-succ sol))
-          (define c-gadget-pred (concretize gadget-pred sol))
-          (define c-decoder (concretize decoder sol))
-          (displayln "gadget pred and succ...")
-          (displayln c-gadget-pred)
-          (displayln c-gadget-succ)
-          (displayln "decoder...")
-          (displayln c-decoder)))))
+(define (test-spec-buggy-count-fold)
+    (display-related-gadgets (find-related-gadgets set-lang dec-fold-buggy-int nat-pred-succ-funs) displayln))
 
 
 ; Natural numbers in buggy-sets from nat-pred and +1
@@ -622,37 +440,6 @@
 (define (test-spec-buggy-count-while)
     (display-related-gadgets (find-related-gadgets set-lang dec-while-buggy-int nat-pred-succ-funs) displayln))
 
-
-#;(define (test-spec-buggy-count-while-nat)
-  (begin
-    (define spec-pred (lambda (n) (max 0 (- n 1))))
-    (define spec-succ (lambda (n) (+ n 1)))
-    (define decoder (set-api dec-while 4))
-    (define gadget-pred (set-api interaction 3))
-   (define gadget-succ (set-api interaction 3))
-    (define set (set-api set 3))
-  (define sol (synthesize
-                 #:forall set
-                 #:guarantee (assert
-                              (and (equal?
-                                    (interpret-dec-while decoder (interpret-buggy-interaction gadget-succ set))
-                                    (spec-succ (interpret-dec-while decoder set)))
-                                   (equal?
-                                    (interpret-dec-while decoder (interpret-buggy-interaction gadget-pred set))
-                                    (spec-pred (interpret-dec-while decoder set)))))))
-    (if (unsat? sol)
-        (displayln "Synthesis failed")
-        (begin
-          (displayln "Synthesis succeeded")
-          (define c-gadget-succ (concretize gadget-succ sol))
-          (define c-gadget-pred (concretize gadget-pred sol))
-          (define c-decoder (concretize decoder sol))
-          (displayln "gadget pred and succ...")
-          (displayln c-gadget-pred)
-          (displayln c-gadget-succ)          
-          (displayln "decoder...")
-          (displayln c-decoder)))))
-
 ; WARNING: THIS IS SLOW (30 min)
 ;; Expected:
 ;;; decoder (set-api (while (or (member? 1) (and (member? 0) (member? 0))) (if (not (member? 1)) (seq (remove 0) (incr nop)) (seq (remove 1) (decr nop))) nop)
@@ -662,74 +449,15 @@
     (display-related-gadgets (find-related-gadgets set-lang dec-while-buggy-int int-pred-succ-funs) displayln))
 
 
-#;(define (test-spec-buggy-count-while-int)
-  (begin
-    (define spec-pred (lambda (n) (- n 1)))
-    (define spec-succ (lambda (n) (+ n 1)))
-    (define decoder (set-api dec-while 5))
-    (define gadget-pred (set-api interaction 3))
-    (define gadget-succ (set-api interaction 3))
-    (define set (set-api set 3))
-  (define sol (synthesize
-                 #:forall set
-                 #:guarantee (assert
-                              (and (equal?
-                                    (interpret-dec-while decoder (interpret-buggy-interaction gadget-succ set))
-                                    (spec-succ (interpret-dec-while decoder set)))
-                                   (equal?
-                                    (interpret-dec-while decoder (interpret-buggy-interaction gadget-pred set))
-                                    (spec-pred (interpret-dec-while decoder set)))))))
-    (if (unsat? sol)
-        (displayln "Synthesis failed")
-        (begin
-          (displayln "Synthesis succeeded")
-          (define c-gadget-succ (concretize gadget-succ sol))
-          (define c-gadget-pred (concretize gadget-pred sol))
-          (define c-decoder (concretize decoder sol))
-          (displayln "gadget pred and succ...")
-          (displayln c-gadget-pred)
-          (displayln c-gadget-succ)          
-          (displayln "decoder...")
-          (displayln c-decoder)))))
-
-
 ; This should fail, as non-buggy version cannot produce something equivalent to "count" using dec-while
 ; (and likewise with integer's spec-pred and spec-succ)
 (define (test-spec-count-while-nat)
     (display-related-gadgets (find-related-gadgets set-lang dec-while-int nat-z-succ-funs) displayln))
 
-#;(define (test-spec-count-while-nat)
-  (begin
-    (define spec-z 0)
-    (define spec-succ (lambda (n) (+ 1 n)))
-    (define decoder (set-api dec-while 4))
-    (define gadget-z (set-api interaction 3))
-    (define gadget-succ (set-api interaction 3))
-    (define set (set-api set 3))
-    (define sol (synthesize
-                 #:forall set
-                 #:guarantee (assert
-                              (and (equal?
-                                    (interpret-dec-while decoder (interpret-interaction gadget-succ set))
-                                    (spec-succ (interpret-dec-while decoder set)))
-                                   (equal?
-                                    (interpret-dec-while decoder (interpret-interaction gadget-z set))
-                                    spec-z)))))
-    (if (unsat? sol)
-        (displayln "Synthesis failed")
-        (begin
-          (displayln "Synthesis succeeded")
-          (define c-gadget-succ (concretize gadget-succ sol))
-          (define c-gadget-z (concretize gadget-z sol))
-          (displayln "gadget z and succ...")
-          (displayln c-gadget-z)
-          (displayln c-gadget-succ)
-          (define c-decoder (concretize decoder sol))
-          (displayln "decoder...")
-          (displayln c-decoder)))))
 
 
-#|
+#| Some notes about a future multi-typed version of find-related gadget
+
 What we have: a list of individual specifications of type
 \x. S_i x
 
