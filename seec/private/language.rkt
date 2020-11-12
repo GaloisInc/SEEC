@@ -58,6 +58,18 @@
                   terminals
                   productions
                   max-width))
+(begin-for-syntax
+  (struct grammar+ (terminals
+                    nonterminals)
+    )
+
+  ; Convert accessors into syntax transformers
+  (define (get-nonterminal-stx stx)
+    (grammar+-nonterminals (syntax-local-value stx)))
+  (define (get-terminal-stx stx)
+    (grammar+-terminals (syntax-local-value stx)))
+  )
+
 
 (define (max-width ls)
   (cond
@@ -475,7 +487,10 @@
 
 (define-syntax (define-grammar-match-expander stx)
   (syntax-parse stx
-    [(_ name:id grammar terminalstx ntstx)
+    [(_ name:id grammar)
+     (with-syntax ([name-stx (format-id #'name "~a-syntax" #'name)])
+       (let ([terminalstx+ (get-terminal-stx #'name-stx)]
+             [ntstx+ (get-nonterminal-stx #'name-stx)])
      #`(define-match-expander name
                ; The first argument of the match-expander is the behavior used
                ; with the `match` construct. That is, the match pattern
@@ -501,7 +516,7 @@
                  (syntax-parse stx
                    [(_ pat)
                     #:declare pat (term #,(syntax->string #'name)
-                                        terminalstx)
+                                        #,terminalstx+)
                     #'(? (λ (t) (syntax-match? name 'pat.stx-pattern t)) pat.match-pattern)]))
                (lambda (stx)
                  (syntax-parse stx
@@ -509,14 +524,18 @@
                    [(_ pat)
                     #:declare pat (concrete-term
                                    #,(syntax->string #'name)
-                                   (set-subtract terminalstx ntstx (list->set builtins))
-                                   (set-intersect terminalstx (list->set builtins)))
+                                   (set-subtract (list->set #,terminalstx+)
+                                                 (list->set #,ntstx+)
+                                                 (list->set builtins))
+                                   (set-intersect (list->set #,terminalstx+) (list->set builtins)))
                     #'(make-concrete-term! name pat)]
                    [(_ pat depth)
                     #:declare pat (term #,(syntax->string #'name)
-                                        terminalstx)
+                                        #,terminalstx+)
                     #'(make-term! name pat depth)]
-                   )))]))
+                   )))))]))
+
+
 
 (define-syntax (check-reserved-keywords stx)
   (syntax-parse stx
@@ -542,27 +561,43 @@
              ]))
 
 
+; Define a grammar+ instance to encode syntax. Note that the procedure
+; associated with the grammar+ instance will expose the match expander via a
+; call directly to (name), and (get-terminal-stx name) and (get-nonterminal-stx
+; name) will expose the syntax-level data.
+(define-syntax (make-grammar+ stx)
+  (syntax-parse stx
+    [(_ name:id terminals nonterminals)
+     (with-syntax ([id-syntax (format-id #'name "~a-syntax" #'name)])
+       #`(define-syntax id-syntax (grammar+ #'terminals #'nonterminals))
+       )]))
+
 (define-syntax (define-grammar stx)
   (syntax-parse stx
     #:datum-literals (::=)
     [(_ name:id (nt:nonterminal ::= prod:production ...) ...)
      (let* ([prods         (syntax->datum #'((nt prod ...) ...))]
-            [nts           (list->set (syntax->datum #'(nt ...)))]
-            [terminals     (prods->terminals prods)]
-            [builtin-nts   (set->list (set-intersect terminals (list->set builtin-nonterminals)))]
+            [nts           (syntax->datum #'(nt ...))]
+            #;[nts           (list->set (syntax->datum #'(nt ...)))]
+            [terminals     (set->list (prods->terminals prods))]
+            [builtin-nts   (set->list (set-intersect (list->set terminals)
+                                                     (list->set builtin-nonterminals)))]
             )
-       (with-syntax ([terminalstx #`(apply set '(#,@(set->list terminals)))]
-                     [ntstx       #`(apply set '(#,@(set->list nts)))]
-                     )
+;       (with-syntax ([terminalstx #`(apply set '(#,@(set->list terminals)))]
+;                     [ntstx       #`(apply set '(#,@(set->list nts)))]
+;                     )
          #`(begin
              (define lang-struct (make-grammar '#,prods))
+
+             ; Register the syntax level terminals and nonterminals
+             (make-grammar+ name '#,terminals '#,nts)
 
              ; Throw an exception if any reserved keywords from
              ; `builtin-keywords` occured in the grammar
              (check-reserved-keywords lang-struct)
 
              ; Define the match expander
-             (define-grammar-match-expander name lang-struct terminalstx ntstx)
+             (define-grammar-match-expander name lang-struct)
 
              ; Add predicates for each nonterminal
              ;
@@ -573,29 +608,36 @@
              (define-nonterminal-predicates name nt ...)
              (define-nonterminal-predicates name #,@builtin-nts)
 
-             )))]))
+             ))]))
 
 (define-syntax (extend-grammar stx)
   (syntax-parse stx
     #:datum-literals (::=)
     [(_ name:id parent:id (nt:nonterminal ::= prod:production ...) ...)
+     (with-syntax
+       ([parent-stx (format-id #'parent "~a-syntax" #'parent)])
      (let* ([prods         (syntax->datum #'((nt prod ...) ...))]
-            [nts           (list->set (syntax->datum #'(nt ...)))]
-            [terminals     (prods->terminals prods)]
-            [builtin-nts   (set->list (set-intersect terminals (list->set builtin-nonterminals)))]
+            [new-nts       (syntax->datum #'(nt ...))]
+            [old-nts       (syntax->datum (get-nonterminal-stx #'parent-stx))]
+            [nts           (append new-nts old-nts)]
+            [new-terminals (set->list (prods->terminals prods))]
+            [old-terminals (syntax->datum (get-terminal-stx #'parent-stx))]
+            [terminals     (append new-terminals old-terminals)]
+            [builtin-nts   (set->list (set-intersect (list->set terminals)
+                                                     (list->set builtin-nonterminals)))]
             )
-       (with-syntax ([terminalstx #`(apply set '(#,@(set->list terminals)))]
-                     [ntstx       #`(apply set '(#,@(set->list nts)))]
-                     )
          #`(begin
              (define lang-struct (make-extended-grammar parent '#,prods))
+
+             ; Register the syntax level terminals and nonterminals
+             (make-grammar+ name '#,terminals '#,nts)
 
              ; Throw an exception if any reserved keywords from
              ; `builtin-keywords` occured in the grammar
              (check-reserved-keywords lang-struct)
 
              ; Define the match expander
-             (define-grammar-match-expander name lang-struct terminalstx ntstx)
+             (define-grammar-match-expander name lang-struct)
 
              ; Add predicates for each nonterminal
              ;
