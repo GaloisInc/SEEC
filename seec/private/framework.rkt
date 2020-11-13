@@ -781,31 +781,29 @@
            #:context [ctx (make-symbolic-var (language-context lang) bound-c)]
            #:debug  [debug #f]
            ; Synthesize a decoder, gadgets and contexts that respect the functional specifications but not the relational one.
-           #:forall [vars (if debug
-                              (list )
-                              ctx)]
+           #:forall [vars ctx]
            #:forall-extra [vars-extra (list )]
            ) 
     (let* ([assert-store (asserts)] ; save assertion state on entry
+           [debug-ctx (make-symbolic-var (language-context lang) bound-c)] ; ctx created for debugging purpose, TODO: fix if scheme of ctx is given
            [eval-gadget (attack-evaluate-gadget attack)]
            [eval-dec    (attack-evaluate-decoder attack)]
-           [equiv-ctx (lambda (r l)
-                        (equal? (eval-dec decoder r)
-                                (eval-dec decoder l)))]
+           [eval-decoder (lambda (x)
+                           (eval-dec decoder x))]
            [gadgets-lambda (map (lambda (g)
                                  (lambda (ctx)
                                    (eval-gadget g ctx))) gadgets)]
-          [sol (synthesize #:forall (cons vars vars-extra)
+           [sol (synthesize #:forall (cons vars vars-extra)
                            #:guarantee  (cons
                                          (assert (if debug
-                                                     (not (rel-spec equiv-ctx gadgets-lambda ctx))
-                                                     (rel-spec equiv-ctx gadgets-lambda ctx)))
-                                          (map (lambda (f g)
-                                                 (assert (if f
-                                                     (equal?
-                                                      (eval-dec decoder (eval-gadget g ctx))
-                                                      (f (eval-dec decoder ctx)))
-                                                     #t)))
+                                                     (not (rel-spec eval-decoder gadgets-lambda debug-ctx))
+                                                     (rel-spec eval-decoder gadgets-lambda ctx)))
+                                         (map (lambda (f g)
+                                                (assert (if f
+                                                            (equal?
+                                                             (eval-dec decoder (eval-gadget g ctx))
+                                                             (f (eval-dec decoder ctx)))
+                                                            #t)))
                                               funs gadgets)))])
                                          #;(and fun-gadget-asserts)
       (let ([ret (if (unsat? sol)
@@ -814,7 +812,9 @@
                       #f)
                     (begin
                       (displayln "Synthesis succeeded")
-                      (concretize (cons decoder gadgets) sol)))])
+                      (if debug
+                          (concretize (cons debug-ctx (cons decoder gadgets)) sol)
+                          (concretize (cons decoder gadgets) sol))))])
         (clear-asserts!)
         (for-each (lambda (arg) (assert arg)) assert-store) ; restore assertion state
         ret))))

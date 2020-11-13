@@ -334,12 +334,15 @@
 
 (define empty-funs (list #f #f))
 
-; OS TODO: eq could be change into dec, where the client has to manually insert calls to the decoder
+
 (define boolean-axioms
-  (lambda (eq symbols x)
+  (lambda (dec symbols x)
       (let ([id-s (first symbols)]
-            [neg-s (second symbols)])
-        (and (eq x (id-s x))
+            [neg-s (second symbols)]
+            [eq (lambda (r l) (equal?
+                               (dec r)
+                               (dec l)))])
+        (and (equal? x (id-s x)) ; using equals on contexts to force id to be nop
              (eq x (neg-s (neg-s x)))
              (not (eq x (neg-s x)))))))
 
@@ -372,9 +375,12 @@
 ;;; gadget-succ (set-api (seq (insert 0) nop))
 (define nat-pred-succ-funs (list (lambda (n) (max 0 (- n 1))) (lambda (n) (+ 1 n))))
 (define nat-pred-succ-axioms
-  (lambda (eq symbols x)
+  (lambda (dec symbols x)
       (let ([pred-s (first symbols)]
-            [succ-s (second symbols)])
+            [succ-s (second symbols)]
+            [eq (lambda (r l) (equal?
+                               (dec r)
+                               (dec l)))])
         (and (eq x (pred-s (succ-s x)))
              (not (eq x (succ-s x)))))))
 
@@ -394,9 +400,12 @@
 (define int-pred-succ-funs (list (lambda (n) (- n 1)) (lambda (n) (+ n 1))))
 
 (define int-pred-succ-axioms
-  (lambda (eq symbols x)
+  (lambda (dec symbols x)
       (let ([pred-s (first symbols)]
-            [succ-s (second symbols)])
+            [succ-s (second symbols)]
+            [eq (lambda (r l) (equal?
+                               (dec r)
+                               (dec l)))])
         (and (eq (succ-s (pred-s x)) (pred-s (succ-s x)))
              (not (eq x (pred-s x)))
              (not (eq x (succ-s x)))))))
