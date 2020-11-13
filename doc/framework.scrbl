@@ -239,6 +239,93 @@ While a weird behavior doesn't exists (under the given constraints) at the sourc
 @\racket[find-changed-behavior] takes, in addition the the compiler, a concrete @${e_1}. If option @\racket[#:count] is used, the returned witness will have different @${c_2}: 
 @$${\exists c_2, \exists c_1, \mathbb{E}_1(c_1, e_1) \neq \mathbb{E}_2(c_2, \mathbb{C}(e_1))}
 
+
+@section{@racket[find-weird-behavior]}
+SEEC's @racket[find-weird-behavior] function is a built-in query that attempts to find emergent behaviors in a target language with respect to compilation from a source language.
+It attempts to synthesize @${e_1} and @${c_2} satisfying the follow equation, where @${e_1} and @${c_1} are a source expression and context, and @${c_2} a target context:
+@$${\exists e_1, \exists c_2, \forall c_1, \mathbb{E}_1(c_1, e_1) \neq \mathbb{E}_2(c_2, \mathbb{C}(e_1))}
+
+@subsection{@racket[find-weird-behavior] options}
+@tabular[#:sep @hspace[1]
+         (list (list @racket[#:count n]
+					 "n is a positive integer"
+					 "generate n different gadgets satisfying the specification"
+					 ) @; NOTE: could not figure out how to refer to @racket[n]
+					   @; inside of a table with other text in that element...
+			   (list @racket[#:source-expr-bound n]
+					 "n is a positive integer"
+					 "set the upper bound on the size of source expressions"
+					 )
+			   (list @racket[#:source-context-bound n]
+					 "n is a positive integer"
+					 "set the upper bound on the size of source context"
+					 )
+			   (list @racket[#:target-context-bound n]
+					 "n is a positive integer"
+					 "set the upper bound on the size of target context"
+					 )
+			   (list @racket[#:source-expr-constraint p]
+					 "p is a predicate over source expressions"
+					 "only synthesize source expressions @${e_1} satisfying @{p e1}"
+				)
+			   (list @racket[#:source-context-constraint p]
+					 "p is a predicate over source expressions and source contexts"
+					 "the specification need only be satisfied for contexts c1 satisfying p e1 c1"
+				)
+			   (list @racket[#:target-context-constraint p]
+					 "p is a predicate over source expressions and target contexts"
+					  "only synthesize target contexts c2 satisfying p e1 c2"					  
+				)
+                           (list @racket[#:source-behavior-constraint p]
+					 "p is a predicate over source expressions and target contexts"
+					  "only synthesize target expression e2 and target contexts c2 such that the behavior of the target program satisfies p e1 c1 c2 b2"
+				)
+	                    (list @racket[#:target-behavior-constraint p]
+					 "p is a predicate over source expressions, source contexts and target contexts"
+					  "only synthesize target expression e2 and target contexts c2 such that the behavior of the target program satisfies p e1 c1 c2 b2"
+				)
+			   (list @racket[#:source-expr e]
+					 "e is an source expression"
+					 "instead of synthesizing a completely symbolic expression, synthesize the symbolic variables in e1 (if any)"
+				)
+			   (list @racket[#:source-context ctx]
+					"ctx is a source context"
+					"instead of quantifying over all contexts, quantify over all symbolilic variables in c1 (if any)"
+				)
+			   (list @racket[#:target-context ctx]
+					"ctx is a target context"
+					"instead of quantifying over all contexts, synthesize the symbolic variables in c2 (if any)"
+				)
+			   (list @racket[#:debug f]
+					 "f is a boolean flag"
+					 "if true, instead of synthesizing an expression that satisfies the specification, instead synthesize an expression and context that violate the specification. Used in conjunction with expr and context; this will synthesize counterexamples that help debug the SEEC model"
+				)
+			   (list @racket[#:fresh-witness f]
+					 "f is a boolean flag"
+					 "if false, instead of synthesizing a fresh context that witnesses the correctness of the synthesized expression, simply concretize any free variables in the given context argument"
+				)
+			   (list @racket[#:forall ls]
+					 "ls is any Rosette expression"
+					 "instead of quantifying over all contexts, instead only quantify over the free variables in ls; useful when synthesizing gadgets from sketches of contexts"
+				)
+		           (list @racket[#:capture-nondeterminism b]
+					 "b is a boolean flag"
+					 "if true, quantify over the non-determinism collected when evaluating the source and target program"
+				)
+		 )]
+
+
+@subsection{alternative forms to @\racket[find-weird-behavior]}
+We provide alternative forms based on @\racket[find-weird-behavior] that provide specific defaults behavior adapted to common queries:
+
+@subsubsection{@\racket[find-changed-component] and @\racket[find-changed-behavior]}
+While a weird behavior doesn't exists (under the given constraints) at the source level, a changed behavior requires only the existance of a related source context resulting in a different behavior: 
+@$${\exists e_1, \exists c_2, \exists c_1, \mathbb{E}_1(c_1, e_1) \neq \mathbb{E}_2(c_2, \mathbb{C}(e_1))}
+
+
+@\racket[find-changed-behavior] takes, in addition the the compiler, a concrete @${e_1}. If option @\racket[#:count] is used, the returned witness will have different @${c_2}: 
+@$${\exists c_2, \exists c_1, \mathbb{E}_1(c_1, e_1) \neq \mathbb{E}_2(c_2, \mathbb{C}(e_1))}
+
 @; NOTE: I cannot figure out how to link functions like [find-gadget] to their
 @; source code definitions...
 

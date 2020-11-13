@@ -140,11 +140,11 @@
 #;(more-tests)
 
 (define (pattern-matching-tests)
-  (define t (constants string 1))
-  (define t-constant (constants ""))
+  (define t (constants string 2))
+  (define t-constant (constants "hello"))
   (define (do-match s)
     (match s
-      [(constants "") #t]
+      [(constants "hi") #t]
       [_ #f]))
   (define (do-equal s)
     (equal? s (constants "")))
@@ -152,9 +152,6 @@
   #;(render-value/window t-equal)
   #;(displayln (do-equal t))
 
-  (define b (constants boolean 1))
-  (match b
-    [(constants #t) #t]
-    [_ #f])
+  (do-match t)
   )
-#;(pattern-matching-tests)
+(pattern-matching-tests)
