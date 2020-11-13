@@ -771,7 +771,8 @@
            #:valid [rel-spec (lambda (eq symbols x) #t)]
            ; predicate over a list of gadgets representing the relation-specification they have to adhere to
            ; eq is a relation between \tau that is replaced by a relation between states up-to \tau decoder
-           #:decoder-bound [dec-bound #f]           #:decoder [decoder (make-symbolic-var (attack-decoder attack) dec-bound)] ; make a single decoder in the single-type version          
+           #:decoder-bound [dec-bound #f]
+           #:decoder [decoder (make-symbolic-var (attack-decoder attack) dec-bound)] ; make a single decoder in the single-type version          
            #:gadgets-bound [gadgets-bound #f]
            #:gadgets [gadgets  (let ([gadgets-bounds (if (list? gadgets-bound) ; if a single bound (or no bound) is provided, repeat it |funs| times
                                                          gadgets-bound
@@ -779,13 +780,14 @@
                                  (map (lambda (f b) (make-symbolic-var (attack-gadget attack) b)) funs gadgets-bounds))] ; for each function, we create a symbolic gadget
            #:context-bound [bound-c #f]
            #:context [ctx (make-symbolic-var (language-context lang) bound-c)]
+           ; context-where
            #:debug  [debug #f]
            ; Synthesize a decoder, gadgets and contexts that respect the functional specifications but not the relational one.
            #:forall [vars ctx]
            #:forall-extra [vars-extra (list )]
            ) 
     (let* ([assert-store (asserts)] ; save assertion state on entry
-           [debug-ctx (make-symbolic-var (language-context lang) bound-c)] ; ctx created for debugging purpose, TODO: fix if scheme of ctx is given
+           [debug-ctx (make-symbolic-var (language-context lang) bound-c)] ; ctx created for debugging purpose, TODO: fix this if scheme of ctx is given
            [eval-gadget (attack-evaluate-gadget attack)]
            [eval-dec    (attack-evaluate-decoder attack)]
            [eval-decoder (lambda (x)
@@ -805,7 +807,6 @@
                                                              (f (eval-dec decoder ctx)))
                                                             #t)))
                                               funs gadgets)))])
-                                         #;(and fun-gadget-asserts)
       (let ([ret (if (unsat? sol)
                     (begin
                       (displayln "Synthesis failed")

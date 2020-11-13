@@ -342,7 +342,7 @@
             [eq (lambda (r l) (equal?
                                (dec r)
                                (dec l)))])
-        (and (equal? x (id-s x)) ; using equals on contexts to force id to be nop
+        (and (equal? x (id-s x)) 
              (eq x (neg-s (neg-s x)))
              (not (eq x (neg-s x)))))))
 
@@ -381,7 +381,8 @@
             [eq (lambda (r l) (equal?
                                (dec r)
                                (dec l)))])
-        (and (eq x (pred-s (succ-s x)))
+        (and 
+             (eq x (pred-s (succ-s x)))
              (not (eq x (succ-s x)))))))
 
 (define (test-spec-buggy-count)
