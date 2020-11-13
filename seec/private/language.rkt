@@ -487,10 +487,10 @@
 
 (define-syntax (define-grammar-match-expander stx)
   (syntax-parse stx
-    [(_ name:id grammar)
+    [(_ name:id grammar terminalstx+ ntstx+)
      (with-syntax ([name-stx (format-id #'name "~a-syntax" #'name)])
-       (let ([terminalstx+ (get-terminal-stx #'name-stx)]
-             [ntstx+ (get-nonterminal-stx #'name-stx)])
+;       (let ([terminalstx+ (get-terminal-stx #'name-stx)]
+;             [ntstx+ (get-nonterminal-stx #'name-stx)])
      #`(define-match-expander name
                ; The first argument of the match-expander is the behavior used
                ; with the `match` construct. That is, the match pattern
@@ -516,7 +516,7 @@
                  (syntax-parse stx
                    [(_ pat)
                     #:declare pat (term #,(syntax->string #'name)
-                                        #,terminalstx+)
+                                        terminalstx+)
                     #'(? (λ (t) (syntax-match? name 'pat.stx-pattern t)) pat.match-pattern)]))
                (lambda (stx)
                  (syntax-parse stx
@@ -524,16 +524,16 @@
                    [(_ pat)
                     #:declare pat (concrete-term
                                    #,(syntax->string #'name)
-                                   (set-subtract (list->set #,terminalstx+)
-                                                 (list->set #,ntstx+)
+                                   (set-subtract (list->set terminalstx+)
+                                                 (list->set ntstx+)
                                                  (list->set builtins))
-                                   (set-intersect (list->set #,terminalstx+) (list->set builtins)))
+                                   (set-intersect (list->set terminalstx+) (list->set builtins)))
                     #'(make-concrete-term! name pat)]
                    [(_ pat depth)
                     #:declare pat (term #,(syntax->string #'name)
-                                        #,terminalstx+)
+                                        terminalstx+)
                     #'(make-term! name pat depth)]
-                   )))))]))
+                   ))))]))
 
 
 
@@ -590,14 +590,14 @@
              (define lang-struct (make-grammar '#,prods))
 
              ; Register the syntax level terminals and nonterminals
-             (make-grammar+ name '#,terminals '#,nts)
+             (make-grammar+ name #,terminals #,nts)
 
              ; Throw an exception if any reserved keywords from
              ; `builtin-keywords` occured in the grammar
              (check-reserved-keywords lang-struct)
 
              ; Define the match expander
-             (define-grammar-match-expander name lang-struct)
+             (define-grammar-match-expander name lang-struct '#,terminals '#,nts)
 
              ; Add predicates for each nonterminal
              ;
@@ -630,14 +630,14 @@
              (define lang-struct (make-extended-grammar parent '#,prods))
 
              ; Register the syntax level terminals and nonterminals
-             (make-grammar+ name '#,terminals '#,nts)
+             (make-grammar+ name #,terminals #,nts)
 
              ; Throw an exception if any reserved keywords from
              ; `builtin-keywords` occured in the grammar
              (check-reserved-keywords lang-struct)
 
              ; Define the match expander
-             (define-grammar-match-expander name lang-struct)
+             (define-grammar-match-expander name lang-struct '#,terminals '#,nts)
 
              ; Add predicates for each nonterminal
              ;
@@ -736,7 +736,7 @@
     (prog     ::= list<exp>))
 
   (extend-grammar test-grammar-extra test-grammar
-     (foo     ::= base op FOO)
+     (foo     ::= base (op foo foo) FOO)
      )
 
   (test-case
@@ -747,6 +747,10 @@
                   (test-grammar-extra FOO))
     (check-equal? (bonsai-terminal (symbol->enum '+))
                   (test-grammar-extra +))
+    (check-equal? (test-grammar-extra (- FOO 3))
+                  (bonsai-list (list (test-grammar-extra -)
+                                     (test-grammar-extra FOO)
+                                     (test-grammar-extra 3))))
     (check-equal? (bonsai-terminal (symbol->enum 'and))
                   (test-grammar and))
     (check-equal? (bonsai-list
@@ -805,7 +809,13 @@
     (match-check
      (test-grammar (cons 5 (cons 5 (cons 5 nil))))
      (test-grammar (cons natural list<natural>))
-     #t))
+     #t)
+    (match-check
+     (test-grammar-extra (- FOO FOO))
+     (test-grammar-extra (o:op f:foo FOO))
+     (and (equal? o (test-grammar-extra -))
+          (equal? f (test-grammar-extra FOO))))
+    )
 
   (test-case
       "Symbolic term constructors"
@@ -816,7 +826,16 @@
     (match-check
      (test-grammar integer 1)
      (test-grammar n:natural)
-     (>= (bonsai-integer-value n) 0)))
+     (>= (bonsai-integer-value n) 0))
+    (match-check
+     (test-grammar-extra foo 2)
+     (test-grammar-extra b:integer)
+     (bonsai-integer? b))
+    (match-check
+     (test-grammar-extra foo 2)
+     (test-grammar-extra FOO)
+     #t)
+    )
 
   (test-case "Types"
      (check-equal? (test-grammar-base? (test-grammar 5)) #t)
@@ -824,5 +843,8 @@
      (check-equal? (test-grammar-op? (test-grammar 5)) #f)
      (check-equal? (test-grammar-op? (test-grammar +)) #t)
      (check-equal? (test-grammar-natural? (test-grammar 5)) #t)
+     (check-equal? (test-grammar-extra-natural? (test-grammar 5)) #t)
+     (check-equal? (test-grammar-extra-foo? (test-grammar 5)) #t)
+     (check-equal? (test-grammar-extra-foo? (test-grammar-extra +)) #f)
      )
   )
