@@ -1,7 +1,6 @@
 #lang rosette/safe
 
 (provide define-grammar
-         extend-grammar
          syntax-match?
          enumerate
          make-generator)
@@ -124,12 +123,27 @@
 
 
 ; OSTODO: properly populate the grammar for polymorphic types
-(define (make-grammar rules)
+(define make-grammar
+  (λ (rules
+      #:parent [parent #f]
+      )
   (define-values (nonterminals metavars productions prod-max-width)
-    (unsafe:for/fold ([nonterminals (unsafe:set)]
-                      [metavars     (unsafe:list->set builtin-nonterminals)]
-                      [productions  (unsafe:hash)]
-                      [prod-width   0])
+    (unsafe:for/fold ([nonterminals (if parent
+                                        (unsafe:list->set (grammar-nonterminals parent))
+                                        (unsafe:set))]
+                      [metavars     (if parent
+                                        (unsafe:set-union
+                                          (unsafe:list->set builtin-nonterminals)
+                                          (unsafe:list->set (grammar-terminals parent))
+                                          (unsafe:list->set (grammar-nonterminals parent)))
+                                        (unsafe:list->set builtin-nonterminals))]
+
+                      [productions  (if parent
+                                        (unsafe:make-immutable-hash (grammar-productions parent))
+                                        (unsafe:hash))]
+                      [prod-width   (if parent
+                                        (grammar-max-width parent)
+                                        0)])
                      ([production (unsafe:in-list rules)])
                      (let* ([nt             (first production)]
                             [new-nts        (unsafe:set-add nonterminals nt)]
@@ -148,7 +162,7 @@
                 (unsafe:hash->list productions)
                 prod-max-width)
        )
-  )
+  ))
 
 (define (make-extended-grammar parent rules)
   (define-values (nonterminals metavars productions prod-max-width)
@@ -609,57 +623,28 @@
 (define-syntax (define-grammar stx)
   (syntax-parse stx
     #:datum-literals (::=)
-    [(_ name:id (nt:nonterminal ::= prod:production ...) ...)
-     (let* ([prods         (syntax->datum #'((nt prod ...) ...))]
-            [nts           (syntax->datum #'(nt ...))]
-            #;[nts           (list->set (syntax->datum #'(nt ...)))]
-            [terminals     (set->list (prods->terminals prods))]
-            [builtin-nts   (set->list (set-intersect (list->set terminals)
-                                                     (list->set builtin-nonterminals)))]
-            )
-         #`(begin
-             (define lang-struct (make-grammar '#,prods))
-
-             ; Throw an exception if any reserved keywords from
-             ; `builtin-keywords` occured in the grammar
-             (check-reserved-keywords lang-struct)
-
-             ; Define the match expander
-             ;
-             ; Note the `terminals` and `nts` arguments to
-             ; `define-grammar-match-expander` are preceeded by an extra quote
-             (define-grammar-match-expander tmp-match-expander name lang-struct '#,terminals '#,nts)
-
-             ; Register the syntax level terminals and nonterminals
-             (make-grammar+ name tmp-match-expander #,terminals #,nts)
-
-             ; Add predicates for each nonterminal
-             ;
-             ; Usage: For each user-defined or builtin nonterminal `nt` that
-             ; occurs in the grammar `name`, we define a function `name-nt?`
-             ; that takes `x` of any type and returns a boolean---`#t` if `x`
-             ; matches the pattern `(name nt)` and `#f` otherwise
-             (define-nonterminal-predicates name nt ...)
-             (define-nonterminal-predicates name #,@builtin-nts)
-
-             ))]))
-
-(define-syntax (extend-grammar stx)
-  (syntax-parse stx
-    #:datum-literals (::=)
-    [(_ name:id parent:id (nt:nonterminal ::= prod:production ...) ...)
+    [(_ name:id
+        (~optional (~seq #:extends parent))
+        (nt:nonterminal ::= prod:production ...) ...)
+     ; If a parent grammar is supplied, we will add the parent's terminals and
+     ; nonterminals to the new grammar
+     (with-syntax ([old-nts       (if (attribute parent)
+                                      (get-nonterminal-stx #'parent)
+                                      #`(list ))]
+                   [old-terminals (if (attribute parent)
+                                      (get-terminal-stx #'parent)
+                                      #'(list ))]
+                   )
      (let* ([prods         (syntax->datum #'((nt prod ...) ...))]
             [new-nts       (syntax->datum #'(nt ...))]
-            [old-nts       (syntax->datum (get-nonterminal-stx #'parent))]
-            [nts           (append new-nts old-nts)]
+            [nts           (append (syntax->datum #'old-nts) new-nts)]
             [new-terminals (set->list (prods->terminals prods))]
-            [old-terminals (syntax->datum (get-terminal-stx #'parent))]
-            [terminals     (append new-terminals old-terminals)]
+            [terminals     (append (syntax->datum #'old-terminals) new-terminals)]
             [builtin-nts   (set->list (set-intersect (list->set terminals)
                                                      (list->set builtin-nonterminals)))]
             )
          #`(begin
-             (define lang-struct (make-extended-grammar parent '#,prods))
+             (define lang-struct (make-grammar '#,prods #:parent #,(attribute parent)))
 
              ; Throw an exception if any reserved keywords from
              ; `builtin-keywords` occured in the grammar
@@ -680,7 +665,7 @@
              (define-nonterminal-predicates name nt ...)
              (define-nonterminal-predicates name #,@builtin-nts)
 
-             ))]))
+             )))]))
 
 
 (define-syntax (make-concrete-term! stx)
@@ -767,7 +752,7 @@
     (exp      ::= base (op exp exp))
     (prog     ::= list<exp>))
 
-  (extend-grammar test-grammar-extra test-grammar
+  (define-grammar test-grammar-extra #:extends test-grammar
      (foo     ::= base (op foo foo) FOO)
      )
 
