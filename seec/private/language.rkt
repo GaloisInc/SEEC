@@ -164,34 +164,6 @@
        )
   ))
 
-(define (make-extended-grammar parent rules)
-  (define-values (nonterminals metavars productions prod-max-width)
-    (unsafe:for/fold ([nonterminals (unsafe:list->set (grammar-nonterminals parent))]
-                      [metavars     (unsafe:set-union (unsafe:list->set builtin-nonterminals)
-                                                      (unsafe:list->set (grammar-terminals parent))
-                                                      (unsafe:list->set (grammar-nonterminals parent)))]
-                      [productions  (unsafe:make-immutable-hash (grammar-productions parent))]
-                      [prod-width   (grammar-max-width parent)])
-             ([production (unsafe:in-list rules)])
-             (let* ([nt         (first production)]
-                    [new-nts    (unsafe:set-add nonterminals nt)] ; maybe change this?
-                    [new-meta   (unsafe:set-union metavars
-                                                  (unsafe:list->set (flatten production)))]
-                    [new-prods  (unsafe:hash-set productions nt (rest production))]
-                    [new-prod-width (apply max prod-width (map max-width (rest production)))])
-               (unsafe:values new-nts new-meta new-prods new-prod-width))))
-
-  (let* ([terminals (unsafe:set-subtract metavars nonterminals)]
-         )
-       (unsafe:for ([mv (unsafe:in-set metavars)])
-                   (register-enum mv))
-       (grammar (unsafe:set->list nonterminals)
-                (unsafe:set->list terminals)
-                (unsafe:hash->list productions)
-                prod-max-width)
-       )
-  )
-
 
 
 (define (symbol-is-polymorphic-type? t symb)
