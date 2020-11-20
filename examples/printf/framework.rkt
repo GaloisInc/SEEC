@@ -100,12 +100,12 @@
 
   (printf "Attempting to synthesize an add-argument gadget~n~n")
 
-  (define/contract f-concrete fmt?
+  (define/contract f-concrete safe:fmt?
     (printf-lang (cons (% ((1 $) ((* 0) s))) nil)))
-  (define/contract f-bad fmt?
+  (define/contract f-bad safe:fmt?
     (printf-lang (cons (% ((0 $) (1 d)))
                  (cons (% ((0 $) ((* 0) d))) nil))))
-  (define/contract f-bad-2 fmt?
+  (define/contract f-bad-2 safe:fmt?
     (printf-lang (cons (% ((1 $) (16383 d)))
                  (cons (% ((0 $) (NONE d))) nil))))
 
@@ -196,7 +196,7 @@
 
 (define (find-load-gadget)
 
-  (define/contract f-concrete fmt?
+  (define/contract f-concrete safe:fmt?
     (printf-lang (cons (% ((0 $) ((* 1) s))) nil)))
   (define args+ (printf-lang arglist 2))
   (define/contract (args-concrete l) (-> ident? arglist?)
@@ -274,12 +274,12 @@
                        )
    displayln)
   )
-(find-load-gadget)
+(time (find-load-gadget))
 
 
 (define (find-add-mem-gadget)
 
-  (define/contract f-concrete fmt?
+  (define/contract f-concrete safe:fmt?
     (printf-lang (cons (% ((3 $) ((* 0) s))) ; first  add value1 to the accumulator
                  (cons (% ((3 $) ((* 1) s))) ; second add value2 to the accumulator
                  (cons (% ((2 $) (NONE n)))  ; then write the result to the target location
