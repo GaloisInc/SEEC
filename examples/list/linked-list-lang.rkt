@@ -106,13 +106,13 @@
 ; n1:natural, ptr2:pointer, hp:heap
 ; append l2 at the end of l1
 (define (append-ll n1 ptr2 hp)
-  (let ([hd1 (nth-heap n1 hp)])        
+  (let ([hd1 (nth-heap n1 hp)])
     (match hd1
       [(linked-list (v:value null))
        (let ([newhd1 (linked-list (,v ,ptr2))])
-         (overwrite-heap n1 newhd1 hp))]
+         (first (overwrite-heap n1 newhd1 hp)))]
       [(linked-list (_:value n:natural))
-       (append-ll n ptr2 hp)])))
+       (append-ll (bonsai->number n) ptr2 hp)])))
 
 ; push v on top of heap (at the end of the list)
 (define (snoc-heap c h)
@@ -129,7 +129,7 @@
        [(linked-list null)
         (linked-list (null ,hd ,hp))]
        [(linked-list n:natural)
-        (let ([newhp (append-ll n hd hp)])
+        (let ([newhp (append-ll (bonsai->number n) hd hp)])
           (linked-list (null ,fp ,newhp)))])]))
 
 ; Add a cell with (v, hd) in front of the hd-list represented in hp
