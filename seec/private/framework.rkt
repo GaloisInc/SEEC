@@ -523,14 +523,14 @@
                                                                                      #:target-behavior-constraint b2-constraint
                                                                                      #:fresh-witness #f
                                                                                      #:forall (list ))]) ; new call to find-weird-behavior with no universal quantification
-                                                            (if (wit)
+                                                            (if wit
                                                                 (let ([c1+ (language-witness-context (first (first wit)))]
                                                                       [c2+ (language-witness-context (second (first wit)))])
                                                                   (cons c1+ c2+))
                                                                 (unsafe:raise-arguments-error
                                                                  'find-weird-behavior
                                                                  "Could not synthesize fresh witness"
-                                                                 )))                                                           
+                                                                 )))                       
                                                      (cons (second e-ctx-concrete) (fourth e-ctx-concrete)))] ; c12-witness should be completely concrete
                                     [c1-witness (car c12-witness)]
                                     [c2-witness (cdr c12-witness)]
@@ -672,6 +672,7 @@
                          #:target-context-constraint where-c2
                          #:source-behavior-constraint where-b1
                          #:target-behavior-constraint where-b2
+
                          #:debug debug
                          #:forall-extra vars-extra
                          #:count (if witness-count witness-count 1)
@@ -716,7 +717,7 @@
                          #:debug debug
                          #:forall-extra vars-extra
                          #:count (if witness-count witness-count 1)
-                         #:found-core (lambda (w) (language-witness-context (first w)))
+                         #:found-core (lambda (w) (language-witness-expression (first w)))
                          #:capture-nondeterminism nondet))))
 
 
@@ -761,6 +762,7 @@
         #:gadgets (listof any/c)
         #:context-bound (or/c #f integer?)
         #:context any/c
+        #:context-constraint (-> any/c boolean?)
         #:debug boolean?
         #:forall any/c
         #:forall-extra any/c)
@@ -780,7 +782,7 @@
                                  (map (lambda (f b) (make-symbolic-var (attack-gadget attack) b)) funs gadgets-bounds))] ; for each function, we create a symbolic gadget
            #:context-bound [bound-c #f]
            #:context [ctx (make-symbolic-var (language-context lang) bound-c)]
-           ; context-where
+           #:context-constraint [ctx-constraint (lambda (c) #t)]
            #:debug  [debug #f]
            ; Synthesize a decoder, gadgets and contexts that respect the functional specifications but not the relational one.
            #:forall [vars ctx]
@@ -796,7 +798,8 @@
                                  (lambda (ctx)
                                    (eval-gadget g ctx))) gadgets)]
            [sol (synthesize #:forall (cons vars vars-extra)
-                           #:guarantee  (cons
+                            #:assume (assert (ctx-constraint ctx))
+                            #:guarantee  (cons
                                          (assert (if debug
                                                      (not (rel-spec eval-decoder gadgets-lambda debug-ctx))
                                                      (rel-spec eval-decoder gadgets-lambda ctx)))
