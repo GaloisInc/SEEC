@@ -18,6 +18,7 @@
 
 (provide printf-lang
          printf-spec
+         fmt-string
 
          bonsai->number
          val->number
@@ -50,7 +51,11 @@
          pad-constant
          print-trace
 
-         (rename-out [printf-lang-fmt? fmt?]
+         (rename-out [fmt-string-fmt? fmt?]
+                     [fmt-string-fmt-type? fmt-type?]
+                     [fmt-string-parameter? parameter?]
+                     [fmt-string-fmt-elt? fmt-elt?]
+
                      [printf-lang-ident? ident?]
                      [printf-lang-val? val?]
                      [printf-lang-expr? expr?]
@@ -62,6 +67,8 @@
                      [printf-lang-config? config?]
                      [printf-lang-context? context?]
                      )
+         fmt-string-width?
+
          err?
          debug?
          fmt-consistent-with-arglist?
@@ -101,14 +108,17 @@
 ;       If the type of arguments don't line up, the implementation language will
 ;       interpret constant numbers as pointers into memory and vice versa.
 
-(define-grammar printf-lang
+(define-grammar fmt-string
   (fmt ::= list<fmt-elt>)
-  (fmt-elt ::= string (% parameter width fmt-type))
+  (fmt-elt ::= string (% (parameter (width fmt-type))))
   (parameter ::= (offset $))
   (width ::= NONE (* offset) natural)
   (offset ::= natural)
   (fmt-type ::= s d n)
+  )
 
+(define-grammar printf-lang
+  #:extends fmt-string
   (arglist ::= list<expr>)
   (expr ::= (LOC ident) (* expr) integer string)
   (mem ::= mnil (mcons ident val mem))
@@ -180,7 +190,7 @@
     ))
 
 (define/contract (param->offset param)
-  (-> printf-lang-parameter? integer?)
+  (-> fmt-string-parameter? integer?)
   (match param
     [(printf-lang (o:offset $)) (bonsai->number o)]
     ))
@@ -223,10 +233,10 @@
 (define (printf-program? p)
   (and (pair? p)
        (printf-lang-context? (car p))
-       (printf-lang-fmt? (cdr p))
+       (fmt-string-fmt? (cdr p))
        ))
 (define/contract (program->fmt p)
-  (-> printf-program? printf-lang-fmt?)
+  (-> printf-program? fmt-string-fmt?)
   (cdr p))
 (define/contract (program->context p)
   (-> printf-program? printf-lang-context?)
@@ -238,7 +248,7 @@
   (-> printf-program? printf-lang-config?)
   (context->config (car p)))
 (define/contract (make-program f args conf)
-  (-> printf-lang-fmt? printf-lang-arglist? printf-lang-config? printf-program?)
+  (-> fmt-string-fmt? printf-lang-arglist? printf-lang-config? printf-program?)
   (cons (printf-lang (,args ,conf)) f))
 
 
@@ -406,7 +416,7 @@
 ; returns the contant to be printed, or ERR
 ; expects ftype to not be equal to `n`
 (define/contract (fmt->constant ftype param ctx)
-  (-> printf-lang-fmt-type? printf-lang-parameter? printf-lang-context? (or/c err? printf-lang-constant?))
+  (-> fmt-string-fmt-type? fmt-string-parameter? printf-lang-context? (or/c err? printf-lang-constant?))
   (debug (thunk (printf "(fmt->constant ~a ~a ~a)~n" ftype param ctx)))
   (define res
       (match (cons ftype (lookup-offset (param->offset param) ctx))
@@ -440,7 +450,7 @@
 ; INPUT: a format string, an argument list, and a configuration
 ; OUTPUT: an outputted string and a configuration OR ERR
 (define/contract (interp-fmt-elt-safe f ctx)
-  (-> printf-lang-fmt-elt? printf-lang-context? (or/c err? printf-lang-behavior?))
+  (-> fmt-string-fmt-elt? printf-lang-context? (or/c err? printf-lang-behavior?))
   (debug (thunk (printf "(interp-fmt-elt-safe ~a ~a)~n" f ctx)))
   (define conf (context->config ctx))
   (define res (match f
@@ -448,7 +458,7 @@
      (print-constant conf s)]
 
     ; the width parameter doesn't make a difference for n formats
-    [(printf-lang (% p:parameter width n))
+    [(printf-lang (% (p:parameter (width n))))
      (match (lookup-offset (param->offset p) ctx)
        [(printf-lang (LOC l:ident))
         (printf-lang (nil ,(print-n-loc conf l)))
@@ -457,7 +467,7 @@
        )]
 
     ; otherwise, for the 's' and 'd' format types:
-    [(printf-lang (% p:parameter NONE ftype:fmt-type))
+    [(printf-lang (% (p:parameter (NONE ftype:fmt-type))))
      (match (fmt->constant ftype p ctx)
        [(printf-lang c:constant)
         (print-constant conf (fmt->constant ftype p ctx))]
@@ -465,14 +475,14 @@
         (printf-lang ERR)]
        )]
 
-    [(printf-lang (% p:parameter w:natural ftype:fmt-type))
+    [(printf-lang (% (p:parameter (w:natural ftype:fmt-type))))
      (match (fmt->constant ftype p ctx)
        [(printf-lang c:constant)
         (print-trace conf (pad-constant c (bonsai->number w)))]
        [(printf-lang ERR) (printf-lang ERR)]
        )]
 
-    [(printf-lang (% p:parameter (* o:offset) ftype:fmt-type))
+    [(printf-lang (% (p:parameter ((* o:offset) ftype:fmt-type))))
      (match (list (lookup-offset (bonsai->number o) ctx)
                   (fmt->constant ftype p ctx))
        [(list (printf-lang w:integer)
@@ -489,7 +499,7 @@
 
 
 (define/contract (interp-fmt f args conf)
-  (-> printf-lang-fmt? printf-lang-arglist? printf-lang-config? (or/c err? printf-lang-behavior?))
+  (-> fmt-string-fmt? printf-lang-arglist? printf-lang-config? (or/c err? printf-lang-behavior?))
   (debug (thunk (printf "(safe:interp-fmt ~a ~a ~a)~n" f args conf)))
   (define res (match f
     [(printf-lang nil) (printf-lang (nil ,conf))]
@@ -520,7 +530,7 @@
 ; p is the parameter offset as a bonsai number
 ; ftype is the format type associated with the parameter
 (define/contract (parameter-consistent-with-arglist p ftype ctx)
-  (-> printf-lang-parameter? printf-lang-fmt-type? printf-lang-context? boolean?)
+  (-> fmt-string-parameter? fmt-string-fmt-type? printf-lang-context? boolean?)
   (let* ([offset (param->offset p)]
          [arg (lookup-offset offset ctx)])
     (and (< offset (bonsai-ll-length (context->arglist ctx)))
@@ -531,7 +541,7 @@
            [_                                                #f]
            ))))
 (define (width-consistent-with-arglist w ctx)
-  (-> printf-lang-width? printf-lang-context? boolean?)
+  (-> fmt-string-width? printf-lang-context? boolean?)
   (match w
     [(printf-lang NONE) #t]
     [(printf-lang natural) #t]
@@ -546,7 +556,7 @@
     (match f0
       [(printf-lang string) #t]
 
-      [(printf-lang (% p:parameter w:width ftype:fmt-type))
+      [(printf-lang (% (p:parameter (w:width ftype:fmt-type))))
        (and (parameter-consistent-with-arglist p ftype ctx)
             (width-consistent-with-arglist w ctx))]
       ))

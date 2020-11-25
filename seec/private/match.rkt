@@ -2,7 +2,9 @@
 
 (provide match
          match-let*
-         define-match-expander)
+         define-match-expander
+         (for-syntax prop:match-expander)
+         )
 
 (require (for-syntax racket/syntax
                      syntax/parse
