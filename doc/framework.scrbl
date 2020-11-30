@@ -1,17 +1,51 @@
 #lang scribble/manual
 @(require scribble/core)
 @(require scribble-math)
+@(require scribble-math/dollar)
 @title{The SEEC framework}
 @section{SEEC structures}
 
 
+
+
 The SEEC provide provides facilities to define @racket[language], @racket[compiler] and @racket[attack] structures which maps different elements of systems being modeled to the concepts used by SEEC queries.
 
-TODO: refer to the weird machine paper for terminology
 
 @subsection{@racket[grammar]}
 
-A SEEC model begins with a grammar of terms, expressed in BNF notation. 
+A SEEC grammars allow users to define custom program syntax on which a system's model is based. For example, the following code describe the syntax of an API implementing a set represented as a list of integer:
+
+@codeblock|{
+(define-grammar set-api
+  (set         ::= list<integer>)
+  (observation ::= (member? integer))
+  (method      ::= (insert integer)
+                   (remove integer))
+  (interaction ::= (seq method interaction)
+                   (if observation interaction interaction)
+		   nop))
+}|
+
+@subsubsection{@racket[define-grammar] builtin nonterminals}
+SEEC provides a number of nonterminals that allows the embedding of Racket's construct in a user's language:
+
+@tabular[#:sep @hspace[1]
+	(list (list @racket[char]
+	      	    "A Racket character")
+	      (list @racket[string]
+	      	    "A Racket string")
+	      (list @racket[bitvector]
+	      	    "A Racket bitvector")
+	      (list @racket[integer]
+	    	    "A Racket integer")
+              (list @racket[natural]
+	      	    "A Racket, non-negative integer")
+
+	      (list @racket[boolean]
+	      	    "A Racket boolean")
+	      (list @racket[list<T>]
+	            "A Racket list of AST nodes, where T is a nonterminal of the grammar or a builtin non-terminal"))]
+
 
 @subsection{@racket[language]}
 
@@ -19,39 +53,38 @@ A SEEC @racket[language] contains the syntactical and semantical model of a syst
 A @racket[language] structure consists of two syntactic categories representing expressions and contexts, and of two racket functions, the first linking an expression
 and a context as a complete program, and the second evaluating the program into a behavior.
 
-A language can be defined using the SEEC command \racket[define-language]:
+A language can be defined using the SEEC command @racket[define-language], for example:
 @codeblock|{
-(define-language [name]
-  #:grammar grammar
-  #:expression exp
-  #:context ctx
-  #:link link
+(define-language name
+  #:grammar set-api
+  #:expression interaction
+  #:context set
+  #:link cons
   #:evaluate eval)
 }|
 
 
+@subsubsection{@racket[define-language] arguments}
 
 @tabular[#:sep @hspace[1]
-  (list (list  @racket[name]
-                       "name is a string"
-                       "The identifier that will be used to refer to the language being defined")
-        (list  @racket[#:grammar]
-	               "grammar is a SEEC grammar"
+  (list (list  @racket[#:grammar ]
+	               "a SEEC grammar"
 	               "The SEEC grammar from which the syntax of the language is taken")
 	(list  @racket[#:expression]
-	               "exp is a non-terminal of grammar"
+	               "a non-terminal of grammar"
 	               "The non-terminal of the grammar corresponding to expressions in the language")
         (list  @racket[#:context]
-	              "ctx is a non-terminal of grammar"
+	              "a non-terminal of grammar"
 	              "The non-terminal of the grammar corresponding to contexts in the language")
         (list  @racket[#:link]
-	              "link is a Racket function from context and expression to program"
+	              "a Racket function from context and expression to program"
 	              "A Racket function combining a context and an expression as a program")
         (list  @racket[#:evaluate]
-	              "eval is a Racket function from program to behavior"
+	              "a Racket function from program to behavior"
                         "A Racket function evaluating a program into a behavior"))]
 
 
+Optional arguments @racket[#:size n] and @racket[#:where p] can be provided to @racket[#:expression] and @racket[#:context] to bound by @racket[n] the size of AST being considered, and to prune all AST not respecting predicate @racket[p], respectively. 
 
 @subsection{@racket[compiler]}
 
@@ -59,35 +92,32 @@ A SEEC @racket[compiler] describes how expressions of a SEEC @racket[language] c
 
 
 @codeblock|{
-(define-compiler [name]
-  #:source s 
-  #:target t
+(define-compiler name
+  #:source source
+  #:target target
   #:behavior-relation b-rel
   #:context-relation ctx-rel
-  #:compile c)
+  #:compile comp)
 }|
 
 
-
+@subsubsection{@racket[define-compiler] arguments}
 @tabular[#:sep @hspace[1]
-  (list (list  @racket[name]
-                      "name is a string"
-                      "The identifier that will be used to refer to the language being defined")
-        (list  @racket[#:source]
-	               "s is a SEEC language"
+  (list (list  @racket[#:source]
+	               "a SEEC language"
 	               "The SEEC language representing the source of the compiler")
 	(list  @racket[#:target]
-	               "t is a SEEC language"
+	               "a SEEC language"
 	               "The SEEC language representing the target of the compiler")
 
-        (list  @racket[#:behavior-relation]
-	               "b-rel is a function from a source behavior and a target behavior to a boolean"
+        (list  @racket[#:behavior-relatio]
+	               "a function from a source behavior and a target behavior to a boolean"
                        "A predicate indicating how source and target behaviors are related")
         (list  @racket[#:context-relation]
-                        "ctx-rel is a function from a source context and a target context to a boolean"
+                        "a function from a source context and a target context to a boolean"
                        "A predicate indicating how source and target contexts are related")
-        (list  @racket[#:compile]
-			"c is a function from source to target expressions"
+        (list  @racket[#:compile ]
+			"a function from source to target expressions"
                       "A Racket function evaluating a program into a behavior"))]
 
 @subsection{@racket[attack]}
@@ -95,35 +125,119 @@ A SEEC @racket[compiler] describes how expressions of a SEEC @racket[language] c
 A SEEC @racket[attack] describe the capabilities of an attacker observing and interacting with a system. 
 
 @codeblock|{
-(define-language [name]
+(define-attack name
   #:grammar grammar
-  #:gadget gadget
+  #:gadget g
   #:evaluate-gadget eval-gadget
-  #:decoder decoder
+  #:decoder d
   #:evaluate-decoder eval-decoder)
 }|
 
 
-
+@subsubsection{@racket[define-attack] arguments}
 @tabular[#:sep @hspace[1]
-  (list (list  @racket[name]
-               "name is a string"
-               "The identifier that will be used to refer to the language being defined")
-        (list  @racket[#:grammar]
-	       "grammar is a SEEC grammar"
+  (list (list  @racket[#:grammar]
+	       "a SEEC grammar"
 	       "The SEEC grammar from which the syntax of the attack is taken")
 	(list  @racket[#:gadget]
-	       "gadget is a non-terminal from the grammar"
+	       "a non-terminal from the grammar"
 	       "The non-terminal of the grammar corresponding to the language of gadgets")
         (list  @racket[#:evaluate-gadget]
-	       "eval-gadget is a Racket function from gadget and context to context"
+	       "a Racket function from gadget and context to context"
                "A Racket function applying a gadget on a context")	
         (list  @racket[#:decoder]
-	                "decoder is a non-terminal from the grammar"
+	                "a non-terminal from the grammar"
 		        "The non-terminal of the grammar corresponding to the language of decoders")
-        (list  @racket[#:evaluate-decover]
-	       "eval-decoder is a Racket function from decoder and context to some value"
+        (list  @racket[#:evaluate-decoder]
+	       "a Racket function from decoder and context to some value"
 	       "A Racket function decoding the context as data"))]
+Just as with @racket[define-language], optional arguments @racket[#:size n] and @racket[#:where p] can be provided to @racket[#:gadget] and @racket[#:decoder] to further refine the class of AST under consideration.
+
+@section{@racket[find-weird-behavior]}
+SEEC's @racket[find-weird-behavior] function is a built-in query that attempts to find emergent behaviors in a target language with respect to compilation from a source language.
+It attempts to synthesize @${e_1} and @${c_2} satisfying the follow equation, where @${e_1} and @${c_1} are a source expression and context, and @${c_2} a target context:
+@$${\exists e_1, \exists c_2, \forall c_1, \mathbb{E}_1(c_1, e_1) \neq \mathbb{E}_2(c_2, \mathbb{C}(e_1))}
+
+@subsection{@racket[find-weird-behavior] options}
+@tabular[#:sep @hspace[1]
+         (list (list @racket[#:count]
+	       	     "a positive integer"
+		     "generate that number of different gadgets satisfying the specification"
+					 ) @; NOTE: could not figure out how to refer to @racket[n]
+					   @; inside of a table with other text in that element...
+			   (list @racket[#:source-expr-bound]
+					 "a positive integer"
+					 "set the upper bound on the size of source expressions"
+					 )
+			   (list @racket[#:source-context-bound]
+					 "a positive integer"
+					 "set the upper bound on the size of source context"
+					 )
+			   (list @racket[#:target-context-bound]
+					 "a positive integer"
+					 "set the upper bound on the size of target context"
+					 )
+			   (list @racket[#:source-expr-constraint]
+					 "a predicate over source expressions"
+					 "only synthesize source expressions e1 satisfying p e1"
+				)
+			   (list @racket[#:source-context-constraint]
+					 "a predicate over source expressions and source contexts"
+					 "the specification need only be satisfied for contexts c1 satisfying p e1 c1"
+				)
+			   (list @racket[#:target-context-constraint]
+					 "a predicate over source expressions and target contexts"
+					 "only synthesize target contexts c2 satisfying p e1 c2"					  
+				)
+                           (list @racket[#:source-behavior-constraint]
+					 "a predicate over source expressions and target contexts"
+					  "only synthesize target expression e2 and target contexts c2 such that the behavior of the target program satisfies p e1 c1 c2 b2"
+				)
+	                    (list @racket[#:target-behavior-constraint]
+					 "a predicate over source expressions, source contexts and target contexts"
+					  "only synthesize target expression e2 and target contexts c2 such that the behavior of the target program satisfies p e1 c1 c2 b2"
+				)
+			   (list @racket[#:source-expr]
+					 "a source expression"
+					 "instead of synthesizing a completely symbolic expression, synthesize the symbolic variables in e1 (if any)"
+				)
+			   (list @racket[#:source-context]
+					"a source context"
+					"instead of quantifying over all contexts, quantify over all symbolilic variables in c1 (if any)"
+				)
+			   (list @racket[#:target-context]
+					"a target context"
+					"instead of quantifying over all contexts, synthesize the symbolic variables in c2 (if any)"
+				)
+			   (list @racket[#:debug]
+					 "a boolean flag"
+					 "if true, instead of synthesizing an expression that satisfies the specification, instead synthesize an expression and context that violate the specification. Used in conjunction with expr and context; this will synthesize counterexamples that help debug the SEEC model"
+				)
+			   (list @racket[#:fresh-witness]
+					 "a boolean flag"
+					 "if false, instead of synthesizing a fresh context that witnesses the correctness of the synthesized expression, simply concretize any free variables in the given context argument"
+				)
+			   (list @racket[#:forall]
+					 "any Rosette expression"
+					 "instead of quantifying over all contexts, instead only quantify over the free variables in the provided list; useful when synthesizing gadgets from sketches of contexts"
+				)
+		           (list @racket[#:capture-nondeterminism]
+					 "a boolean flag"
+					 "if true, quantify over the non-determinism collected when evaluating the source and target program"
+				)
+		 )]
+
+
+@subsection{alternative forms to @\racket[find-weird-behavior]}
+We provide alternative forms based on @\racket[find-weird-behavior] that provide specific defaults behavior adapted to common queries:
+
+@subsubsection{@\racket[find-changed-component] and @\racket[find-changed-behavior]}
+While a weird behavior doesn't exists (under the given constraints) at the source level, a changed behavior requires only the existance of a related source context resulting in a different behavior: 
+@$${\exists e_1, \exists c_2, \exists c_1, \mathbb{E}_1(c_1, e_1) \neq \mathbb{E}_2(c_2, \mathbb{C}(e_1))}
+
+
+@\racket[find-changed-behavior] takes, in addition the the compiler, a concrete @${e_1}. If option @\racket[#:count] is used, the returned witness will have different @${c_2}: 
+@$${\exists c_2, \exists c_1, \mathbb{E}_1(c_1, e_1) \neq \mathbb{E}_2(c_2, \mathbb{C}(e_1))}
 
 
 @section{@racket[find-weird-behavior]}
@@ -303,6 +417,53 @@ If this happens when given a concrete context argument, set @racket[fresh-witnes
 
 
 @section{@racket[find-related-gadgets]}
+SEEC's @racket[find-related-gadgets] is a built-in query that attempts to find a decoder and a series of gadgets that embeds and manipulates data in the state of a system being modeled.
+Given functions @${f_1}, ..., @${f_n} of type @racket[context] to @${\tau}, it attemps to synthesize decoder @${D} and gadget @${G_1}, ..., @${G_n} such that, for each @${i \in 0 ... n},
+@$${\forall c, f_i (D\; c) = D (G_i\; c)} 
+
+For example, we can use a previously defined SEEC language @racket[lang] with a SEEC attack @racket[attack] and a list of functions @racket[funs-spec] as follow:
+@codeblock|{
+(find-related-gadgets lang attack funs-spec)
+}|
+
+SEEC will interpret the query sourcing its @racket[context] from @racket[lang] and its decoder and gadgets from @racket[attack].
+@racket[funs-spec] contains functions we expect gadgets to emulate. #f can be provided as a member of the list to indicate a gadget not constrained by functional specifications.
 
 
 @subsection{@racket[find-related-gadgets] options}
+
+@tabular[#:sep @hspace[1]
+  (list (list  @racket[#:valid]
+	              "a predicate taking in a relation between elements, a list of functions and a state"
+	              "Only synthesize gadgets G and decoder D such that, for all states s, rel-spec equiv-D G s, where equiv-D is equality up-to decoder D")
+        (list  @racket[#:decoder-bound]
+	              "a positive integer"
+	              "set the upper bound on the size of decoders")
+        (list  @racket[#:decoder]
+	              "a decoder"
+	              "instead of synthesizing a completely symbolic decoder, synthesize the symbolic variables in the provided argument")
+        (list  @racket[#:gadgets-bound]
+	              "either a positive integer or a list of positive integer"
+	              "set the upper bound on the size of all gadgets or of each gadget individually (#f can be provided to keep default)")
+        (list  @racket[#:gadgets]
+	              "a list of gadgets"
+	              "instead of synthesizing completely symbolic gadgets, synthesize the symbolic variables in the provided argument (#f can be provided to keep a fully symbolic gadget)")		      
+        (list @racket[#:context-bound]
+					"a positive integer"
+					"set the upper bound on the size of the context"
+				)
+		      
+        (list @racket[#:context]
+					"a context"
+					"instead of quantifying over all contexts, quantify over all symbolilic variables in the provided context (if any)"
+				)
+			   (list @racket[#:debug]
+					 "a boolean flag"
+					 "if true, instead of synthesizing a decoder and gadgets that satisfies the specification, instead synthesize a decoder, gadgets and a context that satisfies the functional specifications but not the relational specifications; this will synthesize counterexamples that help debug the SEEC model"
+				)
+			   (list @racket[#:forall]
+					 "any Rosette expression"
+					 "instead of quantifying over all contexts, instead only quantify over the free variables in the provided argument; useful when synthesizing gadgets from sketches of contexts"
+				)
+
+		      )]

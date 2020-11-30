@@ -14,6 +14,7 @@
          find-weird-behavior
          find-gadget
          find-related-gadgets
+         display-related-gadgets
          (struct-out solution)
          unpack-language-witness
          unpack-language-witnesses
@@ -751,40 +752,72 @@
 (define/contract find-related-gadgets
   (->* (language?
         attack?
-        (listof (-> any/c any/c)))
-       (#:valid (-> any/c boolean?))
+        (listof (or/c #f (-> any/c any/c))))
+       (#:valid (-> any/c any/c any/c boolean?)
+        #:decoder-bound (or/c #f integer?)
+        #:decoder any/c
+        #:gadgets-bound (or/c (or/c #f integer?) (listof (or/c #f integer?)))
+        #:gadgets (listof any/c)
+        #:context-bound (or/c #f integer?)
+        #:context any/c
+        #:debug boolean?
+        #:forall any/c
+        #:forall-extra any/c)
        (or/c #f (listof any/c)))
   (lambda (lang
            attack 
-           funs ; lists of unary racket functions representing the specification of each gadget 
-           #:valid [rel-spec (lambda (x) #t)]) ; predicate over a list of gadget representing the relation-specification they have to adhere to
-    (let* ([decoder (make-symbolic-var (attack-decoder attack))] ; make a single decoder in the single-type version
-           [gadgets (map (lambda (f) (make-symbolic-var (attack-gadget attack))) funs)]  ; for each function, we create a symbolic gadget
+           funs ; lists of unary racket functions representing the specification of each gadget
+           #:valid [rel-spec (lambda (eq symbols x) #t)]
+           ; predicate over a list of gadgets representing the relation-specification they have to adhere to
+           ; eq is a relation between \tau that is replaced by a relation between states up-to \tau decoder
+           #:decoder-bound [dec-bound #f]
+           #:decoder [decoder (make-symbolic-var (attack-decoder attack) dec-bound)] ; make a single decoder in the single-type version          
+           #:gadgets-bound [gadgets-bound #f]
+           #:gadgets [gadgets  (let ([gadgets-bounds (if (list? gadgets-bound) ; if a single bound (or no bound) is provided, repeat it |funs| times
+                                                         gadgets-bound
+                                                         (map (lambda (f) gadgets-bound) funs))])                                   
+                                 (map (lambda (f b) (make-symbolic-var (attack-gadget attack) b)) funs gadgets-bounds))] ; for each function, we create a symbolic gadget
+           #:context-bound [bound-c #f]
+           #:context [ctx (make-symbolic-var (language-context lang) bound-c)]
+           ; context-where
+           #:debug  [debug #f]
+           ; Synthesize a decoder, gadgets and contexts that respect the functional specifications but not the relational one.
+           #:forall [vars ctx]
+           #:forall-extra [vars-extra (list )]
+           ) 
+    (let* ([assert-store (asserts)] ; save assertion state on entry
+           [debug-ctx (make-symbolic-var (language-context lang) bound-c)] ; ctx created for debugging purpose, TODO: fix this if scheme of ctx is given
            [eval-gadget (attack-evaluate-gadget attack)]
            [eval-dec    (attack-evaluate-decoder attack)]
-           [ctx (make-symbolic-var (language-context lang))]
-           [fgs (map cons funs gadgets)]
-          #;[fun-gadget-asserts (map (lambda (fg)
-                                      (with-asserts-only
-                                        (assert
-                                         (equal?
-                                          (eval-dec decoder (eval-gadget (cdr fg) ctx))
-                                          ((car fg) (eval-dec decoder ctx))))))
-                                    fgs)]
-           [sol (synthesize #:forall ctx
-                            #:guarantee (map (lambda (fg)
-                                        (assert
-                                         (equal?
-                                          (eval-dec decoder (eval-gadget (cdr fg) ctx))
-                                          ((car fg) (eval-dec decoder ctx))))) fgs))])
-                                         #;(and fun-gadget-asserts)
-      (if (unsat? sol)
-          (begin
-            (displayln "Synthesis failed")
-            #f)
-          (begin
-            (displayln "Synthesis succeeded")
-            (concretize (cons decoder gadgets) sol))))))
+           [eval-decoder (lambda (x)
+                           (eval-dec decoder x))]
+           [gadgets-lambda (map (lambda (g)
+                                 (lambda (ctx)
+                                   (eval-gadget g ctx))) gadgets)]
+           [sol (synthesize #:forall (cons vars vars-extra)
+                           #:guarantee  (cons
+                                         (assert (if debug
+                                                     (not (rel-spec eval-decoder gadgets-lambda debug-ctx))
+                                                     (rel-spec eval-decoder gadgets-lambda ctx)))
+                                         (map (lambda (f g)
+                                                (assert (if f
+                                                            (equal?
+                                                             (eval-dec decoder (eval-gadget g ctx))
+                                                             (f (eval-dec decoder ctx)))
+                                                            #t)))
+                                              funs gadgets)))])
+      (let ([ret (if (unsat? sol)
+                    (begin
+                      (displayln "Synthesis failed")
+                      #f)
+                    (begin
+                      (displayln "Synthesis succeeded")
+                      (if debug
+                          (concretize (cons debug-ctx (cons decoder gadgets)) sol)
+                          (concretize (cons decoder gadgets) sol))))])
+        (clear-asserts!)
+        (for-each (lambda (arg) (assert arg)) assert-store) ; restore assertion state
+        ret))))
            
 
 
@@ -1058,6 +1091,23 @@
          (clear-asserts!)
          (for-each (lambda (arg) (assert arg)) assert-store) ; restore entry assertions
          witness)]))
+
+(define (display-gadgets gadgets index out)
+  (if (empty? gadgets)
+      (void)
+      (begin
+        (out (format "Gadget ~a: ~a" index (first gadgets)))
+        (display-gadgets (rest gadgets) (+ index 1) out))))
+
+
+(define (display-related-gadgets vars out)
+  (if (not vars)
+      (out (format "Gadget failed to synthesize~n"))
+      (begin
+        (let ([decoder (car vars)]
+              [gadgets (cdr vars)])          
+          (out (format "Decoder: ~a" (car vars)))
+          (display-gadgets gadgets 0 out)))))
 
 
 

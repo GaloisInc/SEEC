@@ -143,11 +143,11 @@
 (more-tests)
 
 (define (pattern-matching-tests)
-  (define t (constants string 1))
-  (define t-constant (constants ""))
+  (define t (constants string 2))
+  (define t-constant (constants "hello"))
   (define (do-match s)
     (match s
-      [(constants "") #t]
+      [(constants "hi") #t]
       [_ #f]))
   (define (do-equal s)
     (equal? s (constants "")))

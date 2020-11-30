@@ -1,4 +1,10 @@
-To install locally, navigate to the `seec` directory and invoke `raco pkg install`.
+SEEC (Synthesizing Evidence of Emergent Computation) is a framework for modeling software designs to identify whether a design is vulnerable to composable or programmable exploits. The framework uses symbolic execution to synthesize program fragments or gadgets that are evidence of composable vulnerabilities.
+
+# Installation
+
+SEEC is written in [Rosette](https://docs.racket-lang.org/rosette-guide/index.html), a dialogue of Racket. To install locally, navigate to the `seec` directory and invoke `raco pkg install`.
+
+Additional documentation regarding how to use the framework is located in the `doc/` directory, and examples can be found in the `examples/` directory.
 
 # Case studies
 
@@ -13,6 +19,7 @@ See the READMEs in those subdirectories for more information about the case stud
 # Directory structure
 
 ```
+└── doc - documentation on how to use the SEEC framework
 ├── examples - Case studies illustrating use of SEEC framework
 
 │   ├── bitvector-tests.rkt
@@ -80,3 +87,7 @@ See the READMEs in those subdirectories for more information about the case stud
         ├── match.rkt - custom match expander
         ├── string.rkt - custom symbolic strings
 ```
+
+# Acknowledgment
+
+This material is based upon work supported by DARPA Contract No. PA1903-02-AIMEE-FP-008. Any opinions, findings and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of DARPA.
