@@ -43,6 +43,7 @@
                               set-intersect
                               set-empty?
                               hash
+                              make-immutable-hash
                               hash-set
                               hash->list
                               values
@@ -60,10 +61,58 @@
                               string-suffix?
                               string-trim))))
 
+
 (struct grammar (nonterminals
                   terminals
                   productions
                   max-width))
+(begin-for-syntax
+
+  ; A grammar+ structure is a syntax-level representation of grammar terminals
+  ; and nonterminals, used for extending a parent grammar to a child grammar.
+  ; Without this structure, the parent grammar data would not be available at
+  ; macro expansion time.
+  ;
+  ; The struct will be used as follows:
+  ;
+  ;   (define-syntax lang (grammar+ match-expander terminalstx nonterminalstx))
+  ;
+  ; where `match-expander` is the (temporary) name of the relevant match
+  ; expander, which gets exposed via `lang`; in other words, users will be able
+  ; to write:
+  ;
+  ;   (lang 3)
+  ;
+  ; or
+  ;
+  ;  (match (lang 3) [(lang n:integer) n])
+  (struct grammar+ (id
+                    terminals
+                    nonterminals)
+    #:property prop:set!-transformer
+    (λ (me stx)
+      (with-syntax ([target (grammar+-id me)])
+        (syntax-parse stx #:literals (set!)
+          [(set! id args ...)
+           #'(set! target args ...)]
+          [(id args ...)
+           #'(target args ...)]
+          [_ #'target])))
+    #:property prop:match-expander
+    (λ (stx)
+      (syntax-parse stx
+        [(id args ...)
+         (let ([match-expander (grammar+-id (syntax-local-value #'id))])
+           #`(#,match-expander args ...))]))
+    )
+
+  ; Access terminal and nonterminal data at macro expansion time
+  (define (get-nonterminal-stx stx)
+    (grammar+-nonterminals (syntax-local-value stx)))
+  (define (get-terminal-stx stx)
+    (grammar+-terminals (syntax-local-value stx)))
+  )
+
 
 (define (max-width ls)
   (cond
@@ -83,12 +132,27 @@
 
 
 ; OSTODO: properly populate the grammar for polymorphic types
-(define (make-grammar rules)
+(define make-grammar
+  (λ (rules
+      #:parent [parent #f]
+      )
   (define-values (nonterminals metavars productions prod-max-width)
-    (unsafe:for/fold ([nonterminals (unsafe:set)]
-                      [metavars     (unsafe:list->set builtin-nonterminals)]
-                      [productions  (unsafe:hash)]
-                      [prod-width   0])
+    (unsafe:for/fold ([nonterminals (if parent
+                                        (unsafe:list->set (grammar-nonterminals parent))
+                                        (unsafe:set))]
+                      [metavars     (if parent
+                                        (unsafe:set-union
+                                          (unsafe:list->set builtin-nonterminals)
+                                          (unsafe:list->set (grammar-terminals parent))
+                                          (unsafe:list->set (grammar-nonterminals parent)))
+                                        (unsafe:list->set builtin-nonterminals))]
+
+                      [productions  (if parent
+                                        (unsafe:make-immutable-hash (grammar-productions parent))
+                                        (unsafe:hash))]
+                      [prod-width   (if parent
+                                        (grammar-max-width parent)
+                                        0)])
                      ([production (unsafe:in-list rules)])
                      (let* ([nt             (first production)]
                             [new-nts        (unsafe:set-add nonterminals nt)]
@@ -107,7 +171,7 @@
                 (unsafe:hash->list productions)
                 prod-max-width)
        )
-  )
+  ))
 
 
 
@@ -448,42 +512,12 @@
        ...)
      ]))
 
-(define-syntax (define-grammar stx)
+; The temporary name will be used as a target of the macro expander, but will be
+; renamed by make-grammar+.
+(define-syntax (define-grammar-match-expander stx)
   (syntax-parse stx
-    #:datum-literals (::=)
-    [(_ name:id (nt:nonterminal ::= prod:production ...) ...)
-     (let* ([prods         (syntax->datum #'((nt prod ...) ...))]
-            [nts           (list->set (syntax->datum #'(nt ...)))]
-            [terminals     (prods->terminals prods)]
-            [builtin-nts   (set->list (set-intersect terminals (list->set builtin-nonterminals)))]
-            )
-       (with-syntax ([terminalstx #`(apply set '(#,@(set->list terminals)))]
-                     [ntstx       #`(apply set '(#,@(set->list nts)))])
-         #`(begin
-             (define lang-struct
-               (make-grammar '#,prods))
-
-             ; Throw an exception if any reserved keywords from
-             ; `builtin-keywords` occured in the grammar
-             (let ([keywords-in-nonterminals
-                    (unsafe:set-intersect (grammar-nonterminals lang-struct)
-                                          builtin-keywords)]
-                   [keywords-in-terminals
-                    (unsafe:set-intersect (grammar-terminals lang-struct)
-                                          builtin-keywords)]
-                   )
-               (cond
-                 [(not (unsafe:set-empty? (unsafe:set-union keywords-in-nonterminals
-                                                            keywords-in-terminals)))
-                  (unsafe:raise-arguments-error 'define-grammar
-                                                "Illegal use of reserved keywords"
-                                                "keywords used as nonterminals" keywords-in-nonterminals
-                                                "keywords used as terminals" keywords-in-terminals
-                                                )]
-                 ))
-
-
-             (define-match-expander name
+    [(_ tmp-name:id name:id grammar terminalstx ntstx)
+     #`(define-match-expander tmp-name
                ; The first argument of the match-expander is the behavior used
                ; with the `match` construct. That is, the match pattern
                ;
@@ -512,18 +546,93 @@
                     #'(? (λ (t) (syntax-match? name 'pat.stx-pattern t)) pat.match-pattern)]))
                (lambda (stx)
                  (syntax-parse stx
-                   [n:id #'lang-struct]
+                   [n:id #'grammar]
                    [(_ pat)
                     #:declare pat (concrete-term
                                    #,(syntax->string #'name)
-                                   (set-subtract terminalstx ntstx (list->set builtins))
-                                   (set-intersect terminalstx (list->set builtins)))
+                                   (set-subtract (list->set terminalstx)
+                                                 (list->set ntstx)
+                                                 (list->set builtins))
+                                   (set-intersect (list->set terminalstx) (list->set builtins)))
                     #'(make-concrete-term! name pat)]
                    [(_ pat depth)
                     #:declare pat (term #,(syntax->string #'name)
                                         terminalstx)
                     #'(make-term! name pat depth)]
-                   )))
+                   )))]))
+
+
+
+(define-syntax (check-reserved-keywords stx)
+  (syntax-parse stx
+    [(_ grammar)
+             ; Throw an exception if any reserved keywords from
+             ; `builtin-keywords` occured in the grammar
+             #`(let ([keywords-in-nonterminals
+                    (unsafe:set-intersect (grammar-nonterminals grammar)
+                                          builtin-keywords)]
+                   [keywords-in-terminals
+                    (unsafe:set-intersect (grammar-terminals grammar)
+                                          builtin-keywords)]
+                   )
+               (cond
+                 [(not (unsafe:set-empty? (unsafe:set-union keywords-in-nonterminals
+                                                            keywords-in-terminals)))
+                  (unsafe:raise-arguments-error 'define-grammar
+                                                "Illegal use of reserved keywords"
+                                                "keywords used as nonterminals" keywords-in-nonterminals
+                                                "keywords used as terminals" keywords-in-terminals
+                                                )]
+                 ))
+             ]))
+
+
+; Define a grammar+ instance to encode syntax. Note that the procedure
+; associated with the grammar+ instance will expose the match expander via a
+; call directly to (name), and (get-terminal-stx name) and (get-nonterminal-stx
+; name) will expose the syntax-level data.
+(define-syntax (make-grammar+ stx)
+  (syntax-parse stx
+    [(_ name:id match-expander:id terminals nonterminals)
+     (with-syntax ([id-syntax (format-id #'name "~a-syntax" #'name)])
+       #`(define-syntax name (grammar+ #'match-expander #'terminals #'nonterminals))
+       )]))
+
+(define-syntax (define-grammar stx)
+  (syntax-parse stx
+    #:datum-literals (::=)
+    [(_ name:id
+        (~optional (~seq #:extends parent))
+        (nt:nonterminal ::= prod:production ...) ...)
+     ; If a parent grammar is supplied, we will add the parent's terminals and
+     ; nonterminals to the new grammar
+     (with-syntax ([old-nts       (if (attribute parent)
+                                      (get-nonterminal-stx #'parent)
+                                      #`(list ))]
+                   [old-terminals (if (attribute parent)
+                                      (get-terminal-stx #'parent)
+                                      #'(list ))]
+                   )
+     (let* ([prods         (syntax->datum #'((nt prod ...) ...))]
+            [new-nts       (syntax->datum #'(nt ...))]
+            [nts           (append (syntax->datum #'old-nts) new-nts)]
+            [new-terminals (set->list (prods->terminals prods))]
+            [terminals     (append (syntax->datum #'old-terminals) new-terminals)]
+            [builtin-nts   (set->list (set-intersect (list->set terminals)
+                                                     (list->set builtin-nonterminals)))]
+            )
+         #`(begin
+             (define lang-struct (make-grammar '#,prods #:parent #,(attribute parent)))
+
+             ; Throw an exception if any reserved keywords from
+             ; `builtin-keywords` occured in the grammar
+             (check-reserved-keywords lang-struct)
+
+             ; Define the match expander
+             (define-grammar-match-expander tmp-match-expander name lang-struct '#,terminals '#,nts)
+
+             ; Register the syntax level terminals and nonterminals
+             (make-grammar+ name tmp-match-expander #,terminals #,nts)
 
              ; Add predicates for each nonterminal
              ;
@@ -535,6 +644,7 @@
              (define-nonterminal-predicates name #,@builtin-nts)
 
              )))]))
+
 
 (define-syntax (make-concrete-term! stx)
   (syntax-parse stx
@@ -626,11 +736,22 @@
     (exp      ::= base (op exp exp) (Var integer))
     (prog     ::= list<exp>))
 
+  (define-grammar test-grammar-extra #:extends test-grammar
+     (foo     ::= base (op foo foo) FOO)
+     )
 
   (test-case
       "Concrete term constructors"
     (check-equal? (bonsai-terminal (symbol->enum '+))
                   (test-grammar +))
+    (check-equal? (bonsai-terminal (symbol->enum 'FOO))
+                  (test-grammar-extra FOO))
+    (check-equal? (bonsai-terminal (symbol->enum '+))
+                  (test-grammar-extra +))
+    (check-equal? (test-grammar-extra (- FOO 3))
+                  (bonsai-list (list (test-grammar-extra -)
+                                     (test-grammar-extra FOO)
+                                     (test-grammar-extra 3))))
     (check-equal? (bonsai-terminal (symbol->enum 'and))
                   (test-grammar and))
     (check-equal? (bonsai-list
@@ -689,7 +810,13 @@
     (match-check
      (test-grammar (cons 5 (cons 5 (cons 5 nil))))
      (test-grammar (cons natural list<natural>))
-     #t))
+     #t)
+    (match-check
+     (test-grammar-extra (- FOO FOO))
+     (test-grammar-extra (o:op f:foo FOO))
+     (and (equal? o (test-grammar-extra -))
+          (equal? f (test-grammar-extra FOO))))
+    )
 
   (test-case
       "Symbolic term constructors"
@@ -705,6 +832,14 @@
      (test-grammar exp 3)
      (test-grammar (Var x:integer))
      (= x 0))
+    (match-check
+     (test-grammar-extra foo 2)
+     (test-grammar-extra (b:integer))
+     (integer? b))
+    (match-check
+     (test-grammar-extra foo 2)
+     (test-grammar-extra FOO)
+     #t)
     )
 
   (test-case "Types"
@@ -713,5 +848,8 @@
      (check-equal? (test-grammar-op? (test-grammar 5)) #f)
      (check-equal? (test-grammar-op? (test-grammar +)) #t)
      (check-equal? (test-grammar-natural? (test-grammar 5)) #t)
+     (check-equal? (test-grammar-extra-natural? (test-grammar 5)) #t)
+     (check-equal? (test-grammar-extra-foo? (test-grammar 5)) #t)
+     (check-equal? (test-grammar-extra-foo? (test-grammar-extra +)) #f)
      )
   )

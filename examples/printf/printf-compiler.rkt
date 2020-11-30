@@ -24,7 +24,6 @@
          compile-mem
          compile-config
          compile-context
-         compile-fmt
          compile-program
          compile-behavior
          )
@@ -71,20 +70,9 @@
                        (compile-config (safe:context->config ctx))
                        ))
 
-(define/contract (compile-fmt f)
-  (-> safe:fmt? unsafe:fmt?)
-  (match f
-    [(safe:printf-lang nil) f]
-    [(safe:printf-lang (cons s:string f+:fmt))
-     (unsafe:printf-lang (cons ,s ,(compile-fmt f+)))]
-    [(safe:printf-lang (cons (% p:parameter w:width ftype:fmt-type)
-                             f+:fmt))
-     (unsafe:printf-lang (cons (% (,p (,w ,ftype))) ,f+))]
-    ))
-
 (define/contract (compile-program p)
   (-> safe:printf-program? unsafe:printf-program?)
-  (unsafe:make-program (compile-fmt (safe:program->fmt p))
+  (unsafe:make-program (safe:program->fmt p)
                        (compile-arglist (safe:program->arglist p))
                        (compile-config  (safe:program->config p))
                        ))

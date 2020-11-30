@@ -44,8 +44,7 @@
          config-add
          mem-update
          (rename-out [interp-fmt-unsafe interp-fmt])
-         (rename-out [printf-lang-fmt? fmt?]
-                     [printf-lang-ident? ident?]
+         (rename-out [printf-lang-ident? ident?]
                      [printf-lang-val? val?]
                      [printf-lang-expr? expr?]
                      [printf-lang-arglist? arglist?]
@@ -96,12 +95,7 @@
 ;       interpret constant numbers as pointers into memory and vice versa.
 
 (define-grammar printf-lang
-  (fmt ::= list<fmt-elt>)
-  (fmt-elt ::= string (% (parameter (width fmt-type))))
-  (parameter ::= (offset $))
-  (width ::= NONE (* offset) natural)
-  (offset ::= natural)
-  (fmt-type ::= s d n)
+  #:extends safe:fmt-string
 
   (arglist ::= list<expr>)
   (expr ::= (LOC ident) (* expr) bitvector string)
@@ -192,7 +186,7 @@
     ))
 
 (define/contract (param->offset param)
-  (-> printf-lang-parameter? integer?)
+  (-> safe:parameter? integer?)
   (match param
     [(printf-lang (o:offset $)) (offset->number o)]
     ))
@@ -240,10 +234,10 @@
 (define (printf-program? p)
   (and (pair? p)
        (context? (car p))
-       (printf-lang-fmt? (cdr p))
+       (safe:fmt? (cdr p))
        ))
 (define/contract (program->fmt p)
-  (-> printf-program? printf-lang-fmt?)
+  (-> printf-program? safe:fmt?)
   (cdr p))
 (define/contract (program->context p)
   (-> printf-program? context?)
@@ -255,7 +249,7 @@
   (-> printf-program? printf-lang-config?)
   (context->config (car p)))
 (define/contract (make-program f args conf)
-  (-> printf-lang-fmt? printf-lang-arglist? printf-lang-config? printf-program?)
+  (-> safe:fmt? printf-lang-arglist? printf-lang-config? printf-program?)
   (cons (printf-lang (,args ,conf)) f))
 
 
@@ -478,7 +472,7 @@
   res)
 
 (define/contract (unsafe:fmt->constant ftype param ctx)
-  (-> printf-lang-fmt-type? printf-lang-parameter? context? (or/c err? printf-lang-constant?))
+  (-> safe:fmt-type? safe:parameter? context? (or/c err? printf-lang-constant?))
   (debug (thunk (printf "(unsafe:fmt->constant ~a ~a ~a)~n" ftype param ctx)))
   (define res (match (lookup-offset (param->offset param) ctx)
     [(printf-lang ERR) (printf-lang ERR)]
@@ -504,7 +498,7 @@
 ;
 ; OUTPUT: an outputted trace and a configuration
 (define/contract (interp-fmt-elt-unsafe f ctx)
-  (-> printf-lang-fmt-elt? context? printf-lang-behavior?)
+  (-> safe:fmt-elt? context? printf-lang-behavior?)
   (debug (thunk (printf "(interp-fmt-elt-unsafe ~a ~a)~n" f ctx)))
   (define conf (context->config ctx))
   (define res (match f
@@ -555,7 +549,7 @@
   res
   )
 (define/contract (interp-fmt-unsafe f args conf)
-  (-> printf-lang-fmt? printf-lang-arglist? printf-lang-config? printf-lang-behavior?)
+  (-> safe:fmt? printf-lang-arglist? printf-lang-config? printf-lang-behavior?)
   (debug (thunk (printf "(interp-fmt-unsafe ~a ~a ~a)~n" f args conf)))
   (define res (match f
     [(printf-lang nil) (printf-lang (nil ,conf))]
@@ -581,7 +575,7 @@
 ; p is the parameter offset as a bonsai number
 ; ftype is the format type associated with the parameter
 (define/contract (parameter-consistent-with-arglist p ftype ctx)
-  (-> printf-lang-parameter? printf-lang-fmt-type? context? boolean?)
+  (-> safe:parameter? safe:fmt-type? context? boolean?)
   (let* ([offset (param->offset p)]
          [arg (lookup-offset offset ctx)])
     (and (< offset (seec-length (context->arglist ctx)))
@@ -592,7 +586,7 @@
            [_                                                #f]
            ))))
 (define (width-consistent-with-arglist w ctx)
-  (-> printf-lang-width? context? boolean?)
+  (-> safe:fmt-string-width? context? boolean?)
   (match w
     [(printf-lang NONE) #t]
     [(printf-lang natural) #t]
