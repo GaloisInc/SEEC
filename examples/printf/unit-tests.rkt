@@ -72,7 +72,7 @@
                                  (safe:make-config-triv 0))
                 (safe:make-behav (mk-trace (list))
                           0
-                          (safe:printf-lang (mcons 0 0 #;(bv 0) mnil)))))
+                          (safe:printf-lang (cons (0 0) nil)))))
 
  (test-case "%0$d"
   ; printf("%0$d") ==> ERR
@@ -90,7 +90,7 @@
                   (safe:make-behav (mk-trace (list (string "foo ")
                                             32))
                             6
-                            (safe:printf-lang (mcons 0 6 #;(bv 6) mnil))))
+                            (safe:printf-lang (cons (0 6) nil))))
     )
   )
 
@@ -102,7 +102,7 @@
                                         (safe:printf-lang ""))))
     (define/contract m
       safe:mem?
-      (safe:printf-lang (mcons ,l 3 #;(bv 3) mnil))
+      (safe:printf-lang (cons (,l 3) nil))
       )
     (define behav (safe:interp-fmt fmt
                                    args
