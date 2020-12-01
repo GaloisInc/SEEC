@@ -50,6 +50,7 @@
          ; bitvectors
          integer->bv
          set-bitwidth
+         get-bv-width
 
          ; seec-lists
          seec-list?
@@ -218,6 +219,7 @@
               (current-bitwidth int-width)
               (current-bv-width bv-width))]
       )))
+(define (get-bv-width) (current-bv-width))
 
 (define (integer->bv n)
   (integer->bitvector n (bitvector (current-bv-width))))

@@ -8,6 +8,8 @@
 (require rosette/lib/value-browser) ; debugging
 
 (require (only-in racket/base
+                  for/list
+                  exact-nonnegative-integer?
                   raise-argument-error
                   raise-arguments-error
                   parameterize))
@@ -79,18 +81,19 @@
 
 (define (find-add-constant-gadget c)
 
-  (define g (find-gadget safe:printf-spec
-                         ((curry safe:add-constant-spec) c)
+  (define g (find-gadget printf-impl
+                         ((curry add-constant-spec) c)
                          #:expr-bound 5
                          #:context-bound 3
                          ; NOTE: will not find gadget without this context-constraint. WHY????
-                         #:context-constraint (λ (ctx) (match (safe:context->arglist ctx)
-                                                         [(safe:printf-lang (cons "" arglist)) #t]
+                         #:context-constraint (λ (ctx) (match (context->arglist ctx)
+                                                         [(printf-lang (cons "" arglist)) #t]
                                                          [_ #f]))
                          ))
   (display-gadget g displayln)
   )
-#;(find-add-constant-gadget 100)
+#;(find-add-constant-gadget -1)
+; -1 == 16383
 
 (define (find-add-argument-gadget)
 
@@ -510,3 +513,277 @@
   (cons store-a-fmt store-a-args)
   )
 
+
+(define (find-add-a)
+  ; Direct read
+  ;
+  ; Add a value to the accumulator
+
+  (define/contract concrete-fmt
+    safe:fmt?
+    (printf-lang (cons (% ((1 $) ((* 0) s))) nil)))
+
+  (define-symbolic x-val integer?)
+  (define-symbolic acc-val integer?)
+
+  (define/contract ctx-sketch
+    context?
+    (printf-lang ((cons ,(integer->bv x-val) (cons "" nil)) ; arglist
+                  (,(integer->bv acc-val) nil))))  ; config
+
+  (define g (find-gadget printf-impl
+                         (λ (p res) (add-constant-spec x-val p res))
+                         #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
+                                                                      (program->context p)))
+                         #:expr-bound 6
+                         #:context ctx-sketch
+                         #:forall (list x-val acc-val)
+                         ))
+  (display-gadget g displayln)
+  )
+#;(find-add-a)
+;
+; Result:
+; Expression ((% ((1 $) ((* 0) s))))
+; is a gadget for the provided specification, as witnessed by behavior (("@@") ((bv #x02 8) ((17762 " "))))
+; in context (((bv #x00 8) ("@@" (" "))) ((bv #x00 8) ((17762 " "))))
+
+; Return a pair of a format string and an argument list
+(define/contract (add-a x)
+
+  ; Note: to make add-a more abstract, we could require that it provide both a
+  ; concrete offset of the empty string, AND the concrete offset of x on the
+  ; stack
+  ;
+  ; Or we could synthesize all these gadgets with respect to a global argument
+  ; list/stack layout... e.g. given a particular stack layout, what format
+  ; strings will we need for each call?
+
+  (-> integer? (cons/c safe:fmt? arglist?))
+
+  (define store-a-fmt (printf-lang (cons (% ((1 $) ((* 0) s)))
+                                   (cons ""
+                                   nil))))
+
+  (define store-a-args (printf-lang (cons ,(integer->bv x) nil)))
+
+  (cons store-a-fmt store-a-args)
+  )
+
+;; Utilities
+
+(define/contract (bv->bool b)
+  (-> bv? boolean?)
+  (not (bvzero? (lsb b))))
+(define (ptr->bool p conf)
+  (let* ([m (conf->mem conf)])
+    (match (lookup-loc p m)
+      [(printf-lang b:bitvector)
+       #;(printf "(ptr->bool ~a -): ~a~n" p b)
+       (bv->bool b)]
+      )))
+
+; This format sketch bounds the length of the format string, which helps with
+; symbolic evaluation size
+(define/contract (fmt-elt-sketch n) (-> integer? safe:fmt-elt?)
+    (define-symbolic* symbolic-offset integer?)
+    (assert (>= symbolic-offset 0))
+
+    #;(define (symbolic-width) (printf-lang NONE))
+    (define (symbolic-width)
+      (define-symbolic* symbolic-nat integer?)
+      (assert (>= symbolic-nat 0))
+      (cond
+        [(havoc!) (printf-lang NONE)]
+        [(havoc!) (printf-lang (* ,symbolic-nat))]
+        [else     (printf-lang ,symbolic-nat)]
+        ))
+    #;(define (symbolic-fmt-type) (printf-lang s))
+    (define (symbolic-fmt-type)
+      (cond
+        [(havoc!) (printf-lang s)]
+        [(havoc!) (printf-lang d)]
+        [else     (printf-lang n)]
+        ))
+
+    (cond
+      [(havoc!) (new-symbolic-string n)]
+      [else     (printf-lang (% ((,symbolic-offset $) (,(symbolic-width) ,(symbolic-fmt-type)))))]
+      ))
+(define/contract (fmt-sketch n) (-> exact-nonnegative-integer? safe:fmt?)
+    ; Using a list of length 5 of (printf-lang fmt-elt 5) took over 40 min for
+    ; find-COMPL and never completed synthesis. Trying with fmt-elt-sketch.
+    (list->seec (for/list ([_ n]) (fmt-elt-sketch n)))
+    )
+; This invariant should be maintained both before and after
+(define (wf-acc-spec cfg)
+    (-> config? boolean?)
+    (bvzero? (lsb (conf->acc cfg))))
+
+
+(define (find-COMPL) ; INPUT: p is a pointer to a bitvector encoding a boolean
+  (define (compl-spec IN OUT prog behav)
+    #;(printf "acc before: ~a~n" (conf->acc (program->config prog)))
+    #;(printf "acc after: ~a~n" (conf->acc (behavior->config behav)))
+    (equal? (ptr->bool IN (program->config prog))
+            (not (ptr->bool OUT (behavior->config behav)))))
+
+
+  (define neg1 (bitvector->natural (integer->bv -1)))
+  (define/contract fmt-concrete safe:fmt?
+    (printf-lang (cons (% ((2 $) ((* 1) s))) ; add (* (LOC ,IN)) to the accumulator
+                 (cons (% ((2 $) (,neg1 s))) ; add -1 to the accumulator
+                 (cons (% ((0 $) (NONE  n))) ; write the value of the accumulator to OUT
+                 (cons (% ((2 $) ((* 1) s))) ; reverse steps 1 and 2 to reset the accumulator
+                 (cons (% ((2 $) (,neg1 s)))
+                 nil)))))))
+
+  (define-symbolic IN   integer?)
+  (define-symbolic OUT  integer?)
+  (assert (not (equal? IN OUT))) ; It would be ok for these to be equal if we
+                                 ; could read OUT back into the accumulator, but
+                                 ; since we re-read IN, we can't have
+                                 ; overwritten it.
+
+  (define-symbolic b-val integer?)
+  (define b (integer->bv b-val))
+
+  (define-symbolic acc-val integer?)
+
+  (define/contract args-sketch arglist?
+    (printf-lang (cons (LOC ,OUT)
+                 (cons (* (LOC ,IN))
+                 (cons ""
+                 nil)))))
+  (define/contract config-sketch config?
+    (printf-lang (,(integer->bv acc-val)
+                  (cons (,IN ,b) nil))))
+  (define/contract context-sketch context?
+    (printf-lang (,args-sketch ,config-sketch)))
+
+
+  (define g (find-gadget printf-impl
+                         (λ (prog behav) (and (compl-spec IN OUT prog behav)
+                                              (wf-acc-spec (behavior->config behav))))
+                         #:expr (fmt-sketch 5)
+;                         #:expr-constraint (λ (f) (equal? f fmt-concrete))
+                         #:context context-sketch
+                         #:context-constraint (λ (ctx) (wf-acc-spec (context->config ctx)))
+                         #:forall (list acc-val IN OUT b-val)
+                         ))
+  (display-gadget g displayln)
+  )
+#;(time (find-COMPL))
+; Result:
+;
+; Expression ((% ((2 $) ((* 1) s))) ; Add input
+;            ((% ((2 $) (3 d)))     ; Add 3 (changing polarity)
+;            ((% ((0 $) (1 n)))     ; Write result to output
+;            ("?w?_w"               ; Add 5 (changing polarity back)
+;            ((% ((2 $) ((* 1) s))) ; Add input again (resetting accumulator)
+;            ))))))
+; is a gadget for the provided specification, as witnessed by behavior (("?w?_w") ((bv #x05 8) ((0 ""))))
+; in context (((bv #x00 8) ((0 ""))))
+;
+; Note: this result took about 40 minutes of z3 time
+
+(define (COMPL IN OUT)
+  (-> ident? ident? (cons/c safe:fmt? arglist?))
+
+  (assert (not (equal? IN OUT)))
+
+  (define COMPL-fmt (list->seec (list (printf-lang (% ((2 $) ((* 1) s))))
+                                      (printf-lang (% ((2 $) (3 d))))
+                                      (printf-lang (% ((0 $) (1 n)))) ; the padding on %n is ignored
+                                      (printf-lang "?w?_w")
+                                      (printf-lang (% ((2 $) ((* 1) s))))
+                                      )))
+  (define COMPL-args (list->seec (list (printf-lang (LOC ,OUT))
+                                       (printf-lang (* (LOC ,IN)))
+                                       (printf-lang ""))))
+
+  (cons COMPL-fmt COMPL-args)
+  )
+
+
+(define (find-XOR)
+  (define (XOR-spec IN1 IN2 OUT prog behav)
+    (equal? (ptr->bool OUT (behavior->config behav))
+            (xor (ptr->bool IN1 (program->config prog))
+                 (ptr->bool IN2 (program->config prog))
+                 )))
+
+  (define-symbolic IN1 IN2 OUT integer?)
+  (assert (and (not (equal? OUT IN1))
+               (not (equal? OUT IN2))))
+
+  (define-symbolic in1 in2 (bitvector (get-bv-width)))
+  (define-symbolic acc-val integer?)
+  
+  (define/contract args-sketch arglist?
+    (list->seec (list (printf-lang (LOC ,OUT))
+                      (printf-lang (* (LOC ,IN1)))
+                      (printf-lang (* (LOC ,IN2)))
+                      (printf-lang "")
+                      )))
+  (define/contract config-sketch config?
+    (printf-lang (,(integer->bv acc-val)
+                  (cons (,IN1 ,in1)
+                  (cons (,IN2 ,in2)
+                   nil)))))
+  (define/contract context-sketch context?
+    (printf-lang (,args-sketch ,config-sketch)))
+
+  (define/contract fmt-concrete safe:fmt?
+    (list->seec (list (printf-lang (% ((3 $) ((* 1) s)))) ; Add in1 to accumulator
+                      (printf-lang (% ((3 $) ((* 2) s)))) ; Add in2 to accumulator
+                      (printf-lang (% ((0 $) (NONE n))))  ; Write result to OUT
+                      (printf-lang (% ((3 $) ((* 1) s)))) ; Uncompute the result
+                      (printf-lang (% ((3 $) ((* 2) s)))) ; 
+                      )))
+
+  (define g (find-gadget printf-impl
+                         (λ (prog behav) (and (XOR-spec IN1 IN2 OUT prog behav)
+                                              (wf-acc-spec (behavior->config behav))))
+;                         #:expr fmt-concrete
+                         #:expr (fmt-sketch 5)
+                         #:context context-sketch
+                         #:context-constraint (λ (ctx) (wf-acc-spec (context->config ctx)))
+                         #:forall (list acc-val IN1 IN2 OUT in1 in2)
+                         ))
+  (display-gadget g displayln)
+
+  )
+(time (find-XOR))
+; Result
+;
+; Expression ((% ((3 $) ((* 1) s))) ; add in1 to accumulator
+;            ((% ((3 $) ((* 2) s))) ; add in2 to accumulator
+;            ((% ((0 $) (2 n)))     ; write result to output
+;            ((% ((3 $) ((* 2) s))) ; repeat steps 1 and 2 to reset the accumulator
+;            ((% ((3 $) ((* 1) s)))
+;            )))))
+; is a gadget for the provided specification, as witnessed by behavior (((bv #x00 8) ((0 ""))))
+; in context (((bv #x00 8) ((0 ""))))
+
+; cpu time: 47029 real time: 5631633 gc time: 4123
+; 5631633 ms == 90 min
+(define (XOR IN1 IN2 OUT)
+  (-> ident? ident? ident? (cons/c safe:fmt? arglist?))
+
+  (assert (not (equal? IN1 OUT)))
+  (assert (not (equal? IN2 OUT)))
+
+  (define XOR-fmt (list->seec (list (printf-lang (% ((3 $) ((* 1) s)))) ; add in1 to accumulator
+                                    (printf-lang (% ((3 $) ((* 2) s)))) ; add in2 to accumulator
+                                    (printf-lang (% ((0 $) (2 n))))     ; write result to OUT...
+                                                                        ; the padding on %n is ignored
+                                    (printf-lang (% ((3 $) ((* 2) s)))) ; repeat steps 1 and 2 to reset
+                                    (printf-lang (% ((3 $) ((* 1) s)))) ; the accumulator
+                                    )))
+  (define XOR-args (list->seec (list (printf-lang (LOC ,OUT))
+                                     (printf-lang (* (LOC ,IN1)))
+                                     (printf-lang (* (LOC ,IN2)))
+                                     (printf-lang ""))))
+  (cons XOR-fmt XOR-args)
+  )
