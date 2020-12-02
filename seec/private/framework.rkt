@@ -639,7 +639,7 @@
                                          #:found-core (lambda (w) (language-witness-expression (first w)))))))
 
 
-; find-weird-component query
+; find-weird-computation query
 ; provided as a wrapper to find-weird-behavior
 ; Solve the following synthesis problem:
 ; (\lambda v1).
@@ -672,7 +672,6 @@
                          #:target-context-constraint where-c2
                          #:source-behavior-constraint where-b1
                          #:target-behavior-constraint where-b2
-
                          #:debug debug
                          #:forall-extra vars-extra
                          #:count (if witness-count witness-count 1)
