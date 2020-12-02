@@ -615,19 +615,19 @@
     ; find-COMPL and never completed synthesis. Trying with fmt-elt-sketch.
     (list->seec (for/list ([_ n]) (fmt-elt-sketch n)))
     )
-; This invariant should be maintained both before and after
+; This invariant should be maintained both before and after gadgets
 (define (wf-acc-spec cfg)
     (-> config? boolean?)
     (bvzero? (lsb (conf->acc cfg))))
 
-
-(define (find-COMPL) ; INPUT: p is a pointer to a bitvector encoding a boolean
-  (define (compl-spec IN OUT prog behav)
+(define (COMPL-spec IN OUT prog behav)
     #;(printf "acc before: ~a~n" (conf->acc (program->config prog)))
     #;(printf "acc after: ~a~n" (conf->acc (behavior->config behav)))
     (equal? (ptr->bool IN (program->config prog))
             (not (ptr->bool OUT (behavior->config behav)))))
 
+
+(define (find-COMPL) ; INPUT: p is a pointer to a bitvector encoding a boolean
 
   (define neg1 (bitvector->natural (integer->bv -1)))
   (define/contract fmt-concrete safe:fmt?
@@ -663,7 +663,7 @@
 
 
   (define g (find-gadget printf-impl
-                         (λ (prog behav) (and (compl-spec IN OUT prog behav)
+                         (λ (prog behav) (and (COMPL-spec IN OUT prog behav)
                                               (wf-acc-spec (behavior->config behav))))
                          #:expr (fmt-sketch 5)
 ;                         #:expr-constraint (λ (f) (equal? f fmt-concrete))
@@ -705,13 +705,13 @@
   (cons COMPL-fmt COMPL-args)
   )
 
-
-(define (find-XOR)
-  (define (XOR-spec IN1 IN2 OUT prog behav)
+(define (XOR-spec IN1 IN2 OUT prog behav)
     (equal? (ptr->bool OUT (behavior->config behav))
             (xor (ptr->bool IN1 (program->config prog))
                  (ptr->bool IN2 (program->config prog))
                  )))
+
+(define (find-XOR)
 
   (define-symbolic IN1 IN2 OUT integer?)
   (assert (and (not (equal? OUT IN1))
@@ -754,7 +754,7 @@
   (display-gadget g displayln)
 
   )
-(time (find-XOR))
+#;(time (find-XOR))
 ; Result
 ;
 ; Expression ((% ((3 $) ((* 1) s))) ; add in1 to accumulator
@@ -787,3 +787,72 @@
                                      (printf-lang ""))))
   (cons XOR-fmt XOR-args)
   )
+
+(define (find-COMPL-and-XOR)
+  (define-symbolic IN0 IN1 IN2 OUT integer?)
+  (assert (and (not (equal? OUT IN0))
+               (not (equal? OUT IN1))
+               (not (equal? OUT IN2))))
+
+  (define-symbolic in0 in1 in2 (bitvector (get-bv-width)))
+  (define-symbolic acc-val integer?)
+  
+  (define/contract args-sketch arglist?
+    (list->seec (list (printf-lang (LOC ,OUT))
+                      (printf-lang (* (LOC ,IN0)))
+                      (printf-lang (* (LOC ,IN1)))
+                      (printf-lang (* (LOC ,IN2)))
+                      (printf-lang "")
+                      )))
+  (define/contract config-sketch config?
+    (printf-lang (,(integer->bv acc-val)
+                  (cons (,IN0 ,in0)
+                  (cons (,IN1 ,in1)
+                  (cons (,IN2 ,in2)
+                   nil))))))
+  (define/contract context-sketch context?
+    (printf-lang (,args-sketch ,config-sketch)))
+
+  (define COMPL-fmt (fmt-sketch 5))
+  #;(define COMPL-fmt (list->seec (list (printf-lang (% ((3 $) ((* 1) s)))) ; add IN1
+                                      (printf-lang (% ((3 $) (3 d)))) ; add 3
+                                      (printf-lang (% ((0 $) (1 n)))) ; the padding on %n is ignored
+                                      (printf-lang "?w?_w")               ; add 3
+                                      (printf-lang (% ((3 $) ((* 1) s)))) ; add IN1
+                                      )))
+  (define XOR-fmt   (fmt-sketch 5))
+  #;(define XOR-fmt (list->seec (list (printf-lang (% ((3 $) ((* 2) s)))) ; add in1 to accumulator
+                                    (printf-lang (% ((3 $) ((* 3) s)))) ; add in2 to accumulator
+                                    (printf-lang (% ((0 $) (2 n))))     ; write result to OUT...
+                                                                        ; the padding on %n is ignored
+                                    (printf-lang (% ((3 $) ((* 3) s)))) ; repeat steps 1 and 2 to reset
+                                    (printf-lang (% ((3 $) ((* 2) s)))) ; the accumulator
+                                    )))
+
+
+  (define COMPL-prog (make-program COMPL-fmt args-sketch config-sketch))
+  (define XOR-prog   (make-program XOR-fmt   args-sketch config-sketch))
+
+  (define COMPL-result (interp-fmt COMPL-fmt args-sketch config-sketch))
+  (define XOR-result   (interp-fmt XOR-fmt args-sketch config-sketch))
+
+  (define sol (synthesize
+               #:forall (list OUT IN0 IN1 IN2 in0 in1 in2 acc-val)
+               #:assume (assert (wf-acc-spec (context->config context-sketch)))
+               #:guarantee
+                 (assert (and (wf-acc-spec (behavior->config COMPL-result))
+                              (wf-acc-spec (behavior->config XOR-result))
+                              (COMPL-spec IN0 OUT COMPL-prog COMPL-result)
+                              (XOR-spec IN1 IN2 OUT XOR-prog XOR-result)
+                              ))))
+  (if (unsat? sol)
+      (displayln "Failed to synthesize")
+      (begin
+        (displayln "Synthesis succeeded")
+        (printf "COMPL-fmt: ~a~n~n" (concretize COMPL-fmt sol))
+        (printf "XOR-fmt: ~a~n~n"   (concretize XOR-fmt sol))
+        ))
+  )
+(time (find-COMPL-and-XOR))
+; Wanted to see if it would take more or less time to synthesize both COMPL and
+; XOR together compared to synthesizing them separately.
