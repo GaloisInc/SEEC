@@ -45,9 +45,6 @@
   (let* ([acc (conf->acc (program->config p))]
          [acc+ (conf->acc (behavior->config res))]
          )
-    #;(printf "add-constant-spec: acc: ~a~n" acc)
-    #;(printf "add-constant-spec: acc+: ~a~n" acc+)
-    #;(printf "add-constant-spec: acc+c: ~a~n" (bv-add-integer acc c))
     (equal? acc+ (bv-add-integer acc c))
     ))
 (define/contract (safe:add-constant-spec c p res)
@@ -352,8 +349,6 @@
     (display-gadget sol displayln)
   )
 #;(time (find-add-mem-gadget))
-; NOTE: Z3 currently takes a long time with this case, perhaps needs debugging
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Weird machine primitives ;;
