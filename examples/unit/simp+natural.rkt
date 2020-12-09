@@ -277,9 +277,6 @@
                            #:target-behavior-where (lambda (v1 c1 c2 b2) (<= 1000 b2))))
    "target-behavior-where argument to find-weird-component"))
 
-; THIS TAKES A LONG TIME OR TIMES OUT
-#;(find-weird-component SIMP-NAT-TO-INTEGER
-                           #:target-behavior-where (lambda (v1 c1 c2 b2) (<= 1000 b2)))
 
 (define test-wc-all-args-nat-to-integer
   (list
