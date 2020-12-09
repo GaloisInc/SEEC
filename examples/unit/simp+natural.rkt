@@ -262,14 +262,6 @@
 ;                                  #:target-context-where (lambda (v1 c2) (equal? c2 1))
                                   )
                          displayln))
-; Expected: No weird behavior found
-; With bound=1: .2 sec
-; With bound=2: .3 sec
-; With bound=3: 52 sec, also expression has 8 cases
-; With bound=4: 162 min??
-;
-; On master
-; With bound=3: 24 sec, expression has 8 cases
 
 (define test-wc-arg-source-behavior-where-nat-to-integer
   (list
