@@ -115,7 +115,7 @@
                                                      
 )
 ; TODO: add test cases for padding
-(run-tests safe-correct)
+#;(run-tests safe-correct)
 
 (define/provide-test-suite unsafe-correct
 
@@ -166,7 +166,7 @@
   )
 
   )
-(run-tests unsafe-correct)
+#;(run-tests unsafe-correct)
 
 
 (define/provide-test-suite safe-unsafe-consistent
@@ -180,7 +180,7 @@
                                 arglist-n-1
                                 (safe:make-config-triv 0))
   )
-(parameterize ([safe:debug? #f]
+#;(parameterize ([safe:debug? #f]
                [unsafe:debug? #f]
                )
   (run-tests safe-unsafe-consistent)
