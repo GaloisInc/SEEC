@@ -256,13 +256,6 @@
                                   #:target-context-where (lambda (v1 c2) (equal? c2 1))))
   "target-context-where argument to find-weird-component should make this query fail"))
 
-(time (display-weird-component (find-weird-component SIMP-NAT-TO-INTEGER
-                                  #:source-expression-bound 3
-                                  #:target-context 1
-;                                  #:target-context-where (lambda (v1 c2) (equal? c2 1))
-                                  )
-                         displayln))
-
 (define test-wc-arg-source-behavior-where-nat-to-integer
   (list
    (lambda (r) (r))
