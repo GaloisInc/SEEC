@@ -65,7 +65,6 @@
                      [printf-lang-context? context?]
                      )
          fmt-string-width?
-         offset->number
          param->offset
 
          err?
@@ -162,13 +161,6 @@
   (and (integer? n)
        (>= n 0)))
 
-
-(define/contract (offset->number o)
-  (-> fmt-string-offset? integer?)
-  (match o
-    [(printf-lang n:natural) n]
-    ))
-
 (define/contract (val->number v)
   (-> printf-lang-integer? integer?)
   (match v
@@ -195,7 +187,7 @@
 (define/contract (param->offset param)
   (-> fmt-string-parameter? integer?)
   (match param
-    [(printf-lang (o:offset $)) (offset->number o)]
+    [(printf-lang (o:offset $)) o]
     ))
 
 
@@ -481,7 +473,7 @@
        )]
 
     [(printf-lang (% (p:parameter ((* o:offset) ftype:fmt-type))))
-     (match (list (lookup-offset (offset->number o) ctx)
+     (match (list (lookup-offset o ctx)
                   (fmt->constant ftype p ctx))
        [(list (printf-lang w:integer)
               (printf-lang c:constant))
@@ -544,8 +536,8 @@
     [(printf-lang NONE) #t]
     [(printf-lang natural) #t]
     [(printf-lang (* o:offset))
-     (and (< (offset->number o) (seec-length (context->arglist ctx)))
-          (printf-lang-integer? (lookup-offset (offset->number o) ctx)))]
+     (and (< o (seec-length (context->arglist ctx)))
+          (printf-lang-integer? (lookup-offset o ctx)))]
     ))
 
 

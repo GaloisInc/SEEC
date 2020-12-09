@@ -20,8 +20,8 @@
   (exp ::= (op exp exp) var num))
 
 ; returns the number of ops in exp e
-(define/contract (num-ops e)
-  (-> simp+natural-exp? integer?)
+(define (num-ops e)
+  #;(-> simp+natural-exp? integer?)
   (match e
     [(simp+natural (o:op e1:exp e2:exp))
      (+ 1 (+ (num-ops e1) (num-ops e2)))]
@@ -30,28 +30,22 @@
     [(simp+natural var)
      0]))
 
-(define/contract (interp-binop op n1 n2)
-  (-> simp+natural-op? integer? integer? integer?)
+(define (interp-binop op n1 n2)
+  #;(-> simp+natural-op? integer? integer? integer?)
   (match op
   [(simp+natural +)
    (+ n1 n2)]
   [(simp+natural *)
    (* n1 n2)]))
 
-(define/contract (num->natural n)
-  (-> simp+natural-num? integer?)
-  (match n
-    [(simp+natural x:natural) x]
-    ))
-
 ; exp -> racket natural
-(define/contract (eval-simp+natural v exp)
-  (-> (or/c simp+natural-num? #f) simp+natural-exp? integer?)
+(define (eval-simp+natural v exp)
+  #;(-> (or/c simp+natural-num? #f) simp+natural-exp? integer?)
   (match exp
     [(simp+natural (o:op e1:exp e2:exp))
      (interp-binop o (eval-simp+natural v e1) (eval-simp+natural v e2))]
     [(simp+natural n:num)
-     (num->natural n)]
+     n]
     [(simp+natural var)
      (match v
        [(simp+natural x:natural) x]
@@ -148,7 +142,7 @@
   (list
    (lambda (r) (r))
    (thunk (find-changed-component SIMP-NAT-TO-INTEGER
-                           #:source-context-where (lambda (v1 c1) (equal? (num->natural c1) 0))))
+                           #:source-context-where (lambda (v1 c1) (equal? c1 0))))
    "source-context-where argument to find-changed-component"))
 
 (define test-cc-arg-target-context-bound-nat-to-integer
@@ -162,7 +156,7 @@
   (list
    (lambda (r) (r))
    (thunk (find-changed-component SIMP-NAT-TO-INTEGER
-                                  #:target-context-where (lambda (v1 c2) (equal? (num->integer c2) 1))))
+                                  #:target-context-where (lambda (v1 c2) (equal? c2 1))))
   "target-context-where argument to find-changed-component"))
 
 (define test-cc-arg-source-behavior-where-nat-to-integer
@@ -186,9 +180,9 @@
                            #:source-expression-bound 6
                            #:source-expression-where (lambda (v1) (>= (num-ops v1) 3))
                            #:source-context-bound 2
-                           #:source-context-where (lambda (v1 c1) (equal? (num->natural c1) 0))
+                           #:source-context-where (lambda (v1 c1) (equal? c1 0))
                            #:target-context-bound 2
-                           #:target-context-where (lambda (v1 c2) (equal? (num->integer c2) 1))
+                           #:target-context-where (lambda (v1 c2) (equal? c2 1))
                            #:source-behavior-where (lambda (v1 c1 c2 b1) (equal? b1 0))
                            #:target-behavior-where (lambda (v1 c1 c2 b2) (<= 1000 b2))))
     "all arguments to find-changed-component"))
@@ -237,7 +231,7 @@
   (list
    (lambda (r) (r))
    (thunk (find-weird-component SIMP-NAT-TO-INTEGER
-                           #:source-context-where (lambda (v1 c1) (equal? (num->natural c1) 0))))
+                           #:source-context-where (lambda (v1 c1) (equal? c1 0))))
    "source-context-where argument to find-weird-component"))
 
 (define test-wc-arg-target-context-bound-nat-to-integer
@@ -251,7 +245,7 @@
   (list
    (lambda (r) (r))
    (thunk (find-weird-component SIMP-NAT-TO-INTEGER
-                                  #:target-context-where (lambda (v1 c2) (equal? (num->integer c2) -1))))
+                                  #:target-context-where (lambda (v1 c2) (equal? c2 -1))))
   "target-context-where argument to find-weird-component"))
 
 
@@ -259,12 +253,8 @@
   (list
    (lambda (r) (not (r)))
    (thunk (find-weird-component SIMP-NAT-TO-INTEGER
-                                  #:target-context-where (lambda (v1 c2) (equal? (num->integer c2) 1))))
+                                  #:target-context-where (lambda (v1 c2) (equal? c2 1))))
   "target-context-where argument to find-weird-component should make this query fail"))
-
-; THIS TIMES OUT??
-#;(find-weird-component SIMP-NAT-TO-INTEGER
-                                  #:target-context-where (lambda (v1 c2) (equal? (num->integer c2) 1)))
 
 (define test-wc-arg-source-behavior-where-nat-to-integer
   (list
@@ -280,9 +270,6 @@
                            #:target-behavior-where (lambda (v1 c1 c2 b2) (<= 1000 b2))))
    "target-behavior-where argument to find-weird-component"))
 
-; THIS TAKES A LONG TIME OR TIMES OUT
-#;(find-weird-component SIMP-NAT-TO-INTEGER
-                           #:target-behavior-where (lambda (v1 c1 c2 b2) (<= 1000 b2)))
 
 (define test-wc-all-args-nat-to-integer
   (list
@@ -291,9 +278,9 @@
                            #:source-expression-bound 6
                            #:source-expression-where (lambda (v1) (>= (num-ops v1) 3))
                            #:source-context-bound 2
-                           #:source-context-where (lambda (v1 c1) (equal? (num->natural c1) 0))
+                           #:source-context-where (lambda (v1 c1) (equal? c1 0))
                            #:target-context-bound 2
-                           #:target-context-where (lambda (v1 c2) (equal? (num->integer c2) 1))
+                           #:target-context-where (lambda (v1 c2) (equal? c2 1))
                            #:source-behavior-where (lambda (v1 c1 c2 b1) (equal? b1 0))
                            #:target-behavior-where (lambda (v1 c1 c2 b2) (<= 1000 b2))))
     "all arguments to find-weird-component"))

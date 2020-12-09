@@ -8,11 +8,6 @@
       [(cons a b)
        (f a b)])))
 
-(define (bonsai->number n)
-  (match n
-    [(bonsai-integer i) i]
-    ))
-
 (define id
   (lambda (a)
     a))

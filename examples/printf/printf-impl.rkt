@@ -163,7 +163,6 @@
     [_ (raise-argument-error 'conf->acc "conf" c)]
     ))
 
-
 (define/contract (behavior->trace b)
   (-> printf-lang-behavior? printf-lang-trace?)
   (match b
@@ -497,7 +496,7 @@
        )]
 
     [(printf-lang (% (p:parameter ((* o:offset) ftype:fmt-type))))
-     (match (lookup-offset (safe:offset->number o) ctx)
+     (match (lookup-offset o ctx)
        ; if o is greater than the length of the argument list, no-op
        [(printf-lang ERR)   (printf-lang (nil ,conf))]
        [(printf-lang v:val)
@@ -558,8 +557,8 @@
     [(printf-lang NONE) #t]
     [(printf-lang natural) #t]
     [(printf-lang (* o:offset))
-     (and (< (safe:offset->number o) (seec-length (context->arglist ctx)))
-          (printf-lang-bitvector? (lookup-offset (safe:offset->number o) ctx)))]
+     (and (< o (seec-length (context->arglist ctx)))
+          (printf-lang-bitvector? (lookup-offset o ctx)))]
     ))
 
 
