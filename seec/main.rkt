@@ -28,6 +28,7 @@
          ; bitvectors
          integer->bv
          set-bitwidth
+         get-bv-width
 
          ; lists
          seec-list?
@@ -61,5 +62,6 @@
          define-grammar
          enumerate
          make-tree!
+         havoc!
 
          (all-from-out "private/framework.rkt"))

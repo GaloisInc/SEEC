@@ -54,8 +54,8 @@
 (define/contract (compile-mem m)
   (-> safe:mem? unsafe:mem?)
   (match m
-    [(safe:printf-lang mnil) (unsafe:printf-lang nil)]
-    [(safe:printf-lang (mcons x:ident v:val m+:mem))
+    [(safe:printf-lang nil) (unsafe:printf-lang nil)]
+    [(safe:printf-lang (cons (x:ident v:val) m+:mem))
      (unsafe:printf-lang (cons (,x ,(compile-val v)) ,(compile-mem m+)))]
     ))
 

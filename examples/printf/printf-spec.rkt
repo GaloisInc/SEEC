@@ -65,6 +65,7 @@
                      [printf-lang-context? context?]
                      )
          fmt-string-width?
+         param->offset
 
          err?
          debug?
@@ -118,7 +119,9 @@
   #:extends fmt-string
   (arglist ::= list<expr>)
   (expr ::= (LOC ident) (* expr) integer string)
-  (mem ::= mnil (mcons ident val mem))
+  (mem-elem ::= (ident val))
+  #;(mem ::= mnil (mcons ident val mem))
+  (mem ::= list<mem-elem>)
   (val ::= (LOC ident) integer string ERR #;(DEREF val))
   (ident ::= integer)
   (trace ::= list<constant>)
@@ -204,7 +207,7 @@
   (-> integer? printf-lang-mem? printf-lang-config?)
   (printf-lang (,n ,m)))
 (define (make-config-triv n)
-  (make-config n (printf-lang mnil)))
+  (make-config n (printf-lang nil)))
 (define/contract (make-behav t n m)
   (-> printf-lang-trace? integer? printf-lang-mem? printf-lang-behavior?)
   (printf-lang (,t ,(make-config n m))))
@@ -255,8 +258,8 @@
   (-> printf-lang-ident? printf-lang-mem? (or/c err? printf-lang-val?))
   (debug (thunk (printf "(lookup-loc ~a ~a)~n" l m)))
   (match m
-    [(printf-lang mnil) (printf-lang ERR)]
-    [(printf-lang (mcons l0:ident v0:val m0:mem))
+    [(printf-lang nil) (printf-lang ERR)]
+    [(printf-lang (cons (l0:ident v0:val) m0:mem))
      (if (equal? l l0)
          v0
          (lookup-loc l m0))]
@@ -315,7 +318,7 @@
 ; OUTPUT: an updated memory with the location mapping to the new value
 (define/contract (mem-update m l v)
   (-> printf-lang-mem? printf-lang-ident? printf-lang-val? printf-lang-mem?)
-  (printf-lang (mcons ,l ,v ,m)))
+  (printf-lang (cons (,l ,v) ,m)))
 
 
 

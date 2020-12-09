@@ -140,25 +140,9 @@
        (>= n 0)))
 
 
-#;(define/contract (bitvector->number b)
-  (-> printf-lang-bitvector? integer?)
-  (match b
-    [(printf-lang b+:bitvector)
-     (bitvector->integer b+)]
-    ))
-#;(define/contract (bitvector->natural n)
-  (-> printf-lang-bvint? natural?)
-  (match b
-    [(printf-lang b+:bitvector)
-     (bitvector->natural b+)]
-    ))
-#;(define/contract (number->bvint n)
-  (-> integer? printf-lang-bvint?)
-  (integer->bonsai-bv n))
 (define/contract (val->number v)
   (-> printf-lang-bitvector? integer?)
   (match v
-    #;[(printf-lang n:integer) n]
     [(printf-lang n:bitvector) (bitvector->integer n)]
     [_ (raise-argument-error 'val->number "printf-lang-bitvector?" v)]
     ))
@@ -179,13 +163,6 @@
     [_ (raise-argument-error 'conf->acc "conf" c)]
     ))
 
-(define/contract (param->offset param)
-  (-> safe:parameter? integer?)
-  (match param
-    [(printf-lang (o:offset $)) o]
-    ))
-
-
 (define/contract (behavior->trace b)
   (-> printf-lang-behavior? printf-lang-trace?)
   (match b
@@ -196,11 +173,6 @@
     [(printf-lang (trace c:config)) c]
     ))
 
-(define (context? ctx)
-  (match ctx
-    [(printf-lang context) #t]
-    [_ #f]
-    ))
 (define (make-context args conf)
   (printf-lang (,args ,conf)))
 (define/contract (make-config n m)
@@ -215,26 +187,26 @@
   (printf-lang (,t ,(make-config-triv n))))
 
 (define/contract (context->config ctx)
-  (-> context? printf-lang-config?)
+  (-> printf-lang-context? printf-lang-config?)
   (match ctx
     [(printf-lang (args:arglist cfg:config)) cfg]
     ))
 (define/contract (context->arglist ctx)
-  (-> context? printf-lang-arglist?)
+  (-> printf-lang-context? printf-lang-arglist?)
   (match ctx
     [(printf-lang (args:arglist cfg:config)) args]
     ))
 ; a printf-program is a racket pair of a context and a format string
 (define (printf-program? p)
   (and (pair? p)
-       (context? (car p))
+       (printf-lang-context? (car p))
        (safe:fmt? (cdr p))
        ))
 (define/contract (program->fmt p)
   (-> printf-program? safe:fmt?)
   (cdr p))
 (define/contract (program->context p)
-  (-> printf-program? context?)
+  (-> printf-program? printf-lang-context?)
   (car p))
 (define/contract (program->arglist p)
   (-> printf-program? printf-lang-arglist?)
@@ -285,7 +257,7 @@
 ; INPUT: an integer offset and an argument list args such that offset < length(args)
 ; OUTPUT: the value mapped to the offset
 (define/contract (lookup-offset offset ctx)
-  (-> integer? context? (or/c err? printf-lang-val?))
+  (-> integer? printf-lang-context? (or/c err? printf-lang-val?))
   (debug (thunk (printf "(lookup-offset ~a ~a)~n" offset ctx)))
   (define res 
     (let ([args (context->arglist ctx)]
@@ -466,9 +438,9 @@
   res)
 
 (define/contract (unsafe:fmt->constant ftype param ctx)
-  (-> safe:fmt-type? safe:parameter? context? (or/c err? printf-lang-constant?))
+  (-> safe:fmt-type? safe:parameter? printf-lang-context? (or/c err? printf-lang-constant?))
   (debug (thunk (printf "(unsafe:fmt->constant ~a ~a ~a)~n" ftype param ctx)))
-  (define res (match (lookup-offset (param->offset param) ctx)
+  (define res (match (lookup-offset (safe:param->offset param) ctx)
     [(printf-lang ERR) (printf-lang ERR)]
     [(printf-lang v:val)
      (match ftype
@@ -492,7 +464,7 @@
 ;
 ; OUTPUT: an outputted trace and a configuration
 (define/contract (interp-fmt-elt-unsafe f ctx)
-  (-> safe:fmt-elt? context? printf-lang-behavior?)
+  (-> safe:fmt-elt? printf-lang-context? printf-lang-behavior?)
   (debug (thunk (printf "(interp-fmt-elt-unsafe ~a ~a)~n" f ctx)))
   (define conf (context->config ctx))
   (define res (match f
@@ -569,8 +541,8 @@
 ; p is the parameter offset as a bonsai number
 ; ftype is the format type associated with the parameter
 (define/contract (parameter-consistent-with-arglist p ftype ctx)
-  (-> safe:parameter? safe:fmt-type? context? boolean?)
-  (let* ([offset (param->offset p)]
+  (-> safe:parameter? safe:fmt-type? printf-lang-context? boolean?)
+  (let* ([offset (safe:param->offset p)]
          [arg (lookup-offset offset ctx)])
     (and (< offset (seec-length (context->arglist ctx)))
          (match (cons ftype arg)
@@ -580,7 +552,7 @@
            [_                                                #f]
            ))))
 (define (width-consistent-with-arglist w ctx)
-  (-> safe:fmt-string-width? context? boolean?)
+  (-> safe:fmt-string-width? printf-lang-context? boolean?)
   (match w
     [(printf-lang NONE) #t]
     [(printf-lang natural) #t]
