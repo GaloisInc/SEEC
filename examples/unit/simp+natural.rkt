@@ -20,8 +20,8 @@
   (exp ::= (op exp exp) var num))
 
 ; returns the number of ops in exp e
-(define/contract (num-ops e)
-  (-> simp+natural-exp? integer?)
+(define (num-ops e)
+  #;(-> simp+natural-exp? integer?)
   (match e
     [(simp+natural (o:op e1:exp e2:exp))
      (+ 1 (+ (num-ops e1) (num-ops e2)))]
@@ -30,8 +30,8 @@
     [(simp+natural var)
      0]))
 
-(define/contract (interp-binop op n1 n2)
-  (-> simp+natural-op? integer? integer? integer?)
+(define (interp-binop op n1 n2)
+  #;(-> simp+natural-op? integer? integer? integer?)
   (match op
   [(simp+natural +)
    (+ n1 n2)]
@@ -39,8 +39,8 @@
    (* n1 n2)]))
 
 ; exp -> racket natural
-(define/contract (eval-simp+natural v exp)
-  (-> (or/c simp+natural-num? #f) simp+natural-exp? integer?)
+(define (eval-simp+natural v exp)
+  #;(-> (or/c simp+natural-num? #f) simp+natural-exp? integer?)
   (match exp
     [(simp+natural (o:op e1:exp e2:exp))
      (interp-binop o (eval-simp+natural v e1) (eval-simp+natural v e2))]
@@ -256,6 +256,20 @@
                                   #:target-context-where (lambda (v1 c2) (equal? c2 1))))
   "target-context-where argument to find-weird-component should make this query fail"))
 
+(time (display-weird-component (find-weird-component SIMP-NAT-TO-INTEGER
+                                  #:source-expression-bound 3
+                                  #:target-context 1
+;                                  #:target-context-where (lambda (v1 c2) (equal? c2 1))
+                                  )
+                         displayln))
+; Expected: No weird behavior found
+; With bound=1: .2 sec
+; With bound=2: .3 sec
+; With bound=3: 52 sec, also expression has 8 cases
+; With bound=4: 162 min??
+;
+; On master
+; With bound=3: 24 sec, expression has 8 cases
 
 (define test-wc-arg-source-behavior-where-nat-to-integer
   (list

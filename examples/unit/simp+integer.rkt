@@ -25,8 +25,8 @@
 
 
 ; exp -> racket integer
-(define/contract (eval-simp+integer v exp)
-  (-> (or/c simp+integer-num? #f) simp+integer-exp? integer?)
+(define (eval-simp+integer v exp)
+  #;(-> (or/c simp+integer-num? #f) simp+integer-exp? integer?)
   (match exp
     [(simp+integer (o:op e1:exp e2:exp))
      (interp-binop o (eval-simp+integer v e1) (eval-simp+integer v e2))]
