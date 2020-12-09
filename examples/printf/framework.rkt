@@ -574,7 +574,9 @@
 
 (define/contract (bv->bool b)
   (-> bv? boolean?)
-  (not (bvzero? (lsb b))))
+  #;(not (bvzero? (lsb b)))
+  (not (equal? (lsb b) (bv 0 1)))
+  )
 (define (ptr->bool p conf)
   (let* ([m (conf->mem conf)])
     (match (lookup-loc p m)
@@ -673,19 +675,20 @@
                          ))
   (display-gadget g displayln)
   )
-#;(time (find-COMPL))
+(time (find-COMPL))
 ; Result:
 ;
-; Expression ((% ((2 $) ((* 1) s))) ; Add input
-;            ((% ((2 $) (3 d)))     ; Add 3 (changing polarity)
-;            ((% ((0 $) (1 n)))     ; Write result to output
-;            ("?w?_w"               ; Add 5 (changing polarity back)
-;            ((% ((2 $) ((* 1) s))) ; Add input again (resetting accumulator)
-;            ))))))
-; is a gadget for the provided specification, as witnessed by behavior (("?w?_w") ((bv #x05 8) ((0 ""))))
-; in context (((bv #x00 8) ((0 ""))))
-;
-; Note: this result took about 40 minutes of z3 time
+; Expression ((% ((2 $) (NONE d))) ; When converting a string to an integer, will print "0"
+;            ((% ((2 $) ((* 1) s)))
+;            ((% ((0 $) (0 n)))
+;            ("?____"
+;            ((% ((2 $) ((* 1) s))))))))
+; is a gadget for the provided specification, as witnessed by behavior (("?____") ((bv #x05 8) ((0 (bv #x00 8)))))
+; in context (((bv #x00 8)) ((bv #x00 8)))
+
+; cpu time: 43975 real time: 330707 gc time: 3841
+; 330707ms = 5.5 min
+
 
 (define (COMPL IN OUT)
   (-> ident? ident? (cons/c safe:fmt? arglist?))
@@ -766,8 +769,8 @@
 ; is a gadget for the provided specification, as witnessed by behavior (((bv #x00 8) ((0 ""))))
 ; in context (((bv #x00 8) ((0 ""))))
 
-; cpu time: 47029 real time: 5631633 gc time: 4123
-; 5631633 ms == 90 min
+; cpu time: 58063 real time: 1470925 gc time: 4747
+; 1470925 ms == 24.5 min
 (define (XOR IN1 IN2 OUT)
   (-> ident? ident? ident? (cons/c safe:fmt? arglist?))
 
@@ -853,6 +856,6 @@
         (printf "XOR-fmt: ~a~n~n"   (concretize XOR-fmt sol))
         ))
   )
-(time (find-COMPL-and-XOR))
+#;(time (find-COMPL-and-XOR))
 ; Wanted to see if it would take more or less time to synthesize both COMPL and
 ; XOR together compared to synthesizing them separately.
