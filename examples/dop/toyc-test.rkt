@@ -70,11 +70,11 @@
   (run-tests mem-tests)
 
   (define/contract F-example toyc-frame?
-    (list->seec (list (toyc ((VAR 0) (100 0)))
-                      (toyc ((VAR 1) (103 0))))))
+    (list->seec (list (toyc ("x0" (100 0)))
+                      (toyc ("x1" (103 0))))))
   (define F2-example
-    (list->seec (list (toyc ((VAR 2) (100 0)))
-                      (toyc ((VAR 1) (101 0))))))
+    (list->seec (list (toyc ("x2" (100 0)))
+                      (toyc ("x1" (101 0))))))
 
   (define/contract S-example toyc-stack?
     (seec-singleton F2-example))
@@ -105,33 +105,33 @@
         ; F contains Var 0 ↦ (100 0)
         ; m contains 100   ↦ 0
         (test-case "Var"
-          (check-equal? (eval-expr (toyc (VAR 0)) F-example mem-example)
+          (check-equal? (eval-expr (toyc "x0") F-example mem-example)
                         0))
 
         ; F contains Var 1 ↦ 103
         ; m contains 103   ↦ (102 0)
         ;            102   ↦ 2
         (test-case "*"
-          (check-equal? (eval-expr (toyc (* (VAR 1))) F-example mem-example)
+          (check-equal? (eval-expr (toyc (* "x1")) F-example mem-example)
                         2))
 
         ; F contains Var 1 ↦ (103,0)
         (test-case "&"
-          (check-equal? (eval-expr (toyc (& (VAR 1))) F-example mem-example)
+          (check-equal? (eval-expr (toyc (& "x1")) F-example mem-example)
                         (toyc (103 0))))
 
         (test-case "op"
           ; Check that multiplication can be distinguished from unary * operation
-          (check-equal? (eval-expr (toyc (* (VAR 0) (VAR 0))) F-example mem-example)
+          (check-equal? (eval-expr (toyc (* "x0" "x0")) F-example mem-example)
                         0)
           ; Var 1 ↦ (100,0)
-          (check-equal? (eval-expr (toyc (+ (& (VAR 0)) 3)) F-example mem-example)
+          (check-equal? (eval-expr (toyc (+ (& "x0") 3)) F-example mem-example)
                         (toyc (100,3)))
           )
         )
        (test-suite "eval-exprs"
-          (check-equal? (eval-exprs (list (toyc (* (VAR 1)))
-                                          (toyc (& (VAR 1))))
+          (check-equal? (eval-exprs (list (toyc (* "x1"))
+                                          (toyc (& "x1")))
                                     context-example
                                     )
                         (list (toyc 2)
@@ -146,9 +146,9 @@
                 toyc-declaration?)
     (toyc (,name ,(list->seec params) ,(list->seec locals) ,(list->seec statements))))
   (define main-example (make-declaration (string "main")
-                                         (list (toyc ((VAR 0) int)))
-                                         (list (toyc ((VAR 1) (* int))))
-                                         (list (toyc (ASSIGN (VAR 1) (& (VAR 0)))))))
+                                         (list (toyc ("x0" int)))
+                                         (list (toyc ("x1" (* int))))
+                                         (list (toyc (ASSIGN "x1" (& "x0"))))))
   (define g-example (seec-singleton main-example))
 
   (define/contract (check-lookup-context? ctx l obj)
@@ -208,7 +208,7 @@
 
 
         (test-case "alloc-declarations"
-          (let* ([F-st+ (alloc-declarations (list (list (toyc (VAR 4)) (toyc int) 40))
+          (let* ([F-st+ (alloc-declarations (list (list (toyc "x4") (toyc int) 40))
                                             state-example)]
                  [F+    (car F-st+)]
                  [st+   (cdr F-st+)]
@@ -230,9 +230,9 @@
             (check-equal? (rest (context->non-empty-stack (state->context st+)))
                           (context->non-empty-stack (state->context state-example)))
 
-            (check-equal? (eval-expr (toyc (VAR 0)) F+ m+)
+            (check-equal? (eval-expr (toyc "x0") F+ m+)
                           1)
-            (check-equal? (eval-expr (toyc (VAR 1)) F+ m+)
+            (check-equal? (eval-expr (toyc "x1") F+ m+)
                           #f) ; Should evaluate to undef
 
             ))
@@ -241,10 +241,10 @@
 
      (test-suite "eval-statement-1"
         (test-suite "ASSIGN"
-          ; VAR 0 ↦ (100,0)
+          ; x0 ↦ (100,0)
           (let ([st+ (eval-statement-1 g-example
                                        (update-state state-example
-                                                     #:statement (toyc (ASSIGN (VAR 0) -1))
+                                                     #:statement (toyc (ASSIGN "x0" -1))
                                                      ))])
             (check-lookup-context? (state->context st+)
                                    (toyc (100 0))
@@ -260,7 +260,7 @@
         (test-suite "OUTPUT"
            (let ([st+ (eval-statement-1 g-example
                                         (update-state state-example
-                                                      #:statement (toyc (OUTPUT (VAR 0)))
+                                                      #:statement (toyc (OUTPUT "x0"))
                                                       ))])
              (check-equal? (state->trace st+) (seec-singleton 0))
              (check-equal? (state->statement st+) (toyc SKIP))
@@ -303,7 +303,7 @@
              ))
 
         (test-suite "SEQ"
-           (let* ([stmt0 (toyc (ASSIGN (VAR 1) (VAR 0)))]
+           (let* ([stmt0 (toyc (ASSIGN "x1" "x0"))]
                   [st0   (eval-statement-1 g-example
                                            (update-state state-example
                                                          #:statement stmt0))]
@@ -325,41 +325,65 @@
 
   (define (evaluation-tests)
 
-
-    (define n (toyc (VAR 0)))
-    (define o (toyc (VAR 1)))
-    (define prev (toyc (VAR 2)))
-    (define i (toyc (VAR 3)))
-    (define result (toyc (VAR 4)))
-
     (define fac (make-declaration
                  (string "fac")
-                 (list (toyc (,n int))
-                       (toyc (,o (* int)))
+                 (list (toyc ("n" int))
+                       (toyc ("o" (* int)))
                        )
-                 (list (toyc (,prev int)))
-                 (list (toyc (IF (= ,n 0)
-                                 (ASSIGN (* ,o) 1)
-                                 (SEQ (CALL "fac" (cons (- ,n 1)
-                                                        (cons (& ,prev) nil)))
-                                      (ASSIGN (* ,o) (* ,n ,prev))
+                 (list (toyc ("prev" int)))
+                 (list (toyc (IF (= "n" 0)
+                                 (ASSIGN (* "o") 1)
+                                 (SEQ (CALL "fac" (cons (- "n" 1)
+                                                        (cons (& "prev") nil)))
+                                      (ASSIGN (* "o") (* "n" "prev"))
                                       ))))
                  ))
     (define main (make-declaration
                   (string "main")
-                  (list (toyc (,n int)))
-                  (list (toyc (,result int)))
-                  (list (toyc (CALL "fac" (cons ,i
-                                          (cons (& ,result)
+                  (list (toyc ("i" int)))
+                  (list (toyc ("result" int)))
+                  (list (toyc (CALL "fac" (cons "i"
+                                          (cons (& "result")
                                           nil))))
-                        (toyc (OUTPUT ,result))
+                        (toyc (OUTPUT "result"))
                         )))
 
     (define run-fac (run (list main fac)
                          (list 3)))
-    (displayln run-fac)
-    #;(display-state run-fac)
-    (printf "hi~n")
+    (check-equal? (state->trace run-fac)
+                  (seec-singleton 6))
+
+
+    (define loop (make-declaration
+                  (string "main")
+                  (list )
+                  (list (toyc ("i"   int))
+                        (toyc ("p"   (array int 10)))
+                        (toyc ("c"   (* int)))
+                        (toyc ("sum" int))
+                        )
+                  (list (toyc (ASSIGN "i" 0))
+                        (toyc (ASSIGN "c" "p"))
+                        (toyc (WHILE (< "i" 10)
+                                     (SEQ (ASSIGN (* "c") 2)
+                                     (SEQ (ASSIGN "c" (+ "c" 1))
+                                          (ASSIGN "i" (+ "i" 1))
+                                          ))))
+                        (toyc (ASSIGN "i" 0))
+                        (toyc (ASSIGN "sum" 0))
+                        (toyc (WHILE (< "i" 10)
+                                     (SEQ (ASSIGN "sum" (+ "sum" (* (+ "p" "i"))))
+                                          (ASSIGN "i"   (+ "i" 1))
+                                          )))
+                        (toyc (OUTPUT "sum")))
+                  ))
+
+
+    (define run-loop (run #:fuel 200
+                          (list loop)
+                          (list )))
+    (check-equal? (state->trace run-loop)
+                  (seec-singleton 20))
     )
   (evaluation-tests)
   )

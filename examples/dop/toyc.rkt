@@ -41,7 +41,7 @@
   ; An l-value is either a variable 'x' or the location
   ; pointed to by another l-value 
   (lval  ::= var (* lval))
-  (var   ::= (VAR integer))
+  (var   ::= string)
 
   (proc-name ::= string)
   )
@@ -263,13 +263,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (pp-test)
-  (define F1 (list->seec (list (toyc ((VAR 0) (100 0)))
-                               (toyc ((VAR 1) (101 1)))
-                               (toyc ((VAR 2) (102 0)))
+  (define F1 (list->seec (list (toyc ("x0" (100 0)))
+                               (toyc ("x1" (101 1)))
+                               (toyc ("x2" (102 0)))
                                )))
   (printf "~n==F1==~n")
   (display-frame F1)
-  (define F2 (list->seec (list (toyc ((VAR -1) (200 0)))
+  (define F2 (list->seec (list (toyc ("x'" (200 0)))
                                )))
   (printf "~n==F2==~n")
   (display-frame F2)
@@ -769,7 +769,7 @@
 
     
 (define/contract (alloc-local-declarations decls st)
-  (-> (listof toyc-param-decl?)
+  (-> (listof toyc-local-decl?)
       state?
       (cons/c toyc-frame? state?))
 
@@ -815,7 +815,7 @@
 ; Take a single step
 (define/contract (eval-statement-1 g st)
   (-> toyc-global-store? state? (or/c #f state?))
-  (printf "(eval-statement-1 ~a)~n" (state->statement st))
+  #;(printf "(eval-statement-1 ~a)~n" (state->statement st))
 
   (match (state->statement st)
 
@@ -880,7 +880,7 @@
        [(toyc 1)
         (update-state st #:statement t)]
        [(toyc 0)
-        (update-state st #:statemenet f)]
+        (update-state st #:statement f)]
        [_ #f]
        ))]
 
