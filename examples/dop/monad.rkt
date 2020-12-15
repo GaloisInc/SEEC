@@ -30,4 +30,5 @@
   (check-equal? (do (<- x 4) (+ x 1)) 5)
   (check-equal? (do (<- x #f) (+ x 1)) #f)
   (check-equal? (do (<- x 4) (<- y 5) (+ x y)) 9)
+  (check-equal? (do 16 (<- x 3) x) 3)
   )

@@ -487,7 +487,7 @@
   (cond
     [(bonsai-terminal? b)
      (out "(bonsai-terminal ")
-     (recur (bonsai-terminal-value b))
+     (recur (enum->symbol (bonsai-terminal-value b)))
      (out ")")]
     [(bonsai-null? b)
      (out "(bonsai-null)")]
