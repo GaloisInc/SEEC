@@ -61,6 +61,11 @@
 ; write - write according to 
 
 ;; lifted list operations
+(define (length s)
+  (match s
+    [(heap-model nil) 0]
+    [(heap-model (cons any h:any))
+     (+ 1 (length h))]))
 
 (define (head s)
   (match s
@@ -82,7 +87,15 @@
      (head s)]
     [(heap-model i:natural)
      (nth (tail s) (- i 1))]))
-      
+
+; add v at the end of list s
+(define (snoc s v)
+    (match s
+      [(heap-model nil)
+       (heap-model (cons ,v nil))]
+      [(heap-model (cons hd:any s+:any))
+       (heap-model (cons ,hd ,(snoc s+ v)))]))
+
 
 ; replace the ith element in l with v
 ; list* -> integer* -> value* -> list*
@@ -91,7 +104,8 @@
     [(heap-model 0)
      (heap-model (cons ,v ,(tail l)))]
     [(heap-model i:natural)
-      (heap-model (cons ,(head l) ,(replace (tail l) (- i 1) v)))]))
+     (heap-model (cons ,(head l) ,(replace (tail l) (- i 1) v)))]))
+
 
 ; create a list repeating v i times
 (define (repeat v i)
