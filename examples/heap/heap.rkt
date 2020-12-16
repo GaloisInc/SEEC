@@ -25,8 +25,8 @@
   (state ::= (buf heap pointer)) ; global buffer, heap and free list pointer
   (action ::=
           (set buf-loc nnvalue) ; Set element at buf-loc in buffer to nnvalue
-          (read buf-loc heap-loc) ; place the element at heap-loc in heap into the buffer at buf-loc
-          (write heap-loc buf-loc); place the element at buf-loc in buffer into the heap at heap-loc
+          (read buf-loc buf-loc) ; place the element at pointer (1)buf-loc in heap into the buffer at (2)buf-loc
+          (write buf-loc buf-loc); place the element at (1)buf-loc in buffer into the heap pointer (2)buf-loc
           (free buf-loc) ; free the object at the pointer held in buf-loc in buffer
           (alloc buf-loc natural)) ; alloc an object with n blocks, placing its pointer in buffer at buf-loc
   (interaction ::= ; list of actions
@@ -234,19 +234,21 @@
        [(heap-model (set bl:buf-loc val:nnvalue))
         (let* ([b+ (replace b bl val)])
           (heap-model (,b+ ,h ,f)))]
-       [(heap-model (read bl:buf-loc hl:heap-loc))
+       [(heap-model (read bhl:buf-loc bl:buf-loc))
         ;(displayln "action read")
-                    (let* ([loc (heap-loc-addr hl)]
-                           [val (nth h loc)]
-                           [b+ (if (is-null? val)
-                                   (replace b bl (heap-model -1))
-                                   (replace b bl val))])
-                      (heap-model (,b+ ,h ,f)))]
-       [(heap-model (write hl:heap-loc bl:buf-loc))
+        (let* ([hl (nth b bhl)] ; get the pointer
+               [loc (heap-loc-addr hl)] ; compute the address
+                [val (nth h loc)] ; get the value at the location
+                [b+ (if (is-null? val)
+                        (replace b bl (heap-model -1)) ; error location
+                        (replace b bl val))]) ; place the value in the buffer
+               (heap-model (,b+ ,h ,f)))]
+       [(heap-model (write bl:buf-loc bhl:buf-loc))
         ;(displayln "action write")
-        (let* ([val (nth b bl)]
-               [loc (heap-loc-addr hl)]
-               [h+ (write h loc val)])
+        (let* ([val (nth b bl)] ; get the value from the buffer
+               [hl (nth b bhl)] ; get the pointer from the buffer
+               [loc (heap-loc-addr hl)] ; compute the address in the heap
+               [h+ (write h loc val)]) ; overwrite the location in the heap with the value
           (heap-model (,b ,h+ ,f)))])]))
 
 ; apply a sequence of action on a state
@@ -318,17 +320,26 @@
 
 
 (define d (init-state 4 2))
+(define aa0 (heap-model (alloc 0 1)))
+(define aa1 (heap-model (alloc 1 1)))
+(define as (heap-model (set 2 42)))
 (define aw (heap-model (write 2 0)))
-(define ar (heap-model (read 0 2)))
-(define aa (heap-model (alloc 0 1)))
-(define aa2 (heap-model (alloc 1 1)))
-(define aa3 (heap-model (alloc 2 1)))
+(define ar (heap-model (read 0 3)))
 
 
-(define af (heap-model (free 0)))
-(define af2 (heap-model (free 1)))
+(define af0 (heap-model (free 0)))
+(define af1 (heap-model (free 1)))
 
 
-(define d++ (interpret-action aa2 (interpret-action aa d)))
-(define d+4 (interpret-action af2 (interpret-action af d++)))
-(define d+5 (interpret-action aa3 d+4))
+(define d++ (interpret-action aa1 (interpret-action aa0 d)))
+(define d+4* (interpret-action af1 (interpret-action af0 d++)))
+
+
+(define d+3 (interpret-action as d++))
+(define d+4 (interpret-action aw d+3))
+(define d+5 (interpret-action ar d+4))
+
+  
+                              
+
+
