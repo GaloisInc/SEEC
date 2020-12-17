@@ -518,6 +518,17 @@
          (lookup-var x F+))]
     ))
 
+;  (binop ::= + - * / = <)
+(define (binop->racket op)
+  (match op
+    [(syntax +) +]
+    [(syntax -) -]
+    [(syntax *) *]
+    [(syntax /) /]
+    [(syntax =) (λ (x y) (if (equal? x y) 1 0))]
+    [(syntax <) (λ (x y) (if (< x y) 1 0))]
+    ))
+
 ; Evaluate a binary operator on two values.
 ; Pointer arithmetic is possible for + and - if the first value is a pointer
 ; Equality comparison is allowed for any types
@@ -531,7 +542,8 @@
     [(not (integer? v2))
      #f] ; Cannot call eval-binop when second argument is not an integer
                            
-    [(not (integer? v1))
+    [(and (not (integer? v1))
+          (integer? v2))
      (match (cons op v1)
        [(cons (syntax +) (toyc (x:loc-ident o:offset)))
         (toyc (,x ,(+ o v2)))]
@@ -539,13 +551,12 @@
         (toyc (,x ,(- o v2)))]
        [_ #f] ; Can only perform +/- pointer arithmetic
        )]
+    [(and (integer? v1)
+          (integer? v2))
+     ((binop->racket op) v1 v2)]
 
     ; Otherwise, both v1 and v2 are integers
-    [(equal? op (syntax +)) (+ v1 v2)]
-    [(equal? op (syntax -)) (- v1 v2)]
-    [(equal? op (syntax *)) (* v1 v2)]
-    [(equal? op (syntax /)) (/ v1 v2)]
-    [(equal? op (syntax <)) (if (< v1 v2) 1 0)]
+    [else ((binop->racket op) v1 v2)]
     ))
 
 
@@ -910,9 +921,16 @@
 
     ))
 
-;; Take some number of steps specified by the amount of fuel given
+
+(define/contract (decrement-fuel fuel)
+  (-> (or/c #f integer?) (or/c #f integer?))
+  (if fuel
+      (- fuel 1)
+      #f))
+
+;; Take some number of steps bounded by the amount of fuel given
 (define/contract (eval-statement fuel g st)
-  (-> integer? toyc-global-store? state? (or/c #f state?))
+  (-> (or/c #f integer?) toyc-global-store? state? (or/c #f state?))
   (cond
     [(equal? (state->statement st)
              (toyc SKIP))
@@ -922,7 +940,7 @@
 
     [else
      (do (<- st+ (eval-statement-1 g st))
-         (eval-statement (- fuel 1) g st+))]
+         (eval-statement (decrement-fuel fuel) g st+))]
     ))
 (define run
   (λ (#:fuel [fuel 100]

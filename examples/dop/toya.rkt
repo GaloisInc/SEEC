@@ -1,0 +1,467 @@
+#lang seec
+(require racket/contract)
+(require "monad.rkt")
+(require (prefix-in toyc:
+                    (file "toyc.rkt")
+                    )
+         (only-in (file "toyc.rkt")
+                  syntax
+                  syntax-expr?
+                  syntax-binop?
+                  syntax-lval?
+                  syntax-var?
+                  syntax-proc-name?
+                  display-memory
+                  binop->racket
+                  decrement-fuel
+                  )
+         )
+(require (only-in racket/base
+                  build-list
+                  raise-argument-error
+                  raise-arguments-error))
+(require (only-in racket/string ; foramtting
+                  string-join
+                  ))
+(require rosette/lib/value-browser) ; debugging
+
+(provide (all-defined-out))
+
+
+(define-grammar toya #:extends syntax
+
+  ; Statements
+  (statement   ::= 
+      ; Assign the result of evaluating 'ex' to the l-value of 'lv'
+      (ASSIGN lval expr)
+      ; Invoke 'm' with the results of evaluating 'ex ...' as arguments
+      (CALL proc-name list<expr>)
+      ; Return to the previous call frame
+      RETURN
+      ; Stop evaluation of the current program
+      HALT
+      ; Jump to the statement at memory location 'i' if 'e' is zero
+      (JMPZ expr loc)
+      ; Outputs the value of 'ex' to the output log
+      (OUTPUT expr)
+      ; A no-op
+      SKIP)
+
+  ;;;;;;;;;;;;;
+  ; Semantics ;
+  ;;;;;;;;;;;;;
+
+  ; Values are integers, interpreted either as an integer constant or an address
+  ; in memory
+  (val    ::= integer)
+  (loc    ::= natural) ; All locations are values
+  (offset ::= natural)
+
+  ; A memory object is either an integer or a statement tagged with it's
+  ; containing procedure 'm'
+  (object       ::= i (proc-name statement))
+  ; The program counter 'pc' and stack pointer 'sp' are natural numbers
+  (program-counter ::= loc)
+  (stack-pointer   ::= loc)
+
+  ; A stack frame 'F' is a mapping from variables to locations
+  (frame        ::= list<frame-elem>)
+  ; A stack frame element is either a local variable 'x' at offset 'i'
+  ; within the current stack frame or an array 'x' at offset 'i' with length 'n'.
+  (frame-elem ::= (var offset) (var offset natural))
+
+  ; A memory 'M' is a map from locations to objects
+  (memory       ::= list<mem-mapping>)
+  (mem-mapping  ::= (loc object))
+
+  ; The global store 'G' is a map from procedure names 'm' to the address
+  ; of the procedure's first statement and the procedure's stack frame layout
+  (global-store ::= list<declaration>)
+  (declaration  ::= (proc-name program-counter frame))
+
+  ; An output trace 't' is a sequence of values
+  (trace        ::= list<val>)
+
+  )
+
+;;;;;;;;;;;
+;; State ;;
+;;;;;;;;;;;
+
+(struct state (global-store pc sp memory trace)
+  #:transparent)
+
+(define update-state
+  (λ (st #:increment-pc [inc-pc #f]
+         #:pc           [pc (if inc-pc
+                                (+ 1 (state-pc st))
+                                (state-pc st))]
+         #:sp         [sp (state-sp st)]
+         #:memory     [mem (state-memory st)]
+         #:cons-trace [v #f]
+         #:trace      [tr  (if v
+                               (seec-cons v (state-trace st))
+                               (state-trace st))]
+         )
+    (state (state-global-store st) pc sp mem tr)))
+
+
+;;;;;;;;;;;;;;;;;;;;;
+;; Pretty printing ;;
+;;;;;;;;;;;;;;;;;;;;;
+
+
+(define (display-state st)
+  (printf "== PC: ~a~n" (state-pc st))
+  (printf "== SP: ~a~n" (state-sp st))
+  (printf "== Trace: ~a~n" (state-trace st))
+
+  (printf "~n==Memory==~n")
+  (display-memory (state-memory st))
+  )
+
+#;(display-state (state (toya nil)
+                      0
+                      0
+                      (list->seec (list (toya (100 1))
+                                        (toya (200 2))))
+                      (toya nil)))
+
+
+;;;;;;;;;;;;;;;;;;;
+;; Memory access ;;
+;;;;;;;;;;;;;;;;;;;
+
+; Lookup the object at address 'l' in memory 'M'. If 'l' is not recorded in
+; 'M', return 0. (Assume all memory is initialized to 0.)
+(define/contract (lookup-mem l mem)
+  (-> toya-loc? toya-memory? toya-object?)
+  (match mem
+    [(toya nil) 0]
+    [(toya (cons (l+:loc obj+:object) m+:memory))
+     (if (equal? l l+)
+         obj+
+         (lookup-mem l m+))]
+    ))
+
+; If l↦v occurs in mem for a value v, return v, otherwise return #f
+(define/contract (loc->val l mem)
+  (-> toya-loc? toya-memory? (or/c #f toya-val?))
+  (match (lookup-mem l mem)
+    [(toya v:val) v]
+    [_ #f]))
+
+
+;;;;;;;;;;;;;;;
+;; Accessors ;;
+;;;;;;;;;;;;;;;
+
+(define/contract (declaration->proc-name d)
+  (-> toya-declaration? syntax-proc-name?)
+  (match d
+    [(toya (p:proc-name _:program-counter _:frame)) p]
+    ))
+(define/contract (declaration->pc d)
+  (-> toya-declaration? toya-program-counter?)
+  (match d
+    [(toya (_:proc-name pc:program-counter _:frame)) pc]
+    ))
+(define/contract (declaration->frame d)
+  (-> toya-declaration? toya-frame?)
+  (match d
+    [(toya (_:proc-name _:loc f:frame)) f]
+    ))
+
+; Lookup the declaration associated with the procedure name in the global store
+(define/contract (proc-name->declaration p g)
+  (-> syntax-proc-name? toya-global-store? (or/c #f toya-declaration?))
+  (match g
+    [(toya nil) #f]
+    [(toya (cons d:declaration g+:global-store))
+     (if (equal? (declaration->proc-name d) p)
+         d
+         (proc-name->declaration p g+))]
+    ))
+
+
+; Fetch the instruction at the current PC. If the PC does not point to an
+; instruction in memory, return #f
+(define/contract (pc->instruction pc mem)
+  (-> toya-program-counter? toya-memory? (or/c #f toya-statement?))
+  (match (lookup-mem pc mem)
+    [(toya (_:proc-name stmt:statement)) stmt]
+    [_ #f]))
+
+(define (state->instruction st)
+  (pc->instruction (state-pc st)))
+
+
+; Fetch the procedure name that encompasses the current PC. If the PC does not
+; point to an instruction in memory, return #f
+(define/contract (pc->proc-name pc mem)
+  (-> toya-program-counter? toya-memory? (or/c #f syntax-proc-name?))
+  (match (lookup-mem pc mem)
+    [(toya (p:proc-name _:statement)) p]
+    [_ #f]))
+
+
+; Look up the stack frame layout of the procedure that includes the currently
+; executing statement. If the PC does not point to an instruction in memory,
+; return #f
+(define/contract (pc->frame pc mem g)
+  (-> toya-program-counter? toya-memory? toya-global-store? (or/c #f toya-frame?))
+  (do (<- p (pc->proc-name pc mem))
+      (<- d (proc-name->declaration p g))
+      (declaration->frame d)))
+(define/contract (state->frame st)
+  (-> state? (or/c #f toya-frame?))
+  (pc->frame (state-pc st) (state-memory st) (state-global-store st)))
+
+
+; Compute the size of a stack frame layout
+(define/contract (frame-size F)
+  (-> toya-frame? integer?)
+  (match F
+    [(toya nil) 0]
+    [(toya (cons (y:var o:offset) F+:frame))
+     (+ 1 (frame-size F+))]
+    [(toya (cons (y:var o:offset len:natural) F+:frame))
+     (+ 1 len (frame-size F+))]
+    ))
+
+;;;;;;;;;;;;;;;;;;;;;;;
+;; Writing to memory ;;
+;;;;;;;;;;;;;;;;;;;;;;;
+
+; Store the sequence of values 'vs' at addresses 'l', 'l+1', ...
+; If 'l' does not already occur in 'mem', insert it.
+;
+; Invariant: if 'mem' is sorted by key, then '(push-objs l vs mem)' should also be sorted by key.
+;
+; Note: the sorting aspect might be less than ideal for symbolic analysis
+(define/contract (push-objs l objs mem)
+  (-> toya-loc? (listof toya-object?) toya-memory? toya-memory?)
+  (cond
+    [(empty? objs) mem]
+    [else
+     (let ([obj   (first objs)]
+           [objs+ (rest  objs)])
+       (match mem
+         [(toya nil) (seec-cons (toya (,l ,obj))
+                                (push-objs (+ l 1) objs+ mem))]
+
+         [(toya (cons (l+:loc obj+:object) mem+:memory))
+          (cond
+            ; Replace l↦obj+ with l↦obj
+            [(= l l+) (seec-cons (toya (,l ,obj))
+                                 (push-objs (+ 1 l) obj+ mem+))]
+            ; Add l↦obj to beginning of the list and recurse with original mem,
+            ; including l+↦obj+
+            [(< l l+) (seec-cons (toya (,l ,obj))
+                                 (push-objs (+ 1 l) objs+ mem))]
+            ; Add l↦objs to mem+
+            [else     (seec-cons (toya (,l+ ,obj+))
+                                 (push-objs l objs mem+))]
+          )]
+       ))]
+    ))
+
+; Update the value at memory location 'l', returning the updated memory. If 'l'
+; does not already occur in m, insert it.
+;
+; Invariant: If m is sorted by key, then (store-mem l obj m) is also sorted by key
+;
+; Note: the sorting factor might be less than ideal for symbolic analysis
+(define/contract (store-mem l obj mem)
+  (-> toya-loc? toya-object? toya-memory? toya-memory?)
+  (push-objs l (list obj) mem))
+
+
+; Initialize the locations in a stack frame that refer to arrays
+(define/contract (init-frame-arrays F sp mem)
+  (-> toya-frame? toya-stack-pointer? toya-memory? toya-memory?)
+  (match F
+    [(toya nil) mem]
+    [(toya (cons (_:var _:offset) F+:frame))
+     (init-frame-arrays F+ sp mem)]
+    [(toya (cons (x:var o:offset len:natural) F+:frame))
+     (store-mem (+ sp o) (+ 1 sp o) (init-frame-arrays F+ sp mem))]
+    ))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Evaluating expressions ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Compute the address of the variable 'x' from the stack frame layout and the
+; current stack pointer
+(define/contract (lookup-var x sp F)
+  (-> syntax-var? toya-stack-pointer? toya-frame? (or/c #f toya-loc?))
+  (match F
+    [(toya nil) #f]
+    [(toya (cons (y:var o:offset)             F+:frame))
+     (if (equal? x y)
+         (+ sp o)
+         (lookup-var x sp F+))]
+    [(toya (cons (y:var o:offset len:natural) F+:frame))
+     (if (equal? x y)
+         (+ sp o)
+         (lookup-var x sp F+))]
+    ))
+
+(define/contract (eval-lval-F lv sp F mem)
+  (-> syntax-lval? toya-stack-pointer? toya-frame? toya-memory?
+      (or/c #f toya-val?))
+  (match lv
+    [(toya x:var)
+     (lookup-var x sp F)]
+    [(toya (* lv+:lval))
+     (do (<- l (eval-lval-F lv+ sp F mem))
+         (loc->val l mem))]
+    ))
+; Produce the value associated with the lvalue
+(define/contract (eval-lval lv st)
+  (-> syntax-lval? state? (or/c #f toya-val?))
+  (do (<- F (state->frame st))
+      (eval-lval-F lv (state-sp st) F (state-memory st))))
+
+
+(define/contract (eval-expr-F e sp F mem)
+  (-> syntax-expr? toya-stack-pointer? toya-frame? toya-memory?
+      (or/c #f toya-val?))
+  (match e
+    [(toya n:integer) n]
+    [(toya null)      0]
+    [(toya (* e+:expr))
+     (do (<- l (eval-expr-F e+ sp F mem))
+         (loc->val l mem))]
+    [(toya x:var)
+     (do (<- l (lookup-var x sp F))
+         (loc->val l mem))]
+    [(toya (& lv:lval))
+     (eval-lval lv sp F mem)]
+    [(toya (op:binop e1:expr e2:expr))
+     (do (<- v1 (eval-expr-F e1 sp F mem))
+         (<- v2 (eval-expr-F e2 sp F mem))
+       ((binop->racket op) v1 v2))]
+    ))
+; Note that the helper function eval-expr-F exists because (state->frame st)
+; does a lookup to find the corresponding frame in the global store, and we
+; don't want to have to replicate that lookup every time we encounter a variable
+; in the expression. Same for eval-lval vs eval-lval-F.
+(define (eval-expr e st)
+  (do (<- F (state->frame st))
+      (eval-expr e (state-sp st) F (state-memory st))))
+(define/contract (eval-exprs es st)
+  (-> (listof syntax-expr?) state? (or/c #f (listof toya-val?)))
+  (let* ([vs-maybe (map (λ (e) (eval-expr e st))
+                        es)])
+    (if (andmap (λ (x) x) vs-maybe)
+        vs-maybe
+        #f)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Evaluation of statements ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define/contract (eval-statement-1 g st)
+  (-> toya-global-store? state? state?)
+
+  (match (state->instruction st)
+    [(toya SKIP)
+     (update-state st #:increment-pc #t)]
+
+    [(toya (OUTPUT e:expr))
+     (do (<- v (eval-expr e st))
+         (update-state st
+                       #:increment-pc #t
+                       #:cons-trace v)
+       )]
+
+    [(toya (JMPZ e:expr l:loc))
+     (match (eval-expr e st)
+       [(toya 0) (update-state #:pc l)]
+       [_        (update-state #:increment-pc #t)]
+       )]
+
+    [(toya (ASSIGN lv:lval e:expr))
+     (do (<- l (eval-lval lv st))
+         (<- v (eval-expr e  st))
+         (update-state st
+                       #:increment-pc #t
+                       #:memory (store-mem l v (state-memory st))
+                       ))]
+
+    [(toya HALT) #f] ; cannot take a step
+
+    [(toya (CALL p:proc-name es:list<expr>))
+         ; Evaluate the arguments
+     (do (<- vs (eval-exprs (seec->list es) st))
+         ; lookup the target procedure's address and layout
+         (<- d2 (proc-name->declaration p))
+         (let* ([sp1 (state-sp st)]
+                [pc1 (state-pc st)]
+                [m1  (state-memory st)]
+                [F2  (declaration->frame d2)]
+                [pc2 (declaration->pc d2)]
+                ; Compute the new stack pointer by subtracting the size of the
+                ; frame F2 from the current stack pointer, with two additional
+                ; slots for return address and saved (current) stack pointer
+                [sp2 (- sp1 (frame-size F2) 2)]
+                ; Set up the new stack frame by initializing the local variables and pushing
+                ; call arguments, return address, and stack pointer into the new frame
+                [m2+  (push-objs (- sp1 (length vs) 2)
+                                 (append vs (list sp1 (+ 1 pc1)))
+                                 (state-memory st))]
+                [m2   (init-frame-arrays F2 sp2 m2+)]
+                )
+           (update-state st
+                         #:pc pc2
+                         #:sp sp2
+                         #:memory m2)))]
+
+    [(toya RETURN)
+         ; Get the current frame layout
+     (do (<- F1 (state->frame st))
+         ; Locate the return address on the stack by adding the frame size to
+         ; the current stack pointer and adding 1
+         (<- pc2 (lookup-mem (+ (state-sp st) (frame-size F1) 1) (state-memory st)))
+         ; Locate the old stack pointer value by adding the frame size of the
+         ; current stack pointer
+         (<- sp2 (lookup-mem (+ (state-sp st) (frame-size F1)) (state-memory st)))
+         ; No garbage collection
+         (update-state st
+                       #:pc pc2
+                       #:sp sp2))]
+
+    ))
+
+; Take some number of states bounded by the amount of fuel given
+(define/contract (eval-statement fuel st)
+  (-> (or/c #f integer?) state? (or/c #f state?))
+  (cond
+    [(equal? (state->instruction st)
+             (toya HALT))
+     st] ; Evaluation has normalized before fuel ran out
+
+    [(<= fuel 0) st] ; Fuel ran out. Return #f here instead?
+
+    [else 
+     (do (<- st+ (eval-statement-1 st))
+         (eval-statement (decrement-fuel fuel) st+))]
+    ))
+
+; Load a high-level program into memory at init-pc, initialize the stack at
+; init-sp, and invoke main with arguments vs
+#;(define/contract (load prog init-pc init-sp vs)
+  (-> toyc:toyc-program? toya-program-counter? toya-stack-pointer?
+      (listof toya-val?)
+      program?)
+  ())
+  
+
+#;(define run
+  (λ #:fuel [fuel #f]
+     ))
