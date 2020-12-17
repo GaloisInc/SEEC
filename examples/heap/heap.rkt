@@ -113,6 +113,16 @@
       (heap-model nil)
       (heap-model (cons ,v ,(repeat v (- i 1))))))
 
+; return a string concatenating
+(define (print-list f vs)
+  (match vs
+    [(heap-model nil)
+     ""]
+    [(heap-model (cons v:any vs+:list<any>))
+     (format "~a, ~a" (f v) (print-list f vs+))]))
+
+
+
 ;; Heap, Buff and State operations
 
 

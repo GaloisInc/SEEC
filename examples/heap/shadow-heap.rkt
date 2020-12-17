@@ -12,13 +12,11 @@
 ;; This shadow model does away with the freelist,
 ;; instead representing the heap as an infinitely growing list of payload
 (define-grammar no-freelist
-  (pointer ::= natural null)
-  (offset ::= natural)
+  (pointer ::= (natural natural) null)
   (nnvalue ::= integer)
   (value ::= nnvalue pointer)
   (payload ::= list<value> empty)
-  (cell ::= nnvalue null (pointer offset))
-  (buf ::= list<cell>)
+  (buf ::= list<value>)
   (heap ::= list<payload>)
   (state ::= (buf heap)))
 
@@ -29,7 +27,7 @@
 ; TODO: maybe limit free to offset 0? 
 (define (no-freelist-free h hl)
   (match hl
-    [(no-freelist (p:pointer o:offset))
+    [(no-freelist (p:natural o:natural))
      (replace h p (no-freelist empty))]))
 
 (define (no-freelist-alloc h)
@@ -40,7 +38,7 @@
 ; return the value at location hl in h
 (define (no-freelist-read h hl)
   (match hl
-    [(no-freelist (p:pointer o:offset))
+    [(no-freelist (p:natural o:natural))
      (let* ([pl (nth h p)]
             [val (nth pl o)])
      val)]))
@@ -48,14 +46,15 @@
 ; write val at location hl in h
 (define (no-freelist-write h hl val)
   (match hl
-    [(no-freelist (p:pointer o:offset))
+    [(no-freelist (p:natural o:natural))
      (let* ([pl (nth h p)]
             [pl+ (replace pl o val)]
             [h+ (replace h p pl+)])
        h+)]))
 
 
-
+(define (no-freelist-init b-len)
+  (no-freelist (,(repeat (no-freelist 0) b-len) nil)))
 
 ;; heap-model.action -> no-freelist.state -> no-freelist.state
 (define (no-freelist-action a s)
@@ -93,3 +92,71 @@
      s]))
 
   
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Pretty-printing
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (print-nf-pointer p)
+  (match p
+    [(heap-model (n:natural o:natural))
+     (format "<~a,~a>" n o)]
+    [(heap-model null)
+     "null"]))
+
+(define (print-nf-nnvalue nv)
+  (format "~a" nv))
+
+(define (print-nf-value v)
+  (match v
+    [(no-freelist nv:nnvalue)
+     (print-nf-nnvalue nv)]
+    [(no-freelist p:pointer)
+     (print-nf-pointer p)]))
+
+(define (print-nf-payload p)
+  (match p
+    [(no-freelist empty)
+     "empty"]
+    [(no-freelist vs:list<value>)
+     (print-list print-nf-value vs)]))
+
+(define (display-nf-buf b)
+    (define (display-nf-buf+ b addr)
+    (match b
+      [(no-freelist nil)
+       (displayln "")]
+      [(no-freelist (cons h:value b+:buf))
+       (displayln (format "~a > ~a" addr (print-nf-value h)))
+       (display-nf-buf+ b+ (+ addr 1))]))
+  (display-nf-buf+ b 0))
+
+(define (display-nf-heap h)
+  (define (display-nf-heap+ h addr)
+    (match h
+      [(no-freelist nil)
+       (displayln "")]
+      [(no-freelist (cons p:payload h+:heap))
+       (displayln (format "~a > ~a" addr (print-nf-payload p)))
+       (display-nf-heap+ h+ (+ addr 1))]))
+  (display-nf-heap+ h 0))
+
+(define (display-nf-state s)
+  (match s
+    [(no-freelist (b:buf h:heap))
+     (begin
+       (displayln "BUFFER:")
+       (display-nf-buf b)
+       (displayln "HEAP (no-freelist model):")
+       (display-nf-heap h)
+       )]))
+
+; TESTS
+(define nf (no-freelist-init 4))
+(define nf++ (no-freelist-action aa1 (no-freelist-action aa0 nf)))
+(define nf+4* (no-freelist-action af1 (no-freelist-action af0 nf++)))
+
+
+(define nf+3 (no-freelist-action as nf++))
+(define nf+4 (no-freelist-action aw nf+3))
+(define nf+5 (no-freelist-action ar nf+4))
