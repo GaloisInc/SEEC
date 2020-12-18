@@ -7,10 +7,14 @@
 ;
 ; Shadow-Heap models to work with heap-model from heap.rkt
 ;
-;
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; NO-FREELIST
+;;
 ;; This shadow model does away with the freelist,
 ;; instead representing the heap as an infinitely growing list of payload
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define-grammar no-freelist
   (pointer ::= (natural natural) null)
   (nnvalue ::= integer)
@@ -22,7 +26,7 @@
 
 
 (define empty-payload
-  (heap-model (cons null (cons null nil))))
+  (heap-model (cons 0 (cons 0 nil))))
 
 ; TODO: maybe limit free to offset 0? 
 (define (no-freelist-free h hl)
@@ -63,8 +67,9 @@
       (match a
         [(heap-model (free hbl:buf-loc))
          (let* ([hl (nth b hbl)]
+                [b+ (replace b hbl (no-freelist null))]
                 [h+ (no-freelist-free h hl)])
-           (no-freelist (,b ,h+)))]
+           (no-freelist (,b+ ,h+)))]
         [(heap-model (alloc bl:buf-loc n:natural)) ; ignores n for now
          (let* ([ph+ (no-freelist-alloc h)]
                 [b+ (replace b bl (no-freelist (,(car ph+) 0)))])
@@ -94,7 +99,7 @@
   
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Pretty-printing
+; Pretty-printing no-freelist
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (print-nf-pointer p)
@@ -150,8 +155,9 @@
        (displayln "HEAP (no-freelist model):")
        (display-nf-heap h)
        )]))
-
-; TESTS
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; TESTING no-freelist
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define nf (no-freelist-init 4))
 (define nf++ (no-freelist-action aa1 (no-freelist-action aa0 nf)))
 (define nf+4* (no-freelist-action af1 (no-freelist-action af0 nf++)))
@@ -160,3 +166,43 @@
 (define nf+3 (no-freelist-action as nf++))
 (define nf+4 (no-freelist-action aw nf+3))
 (define nf+5 (no-freelist-action ar nf+4))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; FREELIST model
+;;
+;; Demonstration of a model that carries less info than the full one:
+;; This shadow model only keeps track of the freelist
+;; and ignores the payload/buffer
+;; this is only maintainable with additional state being carried -- transling free hbl into free n
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define-grammar freelist
+    (action ::=
+          (free natural) ; free the object natural if it is allocated
+          alloc) ; allocate an object
+  (interaction ::= (action interaction)
+               nop)
+   (state ::= (list<natural>) ; list of free blocks
+          ))
+
+;; freelist.action -> freelist.state -> freelist.state
+(define (freelist-action a s)
+  (match a
+    [(freelist (free n:natural))
+     (remove-one-elem n s)]
+    [(freelist alloc)
+     (match s
+       [(freelist nil)
+        s]
+       [(freelist (cons any s+:any))
+        s+])
+     ]))
+
+    
+;; freelist.interaction -> freelist.state -> freelist.state
+(define (freelist-interaction i s)
+  (match i
+    [(freelist (a:action i+:interaction))
+     (freelist-interaction i+ (freelist-action a s))]
+    [(freelist nop)
+     s]))

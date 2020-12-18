@@ -19,7 +19,7 @@
   (value ::= nnvalue pointer)
 ;  (writevalue ::= (start natural) (end natural)) ; TODO: limit the offset of writes to start or end of blocks
   (buf-loc ::= natural)
-  (buf ::= list<nnvalue>)
+  (buf ::= list<value>)
   (heap-loc ::= pointer)
   (heap ::= list<value>) 
   (state ::= (buf heap pointer)) ; global buffer, heap and free list pointer
@@ -105,6 +105,16 @@
      (heap-model (cons ,v ,(tail l)))]
     [(heap-model i:natural)
      (heap-model (cons ,(head l) ,(replace (tail l) (- i 1) v)))]))
+
+; remove the first occurence of v from the list
+(define (remove-one-elem l v)
+  (match l
+    [(heap-model nil)
+     l]
+    [(heap-model (cons hd:any l+:any))
+     (if (equal? hd v)
+         l+
+         (heap-model (cons ,hd ,(remove-one-elem l+ v))))]))
 
 
 ; create a list repeating v i times
@@ -243,8 +253,9 @@
      (match a
        [(heap-model (free bl:buf-loc))
         (let* ([p (nth b bl)]
+               [b+ (replace b bl (heap-model null))]
                [fh+ (interpret-free h f p)])
-          (heap-model (,b ,(cdr fh+) ,(car fh+))))]
+          (heap-model (,b+ ,(cdr fh+) ,(car fh+))))]
        [(heap-model (alloc bl:buf-loc n:natural))
         (match f
           [(heap-model n:natural)
@@ -262,10 +273,8 @@
         ;(displayln "action read")
         (let* ([hl (nth b bhl)] ; get the pointer
                [loc (heap-loc-addr hl)] ; compute the address
-                [val (nth h loc)] ; get the value at the location
-                [b+ (if (is-null? val)
-                        (replace b bl (heap-model -1)) ; error location
-                        (replace b bl val))]) ; place the value in the buffer
+               [val (nth h loc)] ; get the value at the location
+               [b+ (replace b bl val)]) ; place the value in the buffer
                (heap-model (,b+ ,h ,f)))]
        [(heap-model (write bl:buf-loc bhl:buf-loc))
         ;(displayln "action write")
@@ -315,8 +324,8 @@
     (match b
       [(heap-model nil)
        (displayln "")]
-      [(heap-model (cons h:nnvalue b+:buf))
-       (displayln (format "~a > ~a" addr (print-nnvalue h)))
+      [(heap-model (cons h:value b+:buf))
+       (displayln (format "~a > ~a" addr (print-value h)))
        (display-buf+ b+ (+ addr 1))]))
   (display-buf+ b 0))
 
