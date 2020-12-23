@@ -220,6 +220,17 @@
          (freelist alloc)]
        [_ #f])]))
 
+;; heap-action.action -> heap-model.state X freelist.state -> heap-model.state X freelist.state
+(define (heap-and-freelist-action a sfs )
+  (let* ([s (car sfs)]
+         [fs (cdr sfs)]
+         [s+ (interpret-action a s)]
+         [af (freelist-shadow-action a s)]
+         [fs+ (if af
+                  (freelist-action af fs)
+                  fs)])
+    (cons s+ fs+)))
+
 ;; heap-model.interaction -> heap-model.state -> freelist.state -> heap-model.state X freelist.state
 (define (freelist-shadow-interaction i s fs)  
   (match i
@@ -232,4 +243,42 @@
        (interpret-interaction i+ s+ fs+))]
     [(heap-model nop)
      (cons s fs)]))
+
+(define (init-freelist)
+  (freelist nil))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Pretty-printing freelist
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (display-f-state fs)
+  (match fs
+    [(freelist nil)
+     (displayln "")]
+    [(freelist (cons n:natural fs+:any))
+     (displayln n)
+     (display-f-state fs+)]))
+
+
+(define (display-hf-state sfs)
+  (displayln "Full State:")
+  (display-state (car sfs))
+  (displayln "")
+  (displayln "Freelist Shadow Model:")
+  (display-f-state (cdr sfs)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; TESTING freelist
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(define df (cons (init-state 4 2) (init-freelist)))
+
+(define df++ (heap-and-freelist-action aa1 (heap-and-freelist-action aa0 df)))
+(define df+4* (heap-and-freelist-action af1 (heap-and-freelist-action af0 df++)))
+
+
+(define df+3 (heap-and-freelist-action as df++))
+(define df+4 (heap-and-freelist-action aw df+3))
+(define df+5 (heap-and-freelist-action ar df+4))
 
