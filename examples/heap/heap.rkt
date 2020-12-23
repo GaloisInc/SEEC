@@ -222,6 +222,7 @@
 ;; (1) find the size of block (at p-1)
 ;; (2) add p to the fp list
 ;; (3) set prev-in-use (at p+sz) to 0
+;;; Returns the updated heap
 
 (define (interpret-free h f p)
   (match p
@@ -236,13 +237,15 @@
                  [h+++ (replace h++ (+ n 1) (heap-model null))])
             (match f ; update the whole fp head to point to new head
               [(heap-model null)
-               (cons p h+++)]
+               h+++]
               [(heap-model nf:natural)
                (let* ([h+4 (replace h+++ (+ nf 1) p)])
-                 (cons p h+4))]))]
+                 h+4)]))]
          [_
           ;(displayln "trying to free a block which wasn't allocated")
-          (cons f h)]))]))
+          ;(cons f h)
+          (assert false)
+          ]))]))
 
 
 ; apply a single action on a state
@@ -254,8 +257,8 @@
        [(heap-model (free bl:buf-loc))
         (let* ([p (nth b bl)]
                [b+ (replace b bl (heap-model null))]
-               [fh+ (interpret-free h f p)])
-          (heap-model (,b+ ,(cdr fh+) ,(car fh+))))]
+               [h+ (interpret-free h f p)])
+          (heap-model (,b+ ,h+ ,p)))]
        [(heap-model (alloc bl:buf-loc n:natural))
         (match f
           [(heap-model n:natural)
