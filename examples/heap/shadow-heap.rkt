@@ -28,7 +28,7 @@
 (define empty-payload
   (heap-model (cons 0 (cons 0 nil))))
 
-; TODO: maybe limit free to offset 0? 
+; TODO: maybe limit free to offset 0?
 (define (no-freelist-free h hl)
   (match hl
     [(no-freelist (p:natural o:natural))
@@ -189,7 +189,7 @@
 (define (freelist-action a s)
   (match a
     [(freelist (free n:natural))
-     (remove-one-elem n s)]
+     (freelist (cons ,n ,s))]
     [(freelist alloc)
      (match s
        [(freelist nil)
@@ -206,3 +206,30 @@
      (freelist-interaction i+ (freelist-action a s))]
     [(freelist nop)
      s]))
+
+
+;; heap-model.action -> heap-model.state -> #f + freelist.action
+(define (freelist-shadow-action a s)
+  (match s
+    [(heap-model (b:buf h:heap f:pointer))
+     (match a
+       [(heap-model (free bl:buf-loc))
+        (let* ([p (nth b bl)])
+          (freelist (free ,p)))]
+       [(heap-model (alloc bl:buf-loc n:natural))
+         (freelist alloc)]
+       [_ #f])]))
+
+;; heap-model.interaction -> heap-model.state -> freelist.state -> heap-model.state X freelist.state
+(define (freelist-shadow-interaction i s fs)  
+  (match i
+    [(heap-model (a:action i+:interaction))
+     (let* ([s+ (interpret-action a s)]
+            [af (freelist-shadow-action a s)]
+            [fs+ (if af
+                     (freelist-action af fs)
+                     fs)])
+       (interpret-interaction i+ s+ fs+))]
+    [(heap-model nop)
+     (cons s fs)]))
+
