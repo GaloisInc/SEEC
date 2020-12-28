@@ -10,14 +10,90 @@
                   ))
 (require rosette/lib/value-browser) ; debugging
 
-(provide (all-defined-out))
+(provide syntax
+         syntax-type?
+         syntax-simple-type?
+         syntax-expr?
+         syntax-binop?
+         syntax-lval?
+         syntax-var?
+         syntax-proc-name?
+
+         tinyC
+         tinyC-prog?
+         tinyC-declaration?
+         tinyC-param-decl?
+         tinyC-local-decl?
+         tinyC-statement?
+         tinyC-val?
+         tinyC-loc?
+         tinyC-loc-ident?
+         tinyC-offset?
+         tinyC-object?
+         tinyC-frame?
+         tinyC-loc-mapping?
+         tinyC-stack?
+         tinyC-non-empty-stack?
+         tinyC-memory?
+         tinyC-mem-mapping?
+         tinyC-context?
+         tinyC-global-store?
+         tinyC-trace?
+
+         seec-ith
+         seec-set-ith
+         seec-build-list
+         binop->racket
+         decrement-fuel
+         lid->loc
+
+         ; For functions that could potentially overlap with e.g. tinyAssembly,
+         ; add a distinguishing prefix
+         (prefix-out tinyC: (combine-out
+            declaration->name
+            declaration->parameters
+            declaration->locals
+            declaration->body
+            display-memory
+            lookup-mem
+            lookup-mem-mapping
+            update-object-at-offset
+            store-mem
+            set-lval
+            drop-loc-ident
+            pop-stack
+            alloc
+            alloc-object
+            alloc-declarations
+            alloc-frame
+            
+            (struct-out state)
+            init-state
+            update-state
+            state->context
+            state->trace
+            state->statement
+            fresh-var
+
+            context->memory
+            context->top-frame
+            context->non-empty-stack
+
+            eval-binop
+            eval-expr
+            eval-exprs
+            eval-statement-1
+            run
+            ))
+         )
+
 
 (define-grammar syntax
 
   ; A type 'ty' is either a simple type 'py' or an array type
-  ; '(arr py integer)' is the type of an 'integer' length array of
+  ; '(arr py n)' is the type of an 'n' length array of
   ; values of type 'py'.
-  (type        ::= simple-type (array simple-type integer))
+  (type        ::= simple-type (array simple-type natural))
   ; A simple type is either an 'int' or a pointer type.
   (simple-type ::= int (* type))
 
@@ -46,7 +122,7 @@
   (proc-name ::= string)
   )
 
-(define-grammar toyc #:extends syntax
+(define-grammar tinyC #:extends syntax
 
   ; A program 'P' is a sequence of procedure declarations 'pd ...'.
   ; Execution starts by invoking the procedure named 'main'.
@@ -124,12 +200,12 @@
   )
 
 (define/contract (list->statement l)
-  (-> (listof toyc-statement?) toyc-statement?)
+  (-> (listof tinyC-statement?) tinyC-statement?)
   (cond
-    [(empty? l) (toyc SKIP)]
+    [(empty? l) (tinyC SKIP)]
     [else       (let ([s1 (first l)]
                       [s2 (list->statement (rest l))])
-                  (toyc (SEQ ,s1 ,s2)))]
+                  (tinyC (SEQ ,s1 ,s2)))]
     ))
     
 
@@ -153,10 +229,10 @@
 
 
 (define/contract (update-context-memory ctx m)
-  (-> toyc-context? toyc-memory? toyc-context?)
+  (-> tinyC-context? tinyC-memory? tinyC-context?)
   (match ctx
-    [(toyc (S:non-empty-stack _:memory))
-     (toyc (,S ,m))]
+    [(tinyC (S:non-empty-stack _:memory))
+     (tinyC (,S ,m))]
     ))
 
 ; The optional arguments of update-state default to trivial trace and statement,
@@ -167,10 +243,10 @@
 (define update-state
   (λ (st
       #:trace      [tr   (state->trace st)]
-      #:statements [stmts #f] ; (or/c #f (listof toyc-statement?))
+      #:statements [stmts #f] ; (or/c #f (listof tinyC-statement?))
       #:statement  [stmt (if stmts
                              (list->statement stmts)
-                             (toyc SKIP))]
+                             (tinyC SKIP))]
       #:memory     [m  #f] ; This option only works if ctx is not supplied
       #:context    [ctx (if m
                             (update-context-memory (state->context st) m)
@@ -182,16 +258,16 @@
 (define (max-loc ctx)
   (define (max-loc-in-mem m)
     (match m
-      [(toyc nil) 0]
-      [(toyc (cons (lid:loc-ident _:object) m+:memory))
+      [(tinyC nil) 0]
+      [(tinyC (cons (lid:loc-ident _:object) m+:memory))
        (max lid (max-loc-in-mem m+))]
       ))
   (match ctx
-    [(toyc (_:non-empty-stack m:memory))
+    [(tinyC (_:non-empty-stack m:memory))
      (max-loc-in-mem m)]
     ))
 (define (init-state ctx)
-  (state (toyc SKIP)
+  (state (tinyC SKIP)
          ctx
          seec-empty
          (+ 1 (max-loc ctx))))
@@ -207,7 +283,7 @@
 ; ...
 (define (pp-mapping pair)
   (match pair
-    [(toyc (x:any y:any))
+    [(tinyC (x:any y:any))
      (format "    ~a |-> ~a" x y)]
     ))
 (define (pp-map m)
@@ -237,7 +313,7 @@
 
 (define (display-context ctx)
   (match ctx
-    [(toyc ((F:frame S:stack) m:memory))
+    [(tinyC ((F:frame S:stack) m:memory))
      (printf "==Top frame==~n")
      (display-frame F)
      (printf "==Stack==~n")
@@ -263,13 +339,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (pp-test)
-  (define F1 (list->seec (list (toyc ("x0" (100 0)))
-                               (toyc ("x1" (101 1)))
-                               (toyc ("x2" (102 0)))
+  (define F1 (list->seec (list (tinyC ("x0" (100 0)))
+                               (tinyC ("x1" (101 1)))
+                               (tinyC ("x2" (102 0)))
                                )))
   (printf "~n==F1==~n")
   (display-frame F1)
-  (define F2 (list->seec (list (toyc ("x'" (200 0)))
+  (define F2 (list->seec (list (tinyC ("x'" (200 0)))
                                )))
   (printf "~n==F2==~n")
   (display-frame F2)
@@ -279,15 +355,15 @@
   (printf "~n==S==~n")
   (display-stack S)
 
-  (define m (list->seec (list (toyc (100 undef))
-                              (toyc (101 (103 1)))
-                              (toyc (102 undef))
-                              (toyc (103 (cons undef (cons 42 nil))))
+  (define m (list->seec (list (tinyC (100 undef))
+                              (tinyC (101 (103 1)))
+                              (tinyC (102 undef))
+                              (tinyC (103 (cons undef (cons 42 nil))))
                               )))
   (printf "~n==m==~n")
   (display-memory m)
 
-  (define ctx (toyc ((,F1 ,S) ,m)))
+  (define ctx (tinyC ((,F1 ,S) ,m)))
   (printf "~n==ctx==~n")
   (display-context ctx)
 
@@ -305,63 +381,63 @@
 (define lid->loc
   (λ (lid
       #:offset [o 0])
-    (toyc (,lid ,o))))
+    (tinyC (,lid ,o))))
 
 (define/contract (declaration->name decl)
-  (-> toyc-declaration? syntax-proc-name?)
+  (-> tinyC-declaration? syntax-proc-name?)
   (match decl
-    [(toyc (p:proc-name params:list<param-decl> locals:list<local-decl> body:list<statement>))
+    [(tinyC (p:proc-name params:list<param-decl> locals:list<local-decl> body:list<statement>))
      p]))
 (define/contract (declaration->parameters decl)
-  (-> toyc-declaration? ((curry seec-list-of?) toyc-param-decl?))
+  (-> tinyC-declaration? ((curry seec-list-of?) tinyC-param-decl?))
   (match decl
-    [(toyc (p:proc-name params:list<param-decl> locals:list<local-decl> body:list<statement>))
+    [(tinyC (p:proc-name params:list<param-decl> locals:list<local-decl> body:list<statement>))
      params]))
 (define/contract (declaration->locals decl)
-  (-> toyc-declaration? ((curry seec-list-of?) toyc-local-decl?))
+  (-> tinyC-declaration? ((curry seec-list-of?) tinyC-local-decl?))
   (match decl
-    [(toyc (p:proc-name params:list<param-decl> locals:list<local-decl> body:list<statement>))
+    [(tinyC (p:proc-name params:list<param-decl> locals:list<local-decl> body:list<statement>))
      locals]))
 (define/contract (declaration->body decl)
-  (-> toyc-declaration? toyc-statement?)
+  (-> tinyC-declaration? tinyC-statement?)
   (match decl
-    [(toyc (p:proc-name params:list<param-decl> locals:list<local-decl> body:list<statement>))
+    [(tinyC (p:proc-name params:list<param-decl> locals:list<local-decl> body:list<statement>))
      (list->statement (seec->list body))]
     ))
 
 (define/contract (context->top-frame ctx)
-  (-> toyc-context? toyc-frame?)
+  (-> tinyC-context? tinyC-frame?)
   (match ctx
-    [(toyc ((top-f:frame rest-s:stack) _:memory))
+    [(tinyC ((top-f:frame rest-s:stack) _:memory))
      top-f]
     ))
 (define/contract (context->non-empty-stack ctx)
-  (-> toyc-context? (listof toyc-frame?))
+  (-> tinyC-context? (listof tinyC-frame?))
   (match ctx
-    [(toyc ((top-f:frame rest-s:stack) _:memory))
+    [(tinyC ((top-f:frame rest-s:stack) _:memory))
      (cons top-f (seec->list rest-s))]
     ))
 (define/contract (context->memory ctx)
-  (-> toyc-context? toyc-memory?)
+  (-> tinyC-context? tinyC-memory?)
   (match ctx
-    [(toyc (_:non-empty-stack m:memory))
+    [(tinyC (_:non-empty-stack m:memory))
      m]))
 
 (define/contract (ctx->top-frame ctx)
-  (-> toyc-context? toyc-frame?)
+  (-> tinyC-context? tinyC-frame?)
   (match ctx
-    [(toyc ((F:frame _:stack) _:memory))
+    [(tinyC ((F:frame _:stack) _:memory))
      F]
     ))
 (define/contract (ctx->stack-tail ctx)
-  (-> toyc-context? toyc-stack?)
+  (-> tinyC-context? tinyC-stack?)
   (match ctx
-    [(toyc ((_:frame S:stack) _:memory))
+    [(tinyC ((_:frame S:stack) _:memory))
      S]))
 (define/contract (ctx->mem ctx)
-  (-> toyc-context? toyc-memory?)
+  (-> tinyC-context? tinyC-memory?)
   (match ctx
-    [(toyc (_:non-empty-stack m:memory))
+    [(tinyC (_:non-empty-stack m:memory))
      m]))
 
 
@@ -403,10 +479,10 @@
 ; Return the object associated with the ident in memory. Returns `#f` if the
 ; ident does not occur in memory.
 (define/contract (lookup-mem-mapping x m)
-    (-> toyc-loc-ident? toyc-memory? (or/c #f toyc-object?))
+    (-> tinyC-loc-ident? tinyC-memory? (or/c #f tinyC-object?))
     (match m
-      [(toyc nil) #f] ; Should this be undef or not actually defined?
-      [(toyc (cons (y:loc-ident obj:object) m+:memory))
+      [(tinyC nil) #f] ; Should this be undef or not actually defined?
+      [(tinyC (cons (y:loc-ident obj:object) m+:memory))
        (if (equal? x y)
            obj
            (lookup-mem-mapping x m+))]
@@ -415,13 +491,13 @@
 ; Dereference a location by looking up the label in the memory
 ; and indexing the object at the appropriate offset
 (define/contract (lookup-mem l m)
-  (-> toyc-loc? toyc-memory? (or/c #f toyc-object?))
+  (-> tinyC-loc? tinyC-memory? (or/c #f tinyC-object?))
 
   (match l
-    [(toyc (x:loc-ident o:offset))
+    [(tinyC (x:loc-ident o:offset))
      (match (lookup-mem-mapping x m)
-       [(toyc arr:list<object>) (seec-ith o arr)]
-       [(toyc obj:object)       ; either val or undef
+       [(tinyC arr:list<object>) (seec-ith o arr)]
+       [(tinyC obj:object)       ; either val or undef
                                 (if (equal? o 0)
                                     obj
                                     #f)]
@@ -436,13 +512,13 @@
 ; will return #f. If obj is an array, o must be in the scope of the array, or
 ; else the function will return false
 (define/contract (update-object-at-offset obj o v)
-  (-> toyc-object? integer? toyc-val? (or/c #f toyc-object?))
+  (-> tinyC-object? integer? tinyC-val? (or/c #f tinyC-object?))
   (match obj
     ; if the object is an array, update the array at that index
-    [(toyc arr:list<object>)
+    [(tinyC arr:list<object>)
      (seec-set-ith o v arr)]
     ; otherwise, the offset must be 0
-    [(toyc _:object)
+    [(tinyC _:object)
      (if (equal? o 0)
          v
          #f)]
@@ -451,26 +527,26 @@
 ; Update the value in memory at the specified location
 ; If (lookup-mem l m) is #f, store-mem is #f
 (define/contract (store-mem l v m)
-  (-> toyc-loc? toyc-val? toyc-memory? (or/c #f toyc-memory?))
+  (-> tinyC-loc? tinyC-val? tinyC-memory? (or/c #f tinyC-memory?))
 
   (match l
-    [(toyc (x:loc-ident o:offset))
+    [(tinyC (x:loc-ident o:offset))
 
      (match m
-       [(toyc nil) #f]
-       [(toyc (cons (y:loc-ident obj:object) m+:memory))
+       [(tinyC nil) #f]
+       [(tinyC (cons (y:loc-ident obj:object) m+:memory))
         (cond
           [(= x y)
            ; if x occurs at the head of the memory list
            (do (<- obj+ (update-object-at-offset obj o v))
-               (seec-cons (toyc (,y ,obj+))
+               (seec-cons (tinyC (,y ,obj+))
                           m+))]
 
           [else
            ; if x does not occur at the head of the memory list,
            ; recurse
            (do (<- m++ (store-mem l v m+))
-               (seec-cons (toyc (,y ,obj))
+               (seec-cons (tinyC (,y ,obj))
                           m++))
             ]
           )]
@@ -486,13 +562,13 @@
 
 ; Given a location and a value, update the memory in the input context
 (define/contract (set-lval l v ctx)
-  (-> toyc-val? toyc-val? toyc-context? (or/c #f toyc-context?))
+  (-> tinyC-val? tinyC-val? tinyC-context? (or/c #f tinyC-context?))
   (cond
-    [(toyc-loc? l)
+    [(tinyC-loc? l)
      (match ctx
-       [(toyc (S:non-empty-stack m:memory))
+       [(tinyC (S:non-empty-stack m:memory))
         (do (<- m+ (store-mem l v m))
-            (toyc (,S ,m+))
+            (tinyC (,S ,m+))
           )])]
 
     [else #f]))
@@ -500,19 +576,19 @@
 
 ; Unitialized values are represented by 'undef' values
 (define/contract (init-value ty)
-  (-> syntax-type? toyc-object?)
+  (-> syntax-type? tinyC-object?)
   (match ty
-    [(syntax simple-type)  (toyc undef)]
+    [(syntax simple-type)  (tinyC undef)]
     [(syntax (array ty+:simple-type len:integer))
-     (seec-build-list len (toyc undef))]
+     (seec-build-list len (tinyC undef))]
     ))
 
 ; Look up a variable in a frame.
 (define/contract (lookup-var x F)
-  (-> syntax-var? toyc-frame? (or/c #f toyc-loc?))
+  (-> syntax-var? tinyC-frame? (or/c #f tinyC-loc?))
   (match F
-    [(toyc nil) #f]
-    [(toyc (cons (y:var l:loc) F+:frame))
+    [(tinyC nil) #f]
+    [(tinyC (cons (y:var l:loc) F+:frame))
      (if (equal? x y)
          l
          (lookup-var x F+))]
@@ -533,7 +609,7 @@
 ; Pointer arithmetic is possible for + and - if the first value is a pointer
 ; Equality comparison is allowed for any types
 (define/contract (eval-binop op v1 v2)
-  (-> syntax-binop? toyc-val? toyc-val? (or/c #f toyc-val?))
+  (-> syntax-binop? tinyC-val? tinyC-val? (or/c #f tinyC-val?))
   (cond
 
     [(equal? op (syntax =))
@@ -545,10 +621,10 @@
     [(and (not (integer? v1))
           (integer? v2))
      (match (cons op v1)
-       [(cons (syntax +) (toyc (x:loc-ident o:offset)))
-        (toyc (,x ,(+ o v2)))]
-       [(cons (syntax -) (toyc (x:loc-ident o:offset)))
-        (toyc (,x ,(- o v2)))]
+       [(cons (syntax +) (tinyC (x:loc-ident o:offset)))
+        (tinyC (,x ,(+ o v2)))]
+       [(cons (syntax -) (tinyC (x:loc-ident o:offset)))
+        (tinyC (,x ,(- o v2)))]
        [_ #f] ; Can only perform +/- pointer arithmetic
        )]
     [(and (integer? v1)
@@ -562,18 +638,18 @@
 
 ; Evalue an l-value
 (define/contract (eval-lval lv F m)
-  (-> syntax-lval? toyc-frame? toyc-memory? (or/c #f toyc-val?))
+  (-> syntax-lval? tinyC-frame? tinyC-memory? (or/c #f tinyC-val?))
   (match lv
-    [(toyc x:var) (lookup-var x F)]
-    [(toyc (* lv+:lval))
+    [(tinyC x:var) (lookup-var x F)]
+    [(tinyC (* lv+:lval))
      (match (eval-lval lv+ F m)
        ; eval-lval could produce any value, including an integer, in which case
        ; (*lv) is undefined
-       [(toyc l:loc)
+       [(tinyC l:loc)
         (match (lookup-mem l m)
           ; lookup-mem could produce any object (including undef or an array
           ; object), in which case return #f
-          [(toyc v:val) v]
+          [(tinyC v:val) v]
           [_ #f]
           )]
        [_ #f]
@@ -582,34 +658,34 @@
 
 ; Evaluate an expression given a frame and memory
 (define/contract (eval-expr e F m)
-  (-> syntax-expr? toyc-frame? toyc-memory? (or/c #f toyc-val?))
+  (-> syntax-expr? tinyC-frame? tinyC-memory? (or/c #f tinyC-val?))
   (match e
-    [(toyc n:integer) n]
-    [(toyc null)      #f] ; Should this return 0 or something else instead?
+    [(tinyC n:integer) n]
+    [(tinyC null)      #f] ; Should this return 0 or something else instead?
                           ; Allow possibiility of returning undef?
-    [(toyc (* e+:expr))
+    [(tinyC (* e+:expr))
      (match (eval-expr e+ F m)
-       [(toyc l:loc)
+       [(tinyC l:loc)
         (match (lookup-mem l m)
-          [(toyc v:val) v]
+          [(tinyC v:val) v]
           )]
        [_ #f]
        )]
 
-    [(toyc x:var)
+    [(tinyC x:var)
      (match (lookup-var x F)
-       [(toyc l:loc)
+       [(tinyC l:loc)
         (match (lookup-mem l m)
-          [(toyc v:val) v]
+          [(tinyC v:val) v]
           [_ #f]
           )]
        [_ #f])]
 
-    [(toyc (& lv:lval)) ; Is this right?
+    [(tinyC (& lv:lval)) ; Is this right?
      (eval-lval lv F m)
      ]
 
-    [(toyc (op:binop e1:expr e2:expr))
+    [(tinyC (op:binop e1:expr e2:expr))
      (do (<- v1 (eval-expr e1 F m))
          (<- v2 (eval-expr e2 F m))
          (eval-binop op v1 v2))
@@ -619,7 +695,7 @@
 
 ; Evaluate a list of expressions to produce a list of values
 (define/contract (eval-exprs args ctx)
-  (-> (listof syntax-expr?) toyc-context? (or/c #f (listof toyc-val?)))
+  (-> (listof syntax-expr?) tinyC-context? (or/c #f (listof tinyC-val?)))
   (let* ([F (context->top-frame ctx)]
          [m (context->memory ctx)]
          [ms-maybe (map (λ (e) (eval-expr e F m)) args)])
@@ -637,24 +713,24 @@
 
 ; Remove a location from memory. Will return #f if x does not occur in m
 (define/contract (drop-loc-ident x m)
-  (-> toyc-loc-ident? toyc-memory? (or/c #f toyc-memory?))
+  (-> tinyC-loc-ident? tinyC-memory? (or/c #f tinyC-memory?))
   (match m
-    [(toyc nil) #f]
-    [(toyc (cons (y:loc-ident obj:object) m+:memory))
+    [(tinyC nil) #f]
+    [(tinyC (cons (y:loc-ident obj:object) m+:memory))
      (if (equal? x y)
          m+
          (do (<- m++ (drop-loc-ident x m+))
-             (toyc (cons (,y ,obj) ,m++)))
+             (tinyC (cons (,y ,obj) ,m++)))
          )]
     ))
 
 ; Free all the locations allocated in F.
 ; If any of those locations do not occur in m, return #f
 (define/contract (pop-stack F m)
-  (-> toyc-frame? toyc-memory? (or/c #f toyc-memory?))
+  (-> tinyC-frame? tinyC-memory? (or/c #f tinyC-memory?))
   (match F
-    [(toyc nil) m]
-    [(toyc (cons (_:var (x:loc-ident _:object)) F+:frame))
+    [(tinyC nil) m]
+    [(tinyC (cons (_:var (x:loc-ident _:object)) F+:frame))
      (do (<- m+ (drop-loc-ident x m))
          (pop-stack F+ m+))]
     ))
@@ -662,10 +738,10 @@
 
 ; Return the declaration associated with the name p in g
 (define/contract (lookup-in-global-store g p)
-  (-> toyc-global-store? syntax-proc-name? (or/c #f toyc-declaration?))
+  (-> tinyC-global-store? syntax-proc-name? (or/c #f tinyC-declaration?))
   (match g
-    [(toyc nil) #f]
-    [(toyc (cons decl:declaration g+:global-store))
+    [(tinyC nil) #f]
+    [(tinyC (cons decl:declaration g+:global-store))
      (if (equal? (declaration->name decl) p)
          decl
          (lookup-in-global-store g+ p)
@@ -675,16 +751,16 @@
 ; Check that a value v has a type ty, including pointers that might be included
 ; in m
 (define/contract (check-type? ty obj m)
-  (-> syntax-type? toyc-object? toyc-memory? boolean?)
-  (or (equal? obj (toyc undef))
+  (-> syntax-type? tinyC-object? tinyC-memory? boolean?)
+  (or (equal? obj (tinyC undef))
   (match ty
-    [(toyc int) (integer? obj)]
-    [(toyc (* ty+:type))
-     (do (toyc-loc? obj)
+    [(tinyC int) (integer? obj)]
+    [(tinyC (* ty+:type))
+     (do (tinyC-loc? obj)
          (<- obj+ (lookup-mem obj m))
          (check-type? ty+ obj+ m)
          )]
-    [(toyc (array ty+:simple-type len:integer))
+    [(tinyC (array ty+:simple-type len:integer))
      (let ([objs (seec->list obj)])
        (and (= (length objs) len)
             (andmap (λ (obj+) (check-type? ty+ obj+ m))
@@ -694,12 +770,12 @@
 
 ; Allocate a fresh location identifier and bind it to the object obj in memory
 (define/contract (alloc obj st)
-  (-> toyc-object? state? (or/c #f (cons/c toyc-loc-ident? state?)))
+  (-> tinyC-object? state? (or/c #f (cons/c tinyC-loc-ident? state?)))
   (match (fresh-var st)
     [(cons lid st+)
      (let* ([ctx (state->context st+)]
             [m  (context->memory ctx)]
-            [m+ (toyc ((,lid ,obj) ,m))]
+            [m+ (tinyC ((,lid ,obj) ,m))]
             [ctx+ (update-context-memory ctx m+)]
             )
        (cons lid (update-state st+ #:context ctx+)))]
@@ -711,17 +787,17 @@
 ; memory with l2↦obj and generate a fresh memory location l1↦l2.
 (define/contract (alloc-object ty obj st)
   (-> syntax-type?
-      toyc-object?
+      tinyC-object?
       state?
-      (or/c #f (cons/c toyc-loc? state?)))
+      (or/c #f (cons/c tinyC-loc? state?)))
   (match ty
-    [(toyc simple-type)
+    [(tinyC simple-type)
      (do (<- l-st (alloc obj st))
          (<- l    (lid->loc (car l-st)))
        (cons l (cdr l-st))
        )]
 
-    [(toyc (array ty+:simple-type len:integer))
+    [(tinyC (array ty+:simple-type len:integer))
      ; generate two fresh location ids, lid1 and lid2
      ; The frame with have x ↦ Loc lid1 0
      ; The memory will have lid1 ↦ Loc lid2 0
@@ -739,9 +815,9 @@
 ;
 ; It should be the case that v has the appropriate type.
 (define/contract (alloc-declarations decls st)
-  (-> (listof (list/c syntax-var? syntax-type? toyc-object?))
+  (-> (listof (list/c syntax-var? syntax-type? tinyC-object?))
       state?
-      (or/c #f (cons/c toyc-frame? state?)))
+      (or/c #f (cons/c tinyC-frame? state?)))
 
   (cond
     [(empty? decls) (cons seec-empty st)]
@@ -753,7 +829,7 @@
                  (<- F-st++ (alloc-declarations (rest decls)
                                                 (cdr l-st+)))
                  (<- F      (car F-st++))
-                 (<- F+     (seec-cons (toyc (,x ,l))
+                 (<- F+     (seec-cons (tinyC (,x ,l))
                                        F))
                  (cons F+ (cdr F-st++)))]
             )]
@@ -761,16 +837,16 @@
 
 
 (define/contract (alloc-param-declarations decls vs st)
-  (-> (listof toyc-param-decl?)
-      (listof toyc-val?)
+  (-> (listof tinyC-param-decl?)
+      (listof tinyC-val?)
       state?
-      (or/c #f (cons/c toyc-frame? state?)))
+      (or/c #f (cons/c tinyC-frame? state?)))
 
   ; Check that the values have appropriate type and zip together the
   ; declarations and values to provide to alloc-declarations
   (let ([decl-vs (map (λ (decl v)
                         (match decl
-                          [(toyc (x:var ty:simple-type))
+                          [(tinyC (x:var ty:simple-type))
                            (do (check-type? ty v (context->memory (state->context st)))
                                (list x ty v))]
                           ))
@@ -780,15 +856,15 @@
 
     
 (define/contract (alloc-local-declarations decls st)
-  (-> (listof toyc-local-decl?)
+  (-> (listof tinyC-local-decl?)
       state?
-      (cons/c toyc-frame? state?))
+      (cons/c tinyC-frame? state?))
 
   ; Construct an appropriate input to alloc-declarations by constructing initial
   ; values for each type
   (let ([decl-vs (map (λ (decl)
                         (match decl
-                          [(toyc (x:var ty:type))
+                          [(tinyC (x:var ty:type))
                            (list x ty (init-value ty))]
                           ))
                       decls)])
@@ -797,7 +873,7 @@
 ; Allocate a frame and update the memory associated with a particular function
 ; declaration
 (define/contract (alloc-frame decl vs st)
-  (-> toyc-declaration? (listof toyc-val?) state? (or/c #f state?))
+  (-> tinyC-declaration? (listof tinyC-val?) state? (or/c #f state?))
 
   (let* ([p            (declaration->name decl)]
          [param-decls  (seec->list (declaration->parameters decl))]
@@ -810,10 +886,10 @@
              [F     (seec-append (car F-st-args) (car F-st-local))]
              [S     (list->seec (context->non-empty-stack ctx+))]
              [m     (context->memory ctx+)]
-             [ctx++ (toyc ((,F ,S) ,m))]
+             [ctx++ (tinyC ((,F ,S) ,m))]
              )
         ; We need to pass along the state here because of the fresh
-        ; variable counter. Alternately, we could consider a version of toyc
+        ; variable counter. Alternately, we could consider a version of tinyC
         ; that uses symbolic variables and a fresh assertion constraint
         (update-state st+ #:context ctx++)
         ))))
@@ -825,15 +901,15 @@
 
 ; Take a single step
 (define/contract (eval-statement-1 g st)
-  (-> toyc-global-store? state? (or/c #f state?))
+  (-> tinyC-global-store? state? (or/c #f state?))
   #;(printf "(eval-statement-1 ~a)~n" (state->statement st))
 
   (match (state->statement st)
 
-    [(toyc SKIP) ; SKIP cannot take a step
+    [(tinyC SKIP) ; SKIP cannot take a step
      #f]
 
-    [(toyc (ASSIGN lv:lval e:expr))
+    [(tinyC (ASSIGN lv:lval e:expr))
      (let* ([ctx (state->context st)]
             [F (ctx->top-frame ctx)]
             [m (ctx->mem ctx)])
@@ -841,23 +917,23 @@
            (<- v    (eval-expr e F m))
            (<- ctx+ (set-lval l v ctx))
            (update-state st
-                         #:statement (toyc SKIP)
+                         #:statement (tinyC SKIP)
                          #:context ctx+
                          )
            ))]
 
 
-    [(toyc (OUTPUT e:expr))
+    [(tinyC (OUTPUT e:expr))
      (do (<- ctx (state->context st))
          (<- v (eval-expr e (ctx->top-frame ctx) (ctx->mem ctx)))
          (update-state st #:trace (seec-singleton v)
-                          #:statement (toyc SKIP))
+                          #:statement (tinyC SKIP))
        )]
 
 
     ;; Procedure calls ;;
 
-    [(toyc (CALL p:proc-name args:list<expr>))
+    [(tinyC (CALL p:proc-name args:list<expr>))
     ; Invoke the procedure, allocating memory for p's local variables and
     ; pushing the current stack frame and remaining instructions onto the stack
      (do (<- decl (lookup-in-global-store g p))
@@ -865,57 +941,57 @@
          (<- vs   (eval-exprs (seec->list args) (state->context st)))
          (<- st+  (alloc-frame decl vs st))
          (update-state st+
-                       #:statement (toyc (SEQ ,body RETURN))
+                       #:statement (tinyC (SEQ ,body RETURN))
                        )
          )]
 
     ; Return from a function call and pop the top-most frame
-    [(toyc RETURN)
+    [(tinyC RETURN)
      (match (state->context st)
-       [(toyc ((F0:frame (cons F+:frame S:stack)) m:memory))
+       [(tinyC ((F0:frame (cons F+:frame S:stack)) m:memory))
         (let* ([m+ (pop-stack F0 m)]
-               [ctx+ (toyc ((,F+ ,S) ,m+))])
+               [ctx+ (tinyC ((,F+ ,S) ,m+))])
           (update-state st
-                        #:statement (toyc SKIP)
+                        #:statement (tinyC SKIP)
                         #:context ctx+)
           )])]
 
 
     ;; Control flow ;;
 
-    [(toyc (IF b:expr t:statement f:statement))
+    [(tinyC (IF b:expr t:statement f:statement))
      (let* ([ctx (state->context st)]
             [F   (context->top-frame ctx)]
             [m   (context->memory ctx)])
      (match (eval-expr b F m)
-       [(toyc 1)
+       [(tinyC 1)
         (update-state st #:statement t)]
-       [(toyc 0)
+       [(tinyC 0)
         (update-state st #:statement f)]
        [_ #f]
        ))]
 
-    [(toyc (WHILE b:expr w:statement))
+    [(tinyC (WHILE b:expr w:statement))
      (let* ([ctx (state->context st)]
             [F   (context->top-frame ctx)]
             [m   (context->memory ctx)])
      (match (eval-expr b F m)
-       [(toyc 1)
-        (update-state st  #:statement (toyc (SEQ ,w (WHILE ,b ,w))))]
-       [(toyc 0)
-        (update-state st  #:statement (toyc SKIP))]
+       [(tinyC 1)
+        (update-state st  #:statement (tinyC (SEQ ,w (WHILE ,b ,w))))]
+       [(tinyC 0)
+        (update-state st  #:statement (tinyC SKIP))]
        [_ #f]
        ))]
 
     ; Sequencing
-    [(toyc (SEQ SKIP stmt+:statement))
+    [(tinyC (SEQ SKIP stmt+:statement))
      (update-state st #:statement stmt+)]
 
-    [(toyc (SEQ stmt1:statement stmt2:statement))
+    [(tinyC (SEQ stmt1:statement stmt2:statement))
      (do (<- st1 (update-state st #:statement stmt1))
          (<- st1+ (eval-statement-1 g st1))
          (update-state st1+ #:trace (state->trace st1+)
-                            #:statement (toyc (SEQ ,(state->statement st1+) ,stmt2))
+                            #:statement (tinyC (SEQ ,(state->statement st1+) ,stmt2))
                             ))]
 
 
@@ -930,10 +1006,10 @@
 
 ;; Take some number of steps bounded by the amount of fuel given
 (define/contract (eval-statement fuel g st)
-  (-> (or/c #f integer?) toyc-global-store? state? (or/c #f state?))
+  (-> (or/c #f integer?) tinyC-global-store? state? (or/c #f state?))
   (cond
     [(equal? (state->statement st)
-             (toyc SKIP))
+             (tinyC SKIP))
      st] ; Evaluation has normalized before fuel ran out
 
     [(<= fuel 0) st] ; Fuel ran out. Return #f here instead?
@@ -949,6 +1025,6 @@
       )
     (eval-statement fuel
                     (list->seec prog)
-                    (update-state (init-state (toyc ((nil nil) nil)))
-                                  #:statement (toyc (CALL "main" ,(list->seec inputs)))
+                    (update-state (init-state (tinyC ((nil nil) nil)))
+                                  #:statement (tinyC (CALL "main" ,(list->seec inputs)))
                                   ))))
