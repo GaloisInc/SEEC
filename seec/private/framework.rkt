@@ -370,8 +370,38 @@
   (display-changed-behavior vars out))
 
 
+; If there's nothing to quantify over, we can use the simple solver (verify)
+; rather than (synthesize)
+(define/contract synthesize-optional-forall
+  (-> #:forall list?
+      #:assume boolean?
+      #:guarantee boolean?
+      any/c)
+  (λ (#:forall [forall-list (list )]
+      #:assume assume-constraint
+      #:guarantee guarantee-constraint
+      )
+    (if (andmap empty? forall-list)
+        (verify #:assume (assert assume-constraint)
+                #:guarantee (assert (not guarantee-constraint))
+                )
+        ; else
+        (synthesize #:forall forall-list
+                    #:assume (assert assume-constraint)
+                    #:guarantee (assert guarantee-constraint)
+                    )
+        )))
 
 
+; Convert an e1-c1-e2-c2-tuple into a pair of `language-witness`es
+(define (partial-witness->context source target e1 c1 e2 c2)
+  (let* ([p1 ((language-link source)     c1 e1)]
+         [b1 ((language-evaluate source) p1)]
+         [p2 ((language-link target)     c2 e2)]
+         [b2 ((language-evaluate target) p2)]
+         )
+    (list (language-witness e1 c1 p1 b1)
+          (language-witness e2 c2 p2 b2))))
 
 (define/contract find-weird-behavior
   (->* (compiler?)
@@ -397,92 +427,94 @@
        (or/c #f (listof (listof language-witness?))) ; lists of pairs of language-witness (source and target)
        )
   (lambda (comp
-           #:source-expr-bound [e1-bound #f]; (or/c #f natural?)
-           #:source-expr [e1 (make-symbolic-var (language-expression (compiler-source comp)) e1-bound)]
-           ; Provide a concrete expression argument instead of generating a symbolic one
-           #:source-expr-constraint [e1-constraint (λ (x) #t)] ; (-> s.expression? boolean?)
-           #:source-context-bound [c1-bound #f] ; (or/c #f natural?) 
-           #:source-context [c1 (make-symbolic-var (language-context  (compiler-source comp)) c1-bound)]
-           #:source-context-constraint [c1-constraint (λ (e1 c1) #t)] ; (-> s.expression? s.context? boolean?)
+           #:source-expr-bound          [e1-bound #f]
+           #:source-expr                [e1 (make-symbolic-var
+                                             (language-expression (compiler-source comp))
+                                             e1-bound)]
+           ; Provide a concrete expression argument instead of generating a
+           ; symbolic one
+           #:source-expr-constraint     [e1-constraint (λ (x) #t)] ; (-> s.expression? boolean?)
+           #:source-context-bound       [c1-bound #f] ; (or/c #f natural?) 
+           #:source-context             [c1 (make-symbolic-var
+                                             (language-context (compiler-source comp))
+                                             c1-bound)]
+           #:source-context-constraint  [c1-constraint (λ (e1 c1) #t)]
+                                       ; (-> s.expression? s.context? boolean?)
            ; Constraint the source context according to the source expression
-           #:source-behavior-constraint [b1-constraint (λ (e1 c1 c2 b1) #t)] ; (-> s.expression? s.context? t.context? s.behavior boolean?)
-           ; Constraint the desired source behavior according to the source expression and the source and target context
-           #:target-context-bound [c2-bound #f] ; (or/c #f natural?)
-           #:target-context [c2 (make-symbolic-var (language-context (compiler-target comp)) c2-bound)]
+           #:source-behavior-constraint [b1-constraint (λ (e1 c1 c2 b1) #t)]
+                                        ; (-> s.expression? s.context? t.context? s.behavior boolean?)
+
+           ; Constraint the desired source behavior according to the source
+           ; expression and the source and target context
+           #:target-context-bound       [c2-bound #f] ; (or/c #f natural?)
+           #:target-context             [c2 (make-symbolic-var
+                                             (language-context (compiler-target comp))
+                                             c2-bound)]
            ; Provide a concrete target context instead of generating a symbolic one
-           #:target-context-constraint [c2-constraint (λ (e1 c2) #t)] ; (-> s.expression? t.context? boolean?)
+           #:target-context-constraint  [c2-constraint (λ (e1 c2) #t)]
+                                        ; (-> s.expression? t.context? boolean?)
            ; Constraint the target context according to the source expression
-           #:target-behavior-constraint [b2-constraint (λ (e1 c1 c2 b2) #t)] ; (-> s.expression? s.context? t.context? t.behavior boolean?)
-           ; Constraint the desired target behavior according to the source expression and the source and target context
-           #:fresh-witness [fresh #t] ; (boolean?)
+           #:target-behavior-constraint [b2-constraint (λ (e1 c1 c2 b2) #t)]
+                                         ; (-> s.expression? s.context? t.context? t.behavior boolean?)
+
+           #:fresh-witness          [fresh #t] ; (boolean?)
            ; if #t, generate a fresh context satisfying the constraints
-           #:debug [debug #f] ; (boolean?)
+           #:debug                  [debug #f] ; (boolean?)
            ; if #t, query will synthesize an expression that violates the property
-           #:forall [vars (if debug
-                              (list )
-                              c1)] 
-           #:forall-extra [vars-extra (list )]
-           #:count [count 1]
+           #:forall                 [vars (if debug
+                                              (list )
+                                              c1)]
+           #:forall-extra           [vars-extra (list )]
+           #:count                  [count 1]
            ; the number of different witnesses to return
            #:capture-nondeterminism [nondet #t]
-           ; if true, we will quantify over the nondetermism collected when evaluating the source and target program
-           #:found-core [found-core (lambda (w) (language-witness-context (second w)))]
+           ; if true, we will quantify over the nondetermism collected when
+           ; evaluating the source and target program
+           #:found-core             [found-core (lambda (w) (language-witness-context (second w)))]
            ; Which part of the witness should not be repeated between witnesses
            )
-
     (let*
-        ([assert-store (asserts)] ; save assertion state on entry
-         [source (compiler-source comp)]
-         [target (compiler-target comp)]
-         [e2 ((compiler-compile comp) e1)]
-         [p1 ((language-link source) c1 e1)]
-         [p2 ((language-link target) c2 e2)]
-         [context-relation  (compiler-context-relation comp)]
-         [ccomp (if context-relation
-                    (context-relation c1 c2)
-                    #t)])
-      (let*-values ([(b1 nondet1) (if nondet
-                                      (capture-nondeterminism ((language-evaluate source) p1))
-                                      (values ((language-evaluate source) p1) (list )))]
-                    [(b2 nondet2) (if nondet
-                                      (capture-nondeterminism ((language-evaluate target) p2))
-                                      (values ((language-evaluate target) p2) (list )))])
-        (let* ([behavior-relation (compiler-behavior-relation comp)]
-               [equality (with-asserts-only (assert (behavior-relation b1 b2)))]
+        ([assert-store     (asserts)] ; save assertion state on entry
+         [source           (compiler-source comp)]
+         [target           (compiler-target comp)]
+         [e2               ((compiler-compile comp) e1)]
+         [p1               ((language-link source) c1 e1)]
+         [p2               ((language-link target) c2 e2)]
+         [context-relation (compiler-context-relation comp)]
+         [ccomp            (if context-relation
+                               (context-relation c1 c2)
+                               #t)])
+      (let*-values ([(b1 nondet1) (capture-nondeterminism #:nondet nondet
+                                                          ((language-evaluate source) p1))]
+                    [(b2 nondet2) (capture-nondeterminism #:nondet nondet
+                                                          ((language-evaluate target) p2))])
+        (let* ([behavior-relation  (compiler-behavior-relation comp)]
+               [equality           (behavior-relation b1 b2)]
                [language-witnesses (list (language-witness e1 c1 p1 b1) (language-witness e2 c2 p2 b2))]
-               [sym-core (found-core language-witnesses)])
+               [sym-core           (found-core language-witnesses)])
           ; 1. Define a recursive loop to generate `num` pairs of expressions (and corresponding contexts)
           (letrec ([loop (λ (num witness-list found-core-list)
                            (if (<= num 0)
                                  witness-list
-                               (let* ([sol (if (andmap empty? (list vars vars-extra nondet1 nondet2)) ; If there's nothing to quantify over, we can use the simple solver
-                                             (verify
-                                                #:assume (assert (and (e1-constraint e1)
-                                                                      (c1-constraint e1 c1)
-                                                                      (b1-constraint e1 c1 c2 b1)
-                                                                      (c2-constraint e1 c2)
-                                                                      (b2-constraint e1 c1 c2 b2)
-                                                                      ccomp
-                                                                      (not (ormap (lambda (t) (equal? sym-core t)) found-core-list))))
-                                                #:guarantee (assert (if debug
-                                                                        (! (apply && equality))
-                                                                        (apply && equality))))
-                                               (synthesize 
-                                              #:forall (cons vars (cons vars-extra (cons nondet1 nondet2)))
-                                              #:assume (assert (and (e1-constraint e1)
-                                                                    (c1-constraint e1 c1)
-                                                                    (b1-constraint e1 c1 c2 b1)
-                                                                    (c2-constraint e1 c2)
-                                                                    (b2-constraint e1 c1 c2 b2)
-                                                                    ccomp
-                                                                    (not (ormap (lambda (t) (equal? sym-core t)) found-core-list)))
-                                                               )
-                                              #:guarantee (assert (if debug
-                                                                      (apply && equality)
-                                                                      (! (apply && equality))))))])
+                               (let* ([sol (synthesize-optional-forall
+                                            #:forall (list vars vars-extra nondet1 nondet2)
+                                            #:assume (and (e1-constraint e1)
+                                                          (c1-constraint e1 c1)
+                                                          (b1-constraint e1 c1 c2 b1)
+                                                          (c2-constraint e1 c2)
+                                                          (b2-constraint e1 c1 c2 b2)
+                                                          ccomp
+                                                          (not (ormap
+                                                                (lambda (t) (equal? sym-core t))
+                                                                found-core-list))
+                                                          )
+                                            #:guarantee (if debug
+                                                            equality
+                                                            (not equality))
+                                            )])
                                  (if (unsat? sol)
                                        #f
-                                     ; need to concretize context
+                                     ; concretize context
                                      (let* ([symbolic-witness (weird-component-solution language-witnesses sol)]
                                             [witness (concretize-witness symbolic-witness)]
                                             [core (found-core witness)]
@@ -493,57 +525,52 @@
                                                              (language-witness-context (second witness)))])
                                        (loop (- num 1)
                                              (cons e-ctx-concrete witness-list)
-                                             (cons core found-core-list)))))))])
+                                             (cons core found-core-list)))))))]
 
-            ; 2. If the `fresh` flag is true, for each generated expression,
-            ; synthesize a new context satisfying the relevant constraints            
-            (let* ([exprs (loop count (list ) (list ))]) ; exprs is a list of witness
+            ; 2. Define a function that instantiates a fresh e1-c1-e2-c2 tuple
+            ; if fresh-witness is #t, and converts such a tuple into a
+            ; list-tuple of language-witnesses
+                   [generate-fresh (λ (e1 c1 e2 c2)
+                      (cond
+                        [(not fresh) (partial-witness->context source target e1 c1 e2 c2)]
+                        [else
+                         (let* ([wit (find-weird-behavior
+                                      comp
+                                      #:source-expr e1
+                                      #:source-context-bound c1-bound
+                                      #:source-context-constraint c1-constraint
+                                      #:source-behavior-constraint b1-constraint
+                                      #:target-context-bound c2-bound
+                                      #:target-context-constraint c2-constraint
+                                      #:target-behavior-constraint b2-constraint
+                                      #:fresh-witness #f
+                                      #:forall (list )
+                                      ; new call to find-weird-behavior with no universal quantification
+                                      ; and no fresh witness
+                                      )])
+                           (if (not wit)
+                               (unsafe:raise-arguments-error
+                                'find-weird-behavior
+                                "Could not synthesize fresh witness")
+                               (let ([c1+ (language-witness-context (first (first wit)))]
+                                     [c2+ (language-witness-context (second (first wit)))])
+                                 (partial-witness->context source target e1 c1+ e2 c2+))))]
+                        ))]
+                   )
+
+            ; 3. Map the generate-fresh function over the output of loop
+            (let* ([exprs (loop count (list ) (list ))]) ; exprs is a list of e1-c1-e2-c2 witnesses
               (clear-asserts!)
               (for-each (lambda (arg) (assert arg)) assert-store) ; restore assertion state
               (cond
                 [(equal? exprs #f)
                    #f]
-                [else (map (λ (e-ctx-concrete)
-                             (let* ([e1-concrete  (first e-ctx-concrete)]
-                                    [e2-concrete  (third e-ctx-concrete)]
-                                    [c12-witness (if fresh
-                                                     (let* ([wit (find-weird-behavior comp
-                                                                                     #:source-expr e1-concrete
-                                                                                     #:source-context-bound c1-bound
-                                                                                     #:source-context-constraint c1-constraint
-                                                                                     #:source-behavior-constraint b1-constraint
-                                                                                     #:target-context-bound c2-bound
-                                                                                     #:target-context-constraint c2-constraint
-                                                                                     #:target-behavior-constraint b2-constraint
-                                                                                     #:fresh-witness #f
-                                                                                     #:forall (list ))]) ; new call to find-weird-behavior with no universal quantification
-                                                            (if wit
-                                                                (let ([c1+ (language-witness-context (first (first wit)))]
-                                                                      [c2+ (language-witness-context (second (first wit)))])
-                                                                  (cons c1+ c2+))
-                                                                (unsafe:raise-arguments-error
-                                                                 'find-weird-behavior
-                                                                 "Could not synthesize fresh witness"
-                                                                 )))
-                                                     (cons (second e-ctx-concrete) (fourth e-ctx-concrete)))] ; c12-witness should be completely concrete
-                                    [c1-witness (car c12-witness)]
-                                    [c2-witness (cdr c12-witness)]
-                                    [p1-witness ((language-link source) c1-witness e1-concrete)]
-                                    [b1-witness ((language-evaluate source) p1-witness)]
-                                    [p2-witness ((language-link target) c2-witness e2-concrete)]
-                                    [b2-witness ((language-evaluate target) p2-witness)]
-                                    
-                                    )
-                               (list (language-witness e1-concrete
-                                                       c1-witness
-                                                       p1-witness
-                                                       b1-witness)
-                                     (language-witness e2-concrete
-                                                       c2-witness
-                                                       p2-witness
-                                                       b2-witness))))
-                           exprs)]))))))))
-          
+                [else (map (λ (e-ctx-concrete) (generate-fresh (first  e-ctx-concrete)
+                                                               (second e-ctx-concrete)
+                                                               (third  e-ctx-concrete)
+                                                               (fourth e-ctx-concrete)))
+                           exprs)]
+                ))))))))
 
 
 ; find-changed-behavior query
@@ -699,8 +726,10 @@
            #:capture-nondeterminism [nondet #t])
     (unwrap-witness witness-count
                     (find-weird-behavior comp
+                         #:source-expr-bound bound-v1
                          #:source-expr e1
                          #:source-expr-constraint where-v1
+                         #:source-context-bound bound-c1
                          #:source-context c1
                          #:source-context-constraint where-c1
                          #:target-context-bound bound-c2

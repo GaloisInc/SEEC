@@ -4,10 +4,15 @@
 (require (file "list-lang.rkt"))
 
 (require (only-in racket/base
+                  make-parameter
+                  parameterize))
+
+(require (only-in racket/base
                   raise-argument-error
                   raise-arguments-error))
 
 (provide (all-defined-out))
+(require rosette/lib/value-browser)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Linked List 
 ;
@@ -27,12 +32,24 @@
   (attack ::= (change-free-pointer pointer))
   (attacked-complete-interaction ::= (attack complete-interaction)))
 
+
+; Bound on fuel provided to recursive functions
+(define rec-bound (make-parameter 10))
+
+
 (define (pointer->number p)
   (match p
     [(linked-list n:natural) n]
     [_ (raise-argument-error 'pointer->number
                              "non-null linked-list-pointer?"
                              p)]
+    ))
+
+
+(define (heap-length hp)
+  (match hp
+    [(linked-list empty) 0]
+    [(linked-list (cell hp+:heap)) (+ 1 (heap-length hp+))]
     ))
 
 (define (empty-state s)
@@ -117,20 +134,35 @@
 
 ; n1:natural, ptr2:pointer, hp:heap
 ; append l2 at the end of l1
+;
+; NOTE: even with a small fuel size like 5, when the heap is a union of a large
+; number of possibilities (which occurs when it is generated from overwrite-heap
+; and append-ll-even), this makes it very slow
+(define (append-ll-inner fuel n1 ptr2 hp)
+  #;(printf "append-ll-inner: ~a~n" fuel)
+  (cond
+    [(<= fuel 0) (raise-arguments-error 'append-ll-inner
+                                        "ran out of fuel")]
+    [else
+;     (begin (for/all ([hp hp]) ; this for/all helps with efficiency
+            (let ([hd1 (nth-heap n1 hp)]) ; this for/all ensures we can iterate over
+                                              ; concrete cells in the heap
+              (match hd1
+                [(linked-list (v:value null))
+                 (let ([newhd1 (linked-list (,v ,ptr2))])
+                   (first (overwrite-heap n1 newhd1 hp)))]
+                [(linked-list (_:value n:natural))
+                 (append-ll-inner (- fuel 1) n ptr2 hp)]))]
+     ))
 (define (append-ll n1 ptr2 hp)
-  (for/all ([hp hp]) ; this for/all helps with efficiency
-  (for/all ([hd1 (nth-heap n1 hp)]) ; this for/all ensures we can iterate over
-                                    ; concrete cells in the heap
-    (match hd1
-      [(linked-list (v:value null))
-       (let ([newhd1 (linked-list (,v ,ptr2))])
-         (first (overwrite-heap n1 newhd1 hp)))]
-      [(linked-list (_:value n:natural))
-       (append-ll n ptr2 hp)]))))
+  (printf "==append-ll==~n")
+;  (for/all ([hp hp])
+;    (printf "- on heap size: ~a~n" (heap-length hp))
+    (append-ll-inner (rec-bound) n1 ptr2 hp))
 
 ; push v on top of heap (at the end of the list)
-(define/contract (snoc-heap c h)
-  (-> linked-list-cell? linked-list-heap? linked-list-heap?)
+(define (snoc-heap c h)
+  #;(-> linked-list-cell? linked-list-heap? linked-list-heap?)
   (match h
     [(linked-list empty)
      (linked-list (,c empty))]
@@ -138,6 +170,8 @@
      (linked-list (,hd-c ,(snoc-heap c tl-hp)))]))
 
 (define (nil-state s)
+  (printf "(nil-state)~n")
+  (for/all ([s s])
   (match s
     [(linked-list (hd:pointer fp:pointer hp:heap))
      (match fp
@@ -145,10 +179,12 @@
         (linked-list (null ,hd ,hp))]
        [(linked-list n:natural)
         (let ([newhp (append-ll n hd hp)])
-          (linked-list (null ,fp ,newhp)))])]))
+          (linked-list (null ,fp ,newhp)))])])))
 
 ; Add a cell with (v, hd) in front of the hd-list represented in hp
 (define (cons-state v s)
+  (printf "(cons-state)~n")
+  (for/all ([s s])
   (match s
     [(linked-list (hd:pointer fp:pointer hp:heap))
      (match fp
@@ -160,18 +196,18 @@
        [(linked-list i:natural); free-list is non-empty, use the head of the free-list.
           (let* ([new-cell (linked-list (,v ,hd))]
                  [new-hp-fp (overwrite-heap i new-cell hp)])
-            (linked-list (,i ,(second new-hp-fp) ,(first new-hp-fp))))])]))
+            (linked-list (,i ,(second new-hp-fp) ,(first new-hp-fp))))])])))
 
 ; return the nth element in the heap
 (define (nth-heap n hp)
   (match hp
     [(linked-list (hd-c:cell tl-hp:heap))
-     (if (equal? n 0)
-           (linked-list ,hd-c)
-           (nth-heap (- n 1) tl-hp))]))
+     (if (= n 0)
+         hd-c
+         (nth-heap (- n 1) tl-hp))]))
 
 ; lookup the nth element of a list headed at hd in hp
-(define (nth-ll-inner n hd hp)
+#;(define (nth-ll-inner n hd hp)
   (if (< n 0)
       #f
       (let* ([c (nth-heap hd hp)])
@@ -183,7 +219,7 @@
               [(linked-list ptr:natural) 
                (nth-ll-inner (- n 1) ptr hp)])))))
 
-(define (nth-ll n s)
+#;(define (nth-ll n s)
   (match s    
     [(linked-list (hd:pointer _:pointer hp:heap))
      (match hd
@@ -193,6 +229,9 @@
        (nth-ll-inner n hd hp)])]))
 
 (define (interpret-interaction-ll ints s)
+  (printf "(interpret-interaction-ll ~a)~n" ints)
+  #;(display-state s)
+  (for/all ([ints ints])
   (match ints
     [(linked-list empty)
      s]
@@ -200,7 +239,7 @@
      (interpret-interaction-ll intss (nil-state s))]
     [(linked-list ((mcons n:value) intss:interaction))
      (interpret-interaction-ll intss (cons-state n s))]
-    ))
+    )))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -208,15 +247,20 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (empty?-ll s)
+  (printf "(empty?-ll)~n")
+  (for/all ([s s])
   (match s 
     [(linked-list (null _:pointer _:heap))
      #t]
     [ _
-      #f]))
+      #f])))
 
 (define (lookup-ll-inner fuel k hd hp)
+  #;(printf "(lookup-ll-inner ~a)~n" fuel)
+  #;(render-value/window hp)
   (if (<= fuel 0)
-      #f
+      (raise-arguments-error 'lookup-ll-inner
+                             "ran out of fuel")
       (match hd
         [(linked-list null)
          #f]
@@ -224,20 +268,23 @@
          (let* ([k-c (nth-heap n hp)]
                 [v-c (nth-heap (pointer->number (cell-pointer k-c)) hp)]
                 [newhd (cell-pointer v-c)])
-             (if (equal? (linked-list ,k) (cell-value k-c))
+             (if (equal? k (cell-value k-c))
                  (cell-value v-c)
                  (lookup-ll-inner (- fuel 1) k newhd hp)))])))
 
-; Bound on fuel provided to recursive functions
-(define rec-bound 10)
-
-(define/contract (lookup-ll k s)
-  (-> linked-list-value? linked-list-state? (or/c #f linked-list-value?))
+(define (lookup-ll k s)
+  #;(-> linked-list-value? linked-list-state? (or/c #f linked-list-value?))
+  (for/all ([s s]) ; Because we are doing case analysis on the state here (and
+                   ; further analysis in lookup-ll-inner), for/all improves
+                   ; performance here
+  (printf "(lookup-ll)~n")
   (match s
     [(linked-list (hd:pointer _:pointer hp:heap))
-     (lookup-ll-inner rec-bound (value->number k) hd hp)]))
+     (lookup-ll-inner (rec-bound) k hd hp)])))
 
 (define (interpret-observation-ll obs s)
+  (printf "(interpret-observation-ll ~a)~n" obs)
+  #;(display-state s)
   (match obs
     [(linked-list empty?)
                   (empty?-ll s)]

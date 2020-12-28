@@ -171,11 +171,20 @@
 
 (define-syntax (capture-nondeterminism stx)
   (syntax-parse stx
-    [(_ body ...)
-     #'(parameterize ([nondeterminism (list)])
-         (define result
-           body ...)
-         (values result (nondeterminism)))]))
+    [(_ (~optional (~seq #:nondet nondet)
+                   #:defaults ([nondet '#f]))
+        body ...)
+     #'(if nondet
+           (parameterize ([nondeterminism (list)])
+             (define result
+               body ...)
+             (values result (nondeterminism)))
+           (begin
+             (define result
+               body ...)
+             (values result (list )))
+           )]
+    ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Bitwidth and bitvector width ;;

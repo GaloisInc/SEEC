@@ -202,14 +202,14 @@
    (thunk (find-weird-component SIMP-NAT-TO-INTEGER #:count 3))
   "count argument to find-weird-component"))
 
-
+; With source-expression-bound=5, completed in 12 s
+; With source-expression-bound=6, completed in 30 min?
 (define test-wc-arg-source-exp-bound-nat-to-integer
   (list
    (lambda (r) (r))
    (thunk (find-weird-component SIMP-NAT-TO-INTEGER
-                           #:source-expression-bound 6))
+                           #:source-expression-bound 5))
   "source-expression-bound argument to find-weird-component"))
-                           
 
 
 (define test-wc-arg-source-exp-where-nat-to-integer
@@ -248,7 +248,7 @@
                                   #:target-context-where (lambda (v1 c2) (equal? c2 -1))))
   "target-context-where argument to find-weird-component"))
 
-
+; BUG: This test takes 162 min to complete
 (define test-wc-arg-target-context-where-fail-nat-to-integer
   (list
    (lambda (r) (not (r)))

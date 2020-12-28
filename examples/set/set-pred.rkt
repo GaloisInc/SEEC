@@ -348,6 +348,10 @@
              (not (eq x (neg-s x)))))))
 
 
+; Expected:
+; Decoder: (member? -6)
+; Gadget 0: nop
+; Gadget 1: (if (not (member? -6)) (seq (insert -6) nop) (seq (remove -6) nop))
 (define (test-spec-member)
     (display-related-gadgets (find-related-gadgets set-lang obs-int bool-funs) displayln))
 

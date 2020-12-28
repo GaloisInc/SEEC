@@ -670,7 +670,7 @@
                          ))
   (display-gadget g displayln)
   )
-(time (find-COMPL))
+#;(time (find-COMPL))
 ; Result:
 ;
 ; Expression ((% ((2 $) (NONE d))) ; When converting a string to an integer, will print "0"
@@ -854,3 +854,43 @@
 #;(time (find-COMPL-and-XOR))
 ; Wanted to see if it would take more or less time to synthesize both COMPL and
 ; XOR together compared to synthesizing them separately.
+
+
+
+(define (find-composition)
+
+  (define fmt-elt1 (printf-lang fmt-elt 3))
+  (define fmt1 (printf-lang (cons ,fmt-elt1 nil)))
+  (define fmt2 (printf-lang fmt 3))
+  (define/contract fmt safe:fmt?
+    (printf-lang (cons ,fmt-elt1 ,fmt2))
+    #;(seec-append fmt1 fmt2))
+
+  (define args (printf-lang arglist 3))
+  (define conf (printf-lang config 4))
+  (define/contract context-structure context?
+    (printf-lang (,args ,conf)))
+  (define b1 (interp-fmt fmt1 args conf))
+  (define b2 (interp-fmt fmt2 args (behavior->config b1)))
+  (define t-compose (seec-append (behavior->trace b1)
+                                 (behavior->trace b2)))
+
+  (define/contract b-compose behavior?
+    (printf-lang (,t-compose ,(behavior->config b2))))
+
+
+  (define g (find-gadget printf-impl
+                         (λ (p b) (equal? b b-compose))
+                         #;(λ (p b) (and (printf-program? p)
+                                       (behavior? b)
+                                       ))
+                         #:expr-bound 6
+;                         #:expr fmt
+;                         #:expr-constraint (λ (e) (equal? e fmt))
+                         #:context context-structure
+                         #:forall-extra (list fmt-elt1 fmt2)
+                         ))
+
+  (display-gadget g displayln)
+  )
+#;(find-composition)

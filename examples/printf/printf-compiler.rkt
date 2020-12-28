@@ -82,4 +82,81 @@
   (unsafe:printf-lang (,(safe:behavior->trace b)
                        ,(compile-config (safe:behavior->config b))
                        )))
+(define/contract (compile-maybe-behavior b)
+  (-> (or/c safe:err? safe:behavior?) (or/c unsafe:err? unsafe:behavior?))
+  (cond
+    [(safe:err? b) (unsafe:printf-lang ERR)]
+    [else          (compile-behavior b)]
+    ))
 
+
+
+(define-compiler printf-compiler
+  #:source safe:printf-spec
+  #:target unsafe:printf-impl
+  #:behavior-relation (lambda (b1 b2) (equal? (compile-maybe-behavior b1) b2))
+  #:context-relation (λ (ctx1 ctx2) (equal? (compile-context ctx1) ctx2))
+  #:compile (lambda (f) f))
+
+
+(define (find-weird-component-example)
+  (set-bitwidth 16 8)
+  (define/contract fmt-example
+    safe:fmt?
+    (safe:fmt-string (cons (% ((0 $) (NONE d)))
+                           nil)))
+  (define-symbolic l-val integer?)
+  (define target-args (seec-singleton (unsafe:printf-lang (LOC ,l-val))))
+  (define target-conf  (unsafe:printf-lang ((bv 0) nil)))
+  (define/contract target-ctx
+    unsafe:context?
+    (unsafe:printf-lang (,target-args ,target-conf)))
+#|
+
+  (define target-behavior (unsafe:interp-fmt fmt-example target-args target-conf))
+                                             
+  (define src-args (safe:printf-lang arglist 3))
+  (define src-config (safe:printf-lang config 3))
+  (define/contract src-context safe:context?
+    (safe:printf-lang (,src-args ,src-config)))
+  (define src-behavior (safe:interp-fmt fmt-example src-args src-config))
+
+  (define sol (synthesize #:forall (list l-val)
+                          #:guarantee (assert (equal? (compile-behavior src-behavior)
+                                                      target-behavior))
+                          ))
+  (if (unsat? sol)
+      (displayln "No counterexample found")
+      (begin
+        (displayln "Counterexample found")
+        (define src-args+ (concretize src-args sol))
+        (define src-config+ (concretize src-config sol))
+        (printf "args: ~a~n" src-args+)
+        (printf "config: ~a~n" src-config+)
+        ))
+
+|#
+    
+  (define comp (find-weird-behavior printf-compiler
+                                    #:source-expr fmt-example
+;                                    #:source-context-bound 6
+;                                    #:source-context (safe:printf-lang (,target-args (0 nil)))
+                                    #:target-context target-ctx
+;                                    #:forall-extra (list l-val)
+                                    #:debug #f
+                                    #:fresh-witness #f
+                                    ))
+  (display-weird-behavior comp displayln)
+  (displayln "hi")
+  )
+#;(find-weird-component-example)
+
+(define (find-changed-component-example)
+  (display-changed-component
+   (find-changed-component printf-compiler
+                           #:source-expr-bound 3
+                           #:source-context-bound 3
+                           )
+   displayln)
+  )
+#;(find-changed-component-example)

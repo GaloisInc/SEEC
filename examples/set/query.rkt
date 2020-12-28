@@ -11,21 +11,28 @@
                             (display-changed-behavior w displayln))) witnesses)))
 
 
-(define (ex2)
-  (find-weird-component
-                   abstract-to-buggyconcrete
-                   #:source-context-bound 2
-                   #:target-context-bound 2))
+(define (ex2) (find-weird-component abstract-to-buggyconcrete
+                                    #:source-expression-bound 5
+                                    #:source-context-bound 2
+                                    #:target-context-bound 2))
 #;(begin
   (displayln "Trying to find a trace with weird behavior under buggy compilation")
-  (display-weird-component (ex2) displayln))
+  (display-weird-component (ex2) displayln)
+  )
+; Result:
+; Expression ((insert 4) ((insert 4) ((remove 4) (select))))
+; has emergent behavior (4)
+; witnessed by target-level context *null*
 
 (define (ex3) (find-weird-component abstract-to-concrete
-                                            #:source-context-bound 2
-                                            #:target-context-bound 2))
+                                    #:source-expression-bound 5
+                                    #:source-context-bound 2
+                                    #:target-context-bound 2))
 #;(begin
     (displayln "Trying to find a trace with weird behavior under correct compilation")
     (display-weird-component (ex3) displayln))
+; Result:
+; No weird behavior found
 
 
 ; a program prog (for concrete-two) is a pair of an expression (in this case, a
