@@ -445,15 +445,15 @@
     [(printf-lang v:val)
      (match ftype
        ; if ftype = 'd', interpret the argument as an integer
-       [(printf-lang d) (printf-lang ,(unsafe:val->integer v))]
+       [(printf-lang %d) (printf-lang ,(unsafe:val->integer v))]
        ; if ftype = 's', interpret the argument as a string
-       [(printf-lang s) #;(printf-lang ,(unsafe:val->string v))
+       [(printf-lang %s) #;(printf-lang ,(unsafe:val->string v))
         (match v
           [(printf-lang s:string) (printf-lang ,s)]
           [_ (printf-lang ERR)]
           )]
        ; if ftype = 'n', interpret the argument as a location aka an integer
-       [(printf-lang n) (printf-lang ,(unsafe:val->integer v))]
+       [(printf-lang %n) (printf-lang ,(unsafe:val->integer v))]
        )]))
   (debug (thunk (printf "result of unsafe:fmt->constant: ~a~n" res)))
   res
@@ -474,28 +474,28 @@
      ]
 
     ; the width parameter doesn't make a difference for n formats
-    [(printf-lang (% (p:parameter (width n))))
-     (match (unsafe:fmt->constant (printf-lang n) p ctx)
+    [(printf-lang (%n (p:parameter _:width)))
+     (match (unsafe:fmt->constant (printf-lang %n) p ctx)
        [(printf-lang ERR)     (printf-lang (nil ,conf))]
        [(printf-lang l:ident) (printf-lang (nil ,(print-n-loc conf l)))]
        )]
 
     ; for d and n format types, we will first calculate the constant associated
     ; with the format type, and then pad it by the appropriate amount
-    [(printf-lang (% (p:parameter (NONE ftype:fmt-type))))
+    [(printf-lang (ftype:fmt-type (p:parameter NONE)))
      (match (unsafe:fmt->constant ftype p ctx)
        [(printf-lang ERR)        (printf-lang (nil ,conf))]
        [(printf-lang c:constant) (print-constant conf c)]
        )]
 
-    [(printf-lang (% (p:parameter (w:natural ftype:fmt-type))))
+    [(printf-lang (ftype:fmt-type (p:parameter w:natural)))
      (match (unsafe:fmt->constant ftype p ctx)
        [(printf-lang ERR)        (printf-lang (nil ,conf))]
        [(printf-lang c:constant)
         (print-trace conf (safe:pad-constant c w))]
        )]
 
-    [(printf-lang (% (p:parameter ((* o:offset) ftype:fmt-type))))
+    [(printf-lang (ftype:fmt-type (p:parameter (* o:offset))))
      (match (lookup-offset o ctx)
        ; if o is greater than the length of the argument list, no-op
        [(printf-lang ERR)   (printf-lang (nil ,conf))]
@@ -546,9 +546,9 @@
          [arg (lookup-offset offset ctx)])
     (and (< offset (seec-length (context->arglist ctx)))
          (match (cons ftype arg)
-           [(cons (printf-lang d) (printf-lang bitvector))   #t]
-           [(cons (printf-lang n) (printf-lang (LOC ident))) #t]
-           [(cons (printf-lang s) (printf-lang string))      #t]
+           [(cons (printf-lang %d) (printf-lang bitvector))   #t]
+           [(cons (printf-lang %n) (printf-lang (LOC ident))) #t]
+           [(cons (printf-lang %s) (printf-lang string))      #t]
            [_                                                #f]
            ))))
 (define (width-consistent-with-arglist w ctx)
@@ -567,7 +567,7 @@
     (match f0
       [(printf-lang string) #t]
 
-      [(printf-lang (% (p:parameter (w:width ftype:fmt-type))))
+      [(printf-lang (ftype:fmt-type (p:parameter w:width)))
        (and (parameter-consistent-with-arglist p ftype ctx)
             (width-consistent-with-arglist w ctx))]
       ))

@@ -1,6 +1,7 @@
 #lang seec
 (require (prefix-in safe:
-                    (file "printf-spec.rkt")))
+                    (file "printf-spec.rkt"))
+         (only-in (file "printf-spec.rkt") %))
 (require (file "printf-impl.rkt")) ; unsafe does not have a prefix for now
 (require racket/contract)
 (require seec/private/framework)
@@ -97,12 +98,18 @@
   (printf "Attempting to synthesize an add-argument gadget~n~n")
 
   (define/contract f-concrete safe:fmt?
-    (printf-lang (cons (% ((1 $) ((* 0) s))) nil)))
+    (seec-singleton (% 1 $ 0 * s))
+    #;(printf-lang (cons (% ((1 $) ((* 0) s))) nil)))
   (define/contract f-bad safe:fmt?
-    (printf-lang (cons (% ((0 $) (1 d)))
+    (list->seec (list (% 0 $ 1 d)
+                      (% 0 $ 0 * d)))
+    #;(printf-lang (cons (% ((0 $) (1 d)))
                  (cons (% ((0 $) ((* 0) d))) nil))))
   (define/contract f-bad-2 safe:fmt?
-    (printf-lang (cons (% ((1 $) (16383 d)))
+    (list->seec (list (% 1 $ 15383 d)
+                      (% 0 $ d)
+                      ))
+    #;(printf-lang (cons (% ((1 $) (16383 d)))
                  (cons (% ((0 $) (NONE d))) nil))))
 
   (define/contract (args-concrete y-val) (-> integer? arglist?)
@@ -193,7 +200,8 @@
 (define (find-load-gadget)
 
   (define/contract f-concrete safe:fmt?
-    (printf-lang (cons (% ((0 $) ((* 1) s))) nil)))
+    (seec-singleton (% 0 $ 1 * s))
+    #;(printf-lang (cons (% ((0 $) ((* 1) s))) nil)))
   (define args+ (printf-lang arglist 2))
   (define/contract (args-concrete l) (-> ident? arglist?)
     (printf-lang (cons "" (cons (* (LOC ,l)) nil #;,args+))))
@@ -253,7 +261,11 @@
 (define (find-add-mem-gadget)
 
   (define/contract f-concrete safe:fmt?
-    (printf-lang (cons (% ((3 $) ((* 0) s))) ; first  add value1 to the accumulator
+    (list->seec (list (% 3 $ 0 * s) ; first  add value1 to the accumulator
+                      (% 3 $ 1 * s) ; second add value2 to the accumulator
+                      (% 2 $ n)     ; then write the result to the target location
+                      ))
+    #;(printf-lang (cons (% ((3 $) ((* 0) s))) ; first  add value1 to the accumulator
                  (cons (% ((3 $) ((* 1) s))) ; second add value2 to the accumulator
                  (cons (% ((2 $) (NONE n)))  ; then write the result to the target location
                        nil)))))
@@ -363,11 +375,11 @@
 
   #;(define/contract f-concrete
     safe:fmt?
-    (printf-lang (cons (% ((1 $) ((* 0) s))) nil)))
-  #;(define f-result
-    (printf-lang (cons (% ((1 $) ((* 0) s)))
-                 (cons (% ((1 $) (7424 s)))
-                 nil))))
+    (seec-singleton (% 1 $ 0 * s)))
+  (define f-result
+    (list->seec (list (% 1 $ 0 * s)
+                      (% 1 $ 7424 s)
+                      )))
 
   (define-symbolic N integer?)
 
@@ -395,7 +407,8 @@
 
 ; Return a pair of a format string and an argument list
 (define (add-c N)
-  (define add-c-fmt (printf-lang (cons (% ((1 $) ((* 0) s)))
+  (define add-c-fmt (seec-singleton (% 1 $ 0 * s))
+    #;(printf-lang (cons (% ((1 $) ((* 0) s)))
                                  nil)))
 
   (define add-c-args (printf-lang (cons ,(integer->bv N) (cons "" nil))))
@@ -419,7 +432,8 @@
   ; stack-allocated pointer
 
 
-  (define concrete-fmt (printf-lang (cons (% ((0 $) (NONE n)))
+  (define concrete-fmt (seec-singleton (% 0 $ n))
+    #;(printf-lang (cons (% ((0 $) (NONE n)))
                                      nil)))
 
   (define-symbolic ptr integer?)
@@ -449,9 +463,12 @@
 
 ; Return a pair of a format string and an argument list
 (define (store-a ptr)
-  (define store-a-fmt (printf-lang (cons ""
-                                   (cons (% ((0 $) (NONE n)))
-                                   nil))))
+  (define store-a-fmt 
+    (list->seec (list (string "")
+                      (% 0 $ n)))
+    #;(printf-lang (cons ""
+                   (cons (% ((0 $) (NONE n)))
+                   nil))))
 
   (define store-a-args (printf-lang (cons (LOC ,ptr) nil)))
 
@@ -465,7 +482,8 @@
 
   (define/contract concrete-fmt
     safe:fmt?
-    (printf-lang (cons (% ((0 $) (NONE s))) nil)))
+    (seec-singleton (% 0 $ s))
+    #;(printf-lang (cons (% ((0 $) (NONE s))) nil)))
 
   (define-symbolic str-len integer?)
   (assert (<= 0 str-len (max-str-len)))
@@ -499,9 +517,12 @@
 ; Return a pair of a format string and an argument list
 (define/contract (add-a-len s)
   (-> string? (cons/c safe:fmt? arglist?))
-  (define store-a-fmt (printf-lang (cons ""
-                                   (cons (% ((0 $) (NONE s)))
-                                   nil))))
+  (define store-a-fmt 
+    (list->seec (string "")
+                (% 0 $ s))
+    #;(printf-lang (cons ""
+                   (cons (% ((0 $) (NONE s)))
+                   nil))))
 
   (define store-a-args (printf-lang (cons ,s nil)))
 
@@ -516,7 +537,8 @@
 
   (define/contract concrete-fmt
     safe:fmt?
-    (printf-lang (cons (% ((1 $) ((* 0) s))) nil)))
+    (seec-singleton (% 1 $ 0 * s))
+    #;(printf-lang (cons (% ((1 $) ((* 0) s))) nil)))
 
   (define-symbolic x-val integer?)
   (define-symbolic acc-val integer?)
@@ -556,301 +578,20 @@
 
   (-> integer? (cons/c safe:fmt? arglist?))
 
-  (define store-a-fmt (printf-lang (cons (% ((1 $) ((* 0) s)))
-                                   (cons ""
-                                   nil))))
+  (define store-a-fmt
+    (list->seec (list (% 1 $ 0 * s)
+                      (string "")))
+    #;(printf-lang (cons (% ((1 $) ((* 0) s)))
+                   (cons ""
+                   nil))))
 
   (define store-a-args (printf-lang (cons ,(integer->bv x) nil)))
 
   (cons store-a-fmt store-a-args)
   )
 
-;; Utilities
-
-(define/contract (bv->bool b)
-  (-> bv? boolean?)
-  #;(not (bvzero? (lsb b)))
-  (not (equal? (lsb b) (bv 0 1)))
-  )
-(define (ptr->bool p conf)
-  (let* ([m (conf->mem conf)])
-    (match (lookup-loc p m)
-      [(printf-lang b:bitvector)
-       #;(printf "(ptr->bool ~a -): ~a~n" p b)
-       (bv->bool b)]
-      )))
-
-; This format sketch bounds the length of the format string, which helps with
-; symbolic evaluation size
-(define/contract (fmt-elt-sketch n) (-> integer? safe:fmt-elt?)
-    (define-symbolic* symbolic-offset integer?)
-    (assert (>= symbolic-offset 0))
-
-    #;(define (symbolic-width) (printf-lang NONE))
-    (define (symbolic-width)
-      (define-symbolic* symbolic-nat integer?)
-      (assert (>= symbolic-nat 0))
-      (cond
-        [(havoc!) (printf-lang NONE)]
-        [(havoc!) (printf-lang (* ,symbolic-nat))]
-        [else     (printf-lang ,symbolic-nat)]
-        ))
-    #;(define (symbolic-fmt-type) (printf-lang s))
-    (define (symbolic-fmt-type)
-      (cond
-        [(havoc!) (printf-lang s)]
-        [(havoc!) (printf-lang d)]
-        [else     (printf-lang n)]
-        ))
-
-    (cond
-      [(havoc!) (new-symbolic-string n)]
-      [else     (printf-lang (% ((,symbolic-offset $) (,(symbolic-width) ,(symbolic-fmt-type)))))]
-      ))
-(define/contract (fmt-sketch n) (-> exact-nonnegative-integer? safe:fmt?)
-    ; Using a list of length 5 of (printf-lang fmt-elt 5) took over 40 min for
-    ; find-COMPL and never completed synthesis. Trying with fmt-elt-sketch.
-    (list->seec (for/list ([_ n]) (fmt-elt-sketch n)))
-    )
-; This invariant should be maintained both before and after gadgets
-(define (wf-acc-spec cfg)
-    (-> config? boolean?)
-    (bvzero? (lsb (conf->acc cfg))))
-
-(define (COMPL-spec IN OUT prog behav)
-    #;(printf "acc before: ~a~n" (conf->acc (program->config prog)))
-    #;(printf "acc after: ~a~n" (conf->acc (behavior->config behav)))
-    (equal? (ptr->bool IN (program->config prog))
-            (not (ptr->bool OUT (behavior->config behav)))))
 
 
-(define (find-COMPL) ; INPUT: p is a pointer to a bitvector encoding a boolean
-
-  (define neg1 (bitvector->natural (integer->bv -1)))
-  (define/contract fmt-concrete safe:fmt?
-    (printf-lang (cons (% ((2 $) ((* 1) s))) ; add (* (LOC ,IN)) to the accumulator
-                 (cons (% ((2 $) (,neg1 s))) ; add -1 to the accumulator
-                 (cons (% ((0 $) (NONE  n))) ; write the value of the accumulator to OUT
-                 (cons (% ((2 $) ((* 1) s))) ; reverse steps 1 and 2 to reset the accumulator
-                 (cons (% ((2 $) (,neg1 s)))
-                 nil)))))))
-
-  (define-symbolic IN   integer?)
-  (define-symbolic OUT  integer?)
-  (assert (not (equal? IN OUT))) ; It would be ok for these to be equal if we
-                                 ; could read OUT back into the accumulator, but
-                                 ; since we re-read IN, we can't have
-                                 ; overwritten it.
-
-  (define-symbolic b-val integer?)
-  (define b (integer->bv b-val))
-
-  (define-symbolic acc-val integer?)
-
-  (define/contract args-sketch arglist?
-    (printf-lang (cons (LOC ,OUT)
-                 (cons (* (LOC ,IN))
-                 (cons ""
-                 nil)))))
-  (define/contract config-sketch config?
-    (printf-lang (,(integer->bv acc-val)
-                  (cons (,IN ,b) nil))))
-  (define/contract context-sketch context?
-    (printf-lang (,args-sketch ,config-sketch)))
 
 
-  (define g (find-gadget printf-impl
-                         (λ (prog behav) (and (COMPL-spec IN OUT prog behav)
-                                              (wf-acc-spec (behavior->config behav))))
-                         #:expr (fmt-sketch 5)
-;                         #:expr-constraint (λ (f) (equal? f fmt-concrete))
-                         #:context context-sketch
-                         #:context-constraint (λ (ctx) (wf-acc-spec (context->config ctx)))
-                         #:forall (list acc-val IN OUT b-val)
-                         ))
-  (display-gadget g displayln)
-  )
-(time (find-COMPL))
-; Result:
-;
-; Expression ((% ((2 $) (NONE d))) ; When converting a string to an integer, will print "0"
-;            ((% ((2 $) ((* 1) s)))
-;            ((% ((0 $) (0 n)))
-;            ("?____"
-;            ((% ((2 $) ((* 1) s))))))))
-; is a gadget for the provided specification, as witnessed by behavior (("?____") ((bv #x05 8) ((0 (bv #x00 8)))))
-; in context (((bv #x00 8)) ((bv #x00 8)))
 
-; cpu time: 43975 real time: 330707 gc time: 3841
-; 330707ms = 5.5 min
-
-
-(define (COMPL IN OUT)
-  (-> ident? ident? (cons/c safe:fmt? arglist?))
-
-  (assert (not (equal? IN OUT)))
-
-  (define COMPL-fmt (list->seec (list (printf-lang (% ((2 $) ((* 1) s))))
-                                      (printf-lang (% ((2 $) (3 d))))
-                                      (printf-lang (% ((0 $) (1 n)))) ; the padding on %n is ignored
-                                      (printf-lang "?w?_w")
-                                      (printf-lang (% ((2 $) ((* 1) s))))
-                                      )))
-  (define COMPL-args (list->seec (list (printf-lang (LOC ,OUT))
-                                       (printf-lang (* (LOC ,IN)))
-                                       (printf-lang ""))))
-
-  (cons COMPL-fmt COMPL-args)
-  )
-
-(define (XOR-spec IN1 IN2 OUT prog behav)
-    (equal? (ptr->bool OUT (behavior->config behav))
-            (xor (ptr->bool IN1 (program->config prog))
-                 (ptr->bool IN2 (program->config prog))
-                 )))
-
-(define (find-XOR)
-
-  (define-symbolic IN1 IN2 OUT integer?)
-  (assert (and (not (equal? OUT IN1))
-               (not (equal? OUT IN2))))
-
-  (define-symbolic in1 in2 (bitvector (get-bv-width)))
-  (define-symbolic acc-val integer?)
-  
-  (define/contract args-sketch arglist?
-    (list->seec (list (printf-lang (LOC ,OUT))
-                      (printf-lang (* (LOC ,IN1)))
-                      (printf-lang (* (LOC ,IN2)))
-                      (printf-lang "")
-                      )))
-  (define/contract config-sketch config?
-    (printf-lang (,(integer->bv acc-val)
-                  (cons (,IN1 ,in1)
-                  (cons (,IN2 ,in2)
-                   nil)))))
-  (define/contract context-sketch context?
-    (printf-lang (,args-sketch ,config-sketch)))
-
-  (define/contract fmt-concrete safe:fmt?
-    (list->seec (list (printf-lang (% ((3 $) ((* 1) s)))) ; Add in1 to accumulator
-                      (printf-lang (% ((3 $) ((* 2) s)))) ; Add in2 to accumulator
-                      (printf-lang (% ((0 $) (NONE n))))  ; Write result to OUT
-                      (printf-lang (% ((3 $) ((* 1) s)))) ; Uncompute the result
-                      (printf-lang (% ((3 $) ((* 2) s)))) ; 
-                      )))
-
-  (define g (find-gadget printf-impl
-                         (λ (prog behav) (and (XOR-spec IN1 IN2 OUT prog behav)
-                                              (wf-acc-spec (behavior->config behav))))
-;                         #:expr fmt-concrete
-                         #:expr (fmt-sketch 5)
-                         #:context context-sketch
-                         #:context-constraint (λ (ctx) (wf-acc-spec (context->config ctx)))
-                         #:forall (list acc-val IN1 IN2 OUT in1 in2)
-                         ))
-  (display-gadget g displayln)
-
-  )
-#;(time (find-XOR))
-; Result
-;
-; Expression ((% ((3 $) ((* 1) s))) ; add in1 to accumulator
-;            ((% ((3 $) ((* 2) s))) ; add in2 to accumulator
-;            ((% ((0 $) (2 n)))     ; write result to output
-;            ((% ((3 $) ((* 2) s))) ; repeat steps 1 and 2 to reset the accumulator
-;            ((% ((3 $) ((* 1) s)))
-;            )))))
-; is a gadget for the provided specification, as witnessed by behavior (((bv #x00 8) ((0 ""))))
-; in context (((bv #x00 8) ((0 ""))))
-
-; cpu time: 58063 real time: 1470925 gc time: 4747
-; 1470925 ms == 24.5 min
-(define (XOR IN1 IN2 OUT)
-  (-> ident? ident? ident? (cons/c safe:fmt? arglist?))
-
-  (assert (not (equal? IN1 OUT)))
-  (assert (not (equal? IN2 OUT)))
-
-  (define XOR-fmt (list->seec (list (printf-lang (% ((3 $) ((* 1) s)))) ; add in1 to accumulator
-                                    (printf-lang (% ((3 $) ((* 2) s)))) ; add in2 to accumulator
-                                    (printf-lang (% ((0 $) (2 n))))     ; write result to OUT...
-                                                                        ; the padding on %n is ignored
-                                    (printf-lang (% ((3 $) ((* 2) s)))) ; repeat steps 1 and 2 to reset
-                                    (printf-lang (% ((3 $) ((* 1) s)))) ; the accumulator
-                                    )))
-  (define XOR-args (list->seec (list (printf-lang (LOC ,OUT))
-                                     (printf-lang (* (LOC ,IN1)))
-                                     (printf-lang (* (LOC ,IN2)))
-                                     (printf-lang ""))))
-  (cons XOR-fmt XOR-args)
-  )
-
-(define (find-COMPL-and-XOR)
-  (define-symbolic IN0 IN1 IN2 OUT integer?)
-  (assert (and (not (equal? OUT IN0))
-               (not (equal? OUT IN1))
-               (not (equal? OUT IN2))))
-
-  (define-symbolic in0 in1 in2 (bitvector (get-bv-width)))
-  (define-symbolic acc-val integer?)
-  
-  (define/contract args-sketch arglist?
-    (list->seec (list (printf-lang (LOC ,OUT))
-                      (printf-lang (* (LOC ,IN0)))
-                      (printf-lang (* (LOC ,IN1)))
-                      (printf-lang (* (LOC ,IN2)))
-                      (printf-lang "")
-                      )))
-  (define/contract config-sketch config?
-    (printf-lang (,(integer->bv acc-val)
-                  (cons (,IN0 ,in0)
-                  (cons (,IN1 ,in1)
-                  (cons (,IN2 ,in2)
-                   nil))))))
-  (define/contract context-sketch context?
-    (printf-lang (,args-sketch ,config-sketch)))
-
-  (define COMPL-fmt (fmt-sketch 5))
-  #;(define COMPL-fmt (list->seec (list (printf-lang (% ((3 $) ((* 1) s)))) ; add IN1
-                                      (printf-lang (% ((3 $) (3 d)))) ; add 3
-                                      (printf-lang (% ((0 $) (1 n)))) ; the padding on %n is ignored
-                                      (printf-lang "?w?_w")               ; add 3
-                                      (printf-lang (% ((3 $) ((* 1) s)))) ; add IN1
-                                      )))
-  (define XOR-fmt   (fmt-sketch 5))
-  #;(define XOR-fmt (list->seec (list (printf-lang (% ((3 $) ((* 2) s)))) ; add in1 to accumulator
-                                    (printf-lang (% ((3 $) ((* 3) s)))) ; add in2 to accumulator
-                                    (printf-lang (% ((0 $) (2 n))))     ; write result to OUT...
-                                                                        ; the padding on %n is ignored
-                                    (printf-lang (% ((3 $) ((* 3) s)))) ; repeat steps 1 and 2 to reset
-                                    (printf-lang (% ((3 $) ((* 2) s)))) ; the accumulator
-                                    )))
-
-
-  (define COMPL-prog (make-program COMPL-fmt args-sketch config-sketch))
-  (define XOR-prog   (make-program XOR-fmt   args-sketch config-sketch))
-
-  (define COMPL-result (interp-fmt COMPL-fmt args-sketch config-sketch))
-  (define XOR-result   (interp-fmt XOR-fmt args-sketch config-sketch))
-
-  (define sol (synthesize
-               #:forall (list OUT IN0 IN1 IN2 in0 in1 in2 acc-val)
-               #:assume (assert (wf-acc-spec (context->config context-sketch)))
-               #:guarantee
-                 (assert (and (wf-acc-spec (behavior->config COMPL-result))
-                              (wf-acc-spec (behavior->config XOR-result))
-                              (COMPL-spec IN0 OUT COMPL-prog COMPL-result)
-                              (XOR-spec IN1 IN2 OUT XOR-prog XOR-result)
-                              ))))
-  (if (unsat? sol)
-      (displayln "Failed to synthesize")
-      (begin
-        (displayln "Synthesis succeeded")
-        (printf "COMPL-fmt: ~a~n~n" (concretize COMPL-fmt sol))
-        (printf "XOR-fmt: ~a~n~n"   (concretize XOR-fmt sol))
-        ))
-  )
-#;(time (find-COMPL-and-XOR))
-; Wanted to see if it would take more or less time to synthesize both COMPL and
-; XOR together compared to synthesizing them separately.
