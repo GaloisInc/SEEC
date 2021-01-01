@@ -6,6 +6,7 @@
                   raise-arguments-error
                   make-parameter
                   ))
+(require (for-syntax syntax/parse))
 (require rosette/lib/value-browser)
 
 (require (only-in racket/base
@@ -17,6 +18,7 @@
 (provide printf-lang
          printf-spec
          fmt-string
+         %
 
          val->number
          val->loc
@@ -65,6 +67,7 @@
                      [printf-lang-context? context?]
                      )
          fmt-string-width?
+         param->offset
 
          err?
          debug?
@@ -107,18 +110,39 @@
 
 (define-grammar fmt-string
   (fmt ::= list<fmt-elt>)
-  (fmt-elt ::= string (% (parameter (width fmt-type))))
-  (parameter ::= (offset $))
+  ;(fmt-elt ::= string (% (parameter (width fmt-type))))
+  (parameter ::= #;(offset $) offset)
+  (fmt-elt ::= string (fmt-type (offset width)))
   (width ::= NONE (* offset) natural)
   (offset ::= natural)
-  (fmt-type ::= s d n)
+  (fmt-type ::= %s %d %n)
   )
+
+; Macro for constructing natural-looking format strings. Alternatively, could
+; have written a function that parses an actual string
+(define-syntax (% stx)
+  (syntax-parse stx
+    #:datum-literals (list s d n)
+    [(% o $ s) #`(fmt-string (%s (,o NONE)))]
+    [(% o $ d) #`(fmt-string (%d (,o NONE)))]
+    [(% o $ n) #`(fmt-string (%n (,o NONE)))]
+
+    [(% o $ w s) #`(fmt-string (%s (,o ,w)))]
+    [(% o $ w d) #`(fmt-string (%d (,o ,w)))]
+    ; Don't need a width argument for n
+
+    [(% o $ w * s) #`(fmt-string (%s (,o (* ,w))))]
+    [(% o $ w * d) #`(fmt-string (%d (,o (* ,w))))]
+    ; Don't need a width argument for n
+    ))
 
 (define-grammar printf-lang
   #:extends fmt-string
   (arglist ::= list<expr>)
   (expr ::= (LOC ident) (* expr) integer string)
-  (mem ::= mnil (mcons ident val mem))
+  (mem-elem ::= (ident val))
+  #;(mem ::= mnil (mcons ident val mem))
+  (mem ::= list<mem-elem>)
   (val ::= (LOC ident) integer string ERR #;(DEREF val))
   (ident ::= integer)
   (trace ::= list<constant>)
@@ -183,7 +207,8 @@
 
 (define/contract (param->offset param)
   (-> fmt-string-parameter? integer?)
-  (match param
+  param
+  #;(match param
     [(printf-lang (o:offset $)) o]
     ))
 
@@ -204,7 +229,7 @@
   (-> integer? printf-lang-mem? printf-lang-config?)
   (printf-lang (,n ,m)))
 (define (make-config-triv n)
-  (make-config n (printf-lang mnil)))
+  (make-config n (printf-lang nil)))
 (define/contract (make-behav t n m)
   (-> printf-lang-trace? integer? printf-lang-mem? printf-lang-behavior?)
   (printf-lang (,t ,(make-config n m))))
@@ -255,8 +280,8 @@
   (-> printf-lang-ident? printf-lang-mem? (or/c err? printf-lang-val?))
   (debug (thunk (printf "(lookup-loc ~a ~a)~n" l m)))
   (match m
-    [(printf-lang mnil) (printf-lang ERR)]
-    [(printf-lang (mcons l0:ident v0:val m0:mem))
+    [(printf-lang nil) (printf-lang ERR)]
+    [(printf-lang (cons (l0:ident v0:val) m0:mem))
      (if (equal? l l0)
          v0
          (lookup-loc l m0))]
@@ -315,7 +340,7 @@
 ; OUTPUT: an updated memory with the location mapping to the new value
 (define/contract (mem-update m l v)
   (-> printf-lang-mem? printf-lang-ident? printf-lang-val? printf-lang-mem?)
-  (printf-lang (mcons ,l ,v ,m)))
+  (printf-lang (cons (,l ,v) ,m)))
 
 
 
@@ -407,9 +432,9 @@
   (debug (thunk (printf "(fmt->constant ~a ~a ~a)~n" ftype param ctx)))
   (define res
       (match (cons ftype (lookup-offset (param->offset param) ctx))
-        [(cons (printf-lang d) (printf-lang n:integer))
+        [(cons (printf-lang %d) (printf-lang n:integer))
          (printf-lang ,n)]
-        [(cons (printf-lang s) (printf-lang s:string))
+        [(cons (printf-lang %s) (printf-lang s:string))
          (printf-lang ,s)]
         [_ (printf-lang ERR)]
         ))
@@ -445,7 +470,7 @@
      (print-constant conf (printf-lang ,s))]
 
     ; the width parameter doesn't make a difference for n formats
-    [(printf-lang (% (p:parameter (width n))))
+    [(printf-lang (%n (p:parameter _:width)))
      (match (lookup-offset (param->offset p) ctx)
        [(printf-lang (LOC l:ident))
         (printf-lang (nil ,(print-n-loc conf l)))
@@ -454,7 +479,7 @@
        )]
 
     ; otherwise, for the 's' and 'd' format types:
-    [(printf-lang (% (p:parameter (NONE ftype:fmt-type))))
+    [(printf-lang (ftype:fmt-type (p:parameter NONE)))
      (match (fmt->constant ftype p ctx)
        [(printf-lang c:constant)
         (print-constant conf (fmt->constant ftype p ctx))]
@@ -462,14 +487,14 @@
         (printf-lang ERR)]
        )]
 
-    [(printf-lang (% (p:parameter (w:natural ftype:fmt-type))))
+    [(printf-lang (ftype:fmt-type (p:parameter w:natural)))
      (match (fmt->constant ftype p ctx)
        [(printf-lang c:constant)
         (print-trace conf (pad-constant c w))]
        [(printf-lang ERR) (printf-lang ERR)]
        )]
 
-    [(printf-lang (% (p:parameter ((* o:offset) ftype:fmt-type))))
+    [(printf-lang (ftype:fmt-type (p:parameter (* o:offset))))
      (match (list (lookup-offset o ctx)
                   (fmt->constant ftype p ctx))
        [(list (printf-lang w:integer)
@@ -522,9 +547,9 @@
          [arg (lookup-offset offset ctx)])
     (and (< offset (seec-length (context->arglist ctx)))
          (match (cons ftype arg)
-           [(cons (printf-lang d) (printf-lang integer))       #t]
-           [(cons (printf-lang n) (printf-lang (LOC ident))) #t]
-           [(cons (printf-lang s) (printf-lang string))      #t]
+           [(cons (printf-lang %d) (printf-lang integer))       #t]
+           [(cons (printf-lang %n) (printf-lang (LOC ident))) #t]
+           [(cons (printf-lang %s) (printf-lang string))      #t]
            [_                                                #f]
            ))))
 (define (width-consistent-with-arglist w ctx)
@@ -543,7 +568,7 @@
     (match f0
       [(printf-lang string) #t]
 
-      [(printf-lang (% (p:parameter (w:width ftype:fmt-type))))
+      [(printf-lang (ftype:fmt-type (p:parameter w:width)))
        (and (parameter-consistent-with-arglist p ftype ctx)
             (width-consistent-with-arglist w ctx))]
       ))

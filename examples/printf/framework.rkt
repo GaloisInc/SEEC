@@ -1,6 +1,7 @@
 #lang seec
 (require (prefix-in safe:
-                    (file "printf-spec.rkt")))
+                    (file "printf-spec.rkt"))
+         (only-in (file "printf-spec.rkt") %))
 (require (file "printf-impl.rkt")) ; unsafe does not have a prefix for now
 (require racket/contract)
 (require seec/private/framework)
@@ -8,6 +9,8 @@
 (require rosette/lib/value-browser) ; debugging
 
 (require (only-in racket/base
+                  for/list
+                  exact-nonnegative-integer?
                   raise-argument-error
                   raise-arguments-error
                   parameterize))
@@ -76,37 +79,37 @@
 
 (define (find-add-constant-gadget c)
 
-  (define g (find-gadget safe:printf-spec
-                         ((curry safe:add-constant-spec) c)
+  (define g (find-gadget printf-impl
+                         ((curry add-constant-spec) c)
                          #:expr-bound 5
                          #:context-bound 3
                          ; NOTE: will not find gadget without this context-constraint. WHY????
-                         #:context-constraint (λ (ctx) (match (safe:context->arglist ctx)
-                                                         [(safe:printf-lang (cons s:string arglist))
-                                                          ; need to compare the
-                                                          ; string via equal?
-                                                          ; because pattern
-                                                          ; matching against
-                                                          ; string literals does
-                                                          ; not work currently
-                                                          (equal? s (string ""))]
+                         #:context-constraint (λ (ctx) (match (context->arglist ctx)
+                                                         [(printf-lang (cons "" arglist)) #t]
                                                          [_ #f]))
                          ))
   (display-gadget g displayln)
   )
-#;(find-add-constant-gadget 100)
+#;(find-add-constant-gadget -1)
+; -1 == 16383
 
 (define (find-add-argument-gadget)
 
   (printf "Attempting to synthesize an add-argument gadget~n~n")
 
   (define/contract f-concrete safe:fmt?
-    (printf-lang (cons (% ((1 $) ((* 0) s))) nil)))
+    (seec-singleton (% 1 $ 0 * s))
+    #;(printf-lang (cons (% ((1 $) ((* 0) s))) nil)))
   (define/contract f-bad safe:fmt?
-    (printf-lang (cons (% ((0 $) (1 d)))
+    (list->seec (list (% 0 $ 1 d)
+                      (% 0 $ 0 * d)))
+    #;(printf-lang (cons (% ((0 $) (1 d)))
                  (cons (% ((0 $) ((* 0) d))) nil))))
   (define/contract f-bad-2 safe:fmt?
-    (printf-lang (cons (% ((1 $) (16383 d)))
+    (list->seec (list (% 1 $ 15383 d)
+                      (% 0 $ d)
+                      ))
+    #;(printf-lang (cons (% ((1 $) (16383 d)))
                  (cons (% ((0 $) (NONE d))) nil))))
 
   (define/contract (args-concrete y-val) (-> integer? arglist?)
@@ -197,7 +200,8 @@
 (define (find-load-gadget)
 
   (define/contract f-concrete safe:fmt?
-    (printf-lang (cons (% ((0 $) ((* 1) s))) nil)))
+    (seec-singleton (% 0 $ 1 * s))
+    #;(printf-lang (cons (% ((0 $) ((* 1) s))) nil)))
   (define args+ (printf-lang arglist 2))
   (define/contract (args-concrete l) (-> ident? arglist?)
     (printf-lang (cons "" (cons (* (LOC ,l)) nil #;,args+))))
@@ -257,7 +261,11 @@
 (define (find-add-mem-gadget)
 
   (define/contract f-concrete safe:fmt?
-    (printf-lang (cons (% ((3 $) ((* 0) s))) ; first  add value1 to the accumulator
+    (list->seec (list (% 3 $ 0 * s) ; first  add value1 to the accumulator
+                      (% 3 $ 1 * s) ; second add value2 to the accumulator
+                      (% 2 $ n)     ; then write the result to the target location
+                      ))
+    #;(printf-lang (cons (% ((3 $) ((* 0) s))) ; first  add value1 to the accumulator
                  (cons (% ((3 $) ((* 1) s))) ; second add value2 to the accumulator
                  (cons (% ((2 $) (NONE n)))  ; then write the result to the target location
                        nil)))))
@@ -353,3 +361,237 @@
     (display-gadget sol displayln)
   )
 #;(time (find-add-mem-gadget))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Weird machine primitives ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (find-add-a-c)
+  ; Increment by a constant
+  ;
+  ; Increment the accumulator by a constant value N
+  ;
+  ; result of (find-add-constant-gadget N) while quantifying over N
+
+  #;(define/contract f-concrete
+    safe:fmt?
+    (seec-singleton (% 1 $ 0 * s)))
+  (define f-result
+    (list->seec (list (% 1 $ 0 * s)
+                      (% 1 $ 7424 s)
+                      )))
+
+  (define-symbolic N integer?)
+
+  (define-symbolic acc-val integer?) ; initial accumulator
+  (define/contract ctx-sketch
+    context?
+    (printf-lang ((cons ,(integer->bv N) (cons "" nil)) ; arglist
+                  (,(integer->bv acc-val) nil))))       ; config
+
+  (define g (find-gadget printf-impl
+                         ((curry add-constant-spec) N)
+                         #:expr-bound 6
+                         #:context ctx-sketch
+                         #:forall (list N acc-val)
+                         ))
+  (display-gadget g displayln)
+  )
+#;(find-add-a-c)
+;
+; Result:
+;
+; Expression ((% ((1 $) ((* 0) s))))
+; is a gadget for the provided specification, as witnessed by behavior (((bv #x00 8) ((0 ""))))
+; in context (((bv #x00 8) ((0 ""))))
+
+; Return a pair of a format string and an argument list
+(define (add-c N)
+  (define add-c-fmt (seec-singleton (% 1 $ 0 * s))
+    #;(printf-lang (cons (% ((1 $) ((* 0) s)))
+                                 nil)))
+
+  (define add-c-args (printf-lang (cons ,(integer->bv N) (cons "" nil))))
+
+  (cons add-c-fmt add-c-args)
+  )
+
+
+
+(define/contract (lookup-in-mem-spec l x p res)
+  (-> ident? integer? printf-program? behavior? boolean?)
+  (let* ([m (conf->mem (behavior->config res))])
+    (match (lookup-loc l m)
+      [(printf-lang v:bitvector) (equal? v (integer->bv x))]
+      [_ #f])))
+
+(define (find-store-a)
+  ; Indirect write
+  ;
+  ; Write the current accumulator to the location in memory pointed to by p, a
+  ; stack-allocated pointer
+
+
+  (define concrete-fmt (seec-singleton (% 0 $ n))
+    #;(printf-lang (cons (% ((0 $) (NONE n)))
+                                     nil)))
+
+  (define-symbolic ptr integer?)
+  (define-symbolic acc-val integer?)
+
+  (define/contract ctx-sketch
+    context?
+    (printf-lang ((cons (LOC ,ptr) nil)            ; arglist
+                  (,(integer->bv acc-val) nil))))  ; config
+
+  (define g (find-gadget printf-impl
+                         ((curry lookup-in-mem-spec) ptr acc-val)
+                         #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
+                                                                      (program->context p)))
+                         #:expr-bound 6
+                         #:context ctx-sketch
+                         #:fresh-witness #f
+                         #:forall (list ptr acc-val)))
+  (display-gadget g displayln)
+  )
+#;(find-store-a)
+;
+; Result:
+; Expression ("" ((% ((0 $) (NONE n)))))
+; is a gadget for the provided specification, as witnessed by behavior (("") ((bv #x00 8) ((0 (bv #x00 8)))))
+; in context (((LOC 0)) ((bv #x00 8)))
+
+; Return a pair of a format string and an argument list
+(define (store-a ptr)
+  (define store-a-fmt 
+    (list->seec (list (string "")
+                      (% 0 $ n)))
+    #;(printf-lang (cons ""
+                   (cons (% ((0 $) (NONE n)))
+                   nil))))
+
+  (define store-a-args (printf-lang (cons (LOC ,ptr) nil)))
+
+  (cons store-a-fmt store-a-args)
+  )
+
+(define (find-add-a-len)
+  ; Indirect length read
+  ;
+  ; Add the length of a string to the accumulator
+
+  (define/contract concrete-fmt
+    safe:fmt?
+    (seec-singleton (% 0 $ s))
+    #;(printf-lang (cons (% ((0 $) (NONE s))) nil)))
+
+  (define-symbolic str-len integer?)
+  (assert (<= 0 str-len (max-str-len)))
+  (define str (printf-lang string (max-str-len)))
+  (assert (equal? (string-length str) str-len))
+
+  (define-symbolic acc-val integer?)
+
+  (define/contract ctx-sketch
+    context?
+    (printf-lang ((cons ,str nil)                  ; arglist
+                  (,(integer->bv acc-val) nil))))  ; config
+
+  (define g (find-gadget printf-impl
+                         (λ (p res) (add-constant-spec str-len p res))
+                         #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
+                                                                      (program->context p)))
+                         #:expr-bound 6
+                         #:context ctx-sketch
+                         #:forall (list str-len str acc-val)
+                         ))
+  (display-gadget g displayln)
+  )
+#;(find-add-a-len)
+;
+; Result:
+; Expression ("" ((% ((0 $) (NONE s)))))
+; is a gadget for the provided specification, as witnessed by behavior (("" ("   ")) ((bv #x03 8)))
+; in context (("   " ((bv #x00 8) ("@"))) ((bv #x00 8)))
+
+; Return a pair of a format string and an argument list
+(define/contract (add-a-len s)
+  (-> string? (cons/c safe:fmt? arglist?))
+  (define store-a-fmt 
+    (list->seec (string "")
+                (% 0 $ s))
+    #;(printf-lang (cons ""
+                   (cons (% ((0 $) (NONE s)))
+                   nil))))
+
+  (define store-a-args (printf-lang (cons ,s nil)))
+
+  (cons store-a-fmt store-a-args)
+  )
+
+
+(define (find-add-a)
+  ; Direct read
+  ;
+  ; Add a value to the accumulator
+
+  (define/contract concrete-fmt
+    safe:fmt?
+    (seec-singleton (% 1 $ 0 * s))
+    #;(printf-lang (cons (% ((1 $) ((* 0) s))) nil)))
+
+  (define-symbolic x-val integer?)
+  (define-symbolic acc-val integer?)
+
+  (define/contract ctx-sketch
+    context?
+    (printf-lang ((cons ,(integer->bv x-val) (cons "" nil)) ; arglist
+                  (,(integer->bv acc-val) nil))))  ; config
+
+  (define g (find-gadget printf-impl
+                         (λ (p res) (add-constant-spec x-val p res))
+                         #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
+                                                                      (program->context p)))
+                         #:expr-bound 6
+                         #:context ctx-sketch
+                         #:forall (list x-val acc-val)
+                         ))
+  (display-gadget g displayln)
+  )
+#;(find-add-a)
+;
+; Result:
+; Expression ((% ((1 $) ((* 0) s))))
+; is a gadget for the provided specification, as witnessed by behavior (("@@") ((bv #x02 8) ((17762 " "))))
+; in context (((bv #x00 8) ("@@" (" "))) ((bv #x00 8) ((17762 " "))))
+
+; Return a pair of a format string and an argument list
+(define/contract (add-a x)
+
+  ; Note: to make add-a more abstract, we could require that it provide both a
+  ; concrete offset of the empty string, AND the concrete offset of x on the
+  ; stack
+  ;
+  ; Or we could synthesize all these gadgets with respect to a global argument
+  ; list/stack layout... e.g. given a particular stack layout, what format
+  ; strings will we need for each call?
+
+  (-> integer? (cons/c safe:fmt? arglist?))
+
+  (define store-a-fmt
+    (list->seec (list (% 1 $ 0 * s)
+                      (string "")))
+    #;(printf-lang (cons (% ((1 $) ((* 0) s)))
+                   (cons ""
+                   nil))))
+
+  (define store-a-args (printf-lang (cons ,(integer->bv x) nil)))
+
+  (cons store-a-fmt store-a-args)
+  )
+
+
+
+
+
+

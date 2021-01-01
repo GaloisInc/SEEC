@@ -373,10 +373,6 @@
 
 
 
-
-
-
-
 (define/contract find-weird-behavior
   (->* (compiler?)
        (#:source-expr-bound (or/c #f integer?)
@@ -546,7 +542,7 @@
                                                        c2-witness
                                                        p2-witness
                                                        b2-witness))))
-                           exprs)]))))))))           
+                           exprs)]))))))))
           
 
 
@@ -723,15 +719,18 @@
 (define (display-weird-component vars out)
   (cond
     [(equal? vars #f) (out (format "No weird behavior found~n"))]
+    [(equal? vars (list )) (out "")]
     [else
-     (let* ([source-vars (first vars)]
-            [target-vars (second vars)])
+     (let* ([cmp1 (first vars)]
+            [source-vars (first cmp1)]
+            [target-vars (second cmp1)])
        (out (format
-             "Expression ~a~n has emergent behavior ~a~n witnessed by target-level context ~a~n"
+             "Expression ~a~n has emergent behavior ~a~n witnessed by target-level context ~a~n~n"
              (language-witness-expression source-vars)
              (language-witness-behavior target-vars)
-             (language-witness-context target-vars))))
-       ]))
+             (language-witness-context target-vars)))
+       (display-weird-component (rest vars) out)
+       )]))
 
 ; alias (display-weird-component)
 (define (display-weird-behavior vars out)

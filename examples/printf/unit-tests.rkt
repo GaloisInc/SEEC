@@ -1,6 +1,8 @@
 #lang seec
 (require (prefix-in safe:
-                    (file "printf-spec.rkt")))
+                    (file "printf-spec.rkt"))
+         (only-in   (file "printf-spec.rkt") %)
+         )
 (require (prefix-in unsafe:
                     (file "printf-impl.rkt")))
 (require (file "printf-compiler.rkt"))
@@ -25,14 +27,14 @@
 
 (set-bitwidth 64 32)
 
-(define fmt-d-1 (seec-singleton (safe:printf-lang (% ((0 $) (NONE d))))))
-(define fmt-s-1 (seec-singleton (safe:printf-lang (% ((0 $) (NONE s))))))
-(define fmt-n-1 (seec-singleton (safe:printf-lang (% ((0 $) (NONE n))))))
+(define fmt-d-1 (seec-singleton (% 0 $ d)))
+(define fmt-s-1 (seec-singleton (% 0 $ s)))
+(define fmt-n-1 (seec-singleton (% 0 $ n)))
 (define fmt-d-n (seec-cons      (safe:printf-lang "foo ")
-                (seec-cons      (safe:printf-lang (% ((0 $) (NONE d))))
-                (seec-singleton (safe:printf-lang (% ((1 $) (NONE n))))))))
+                (seec-cons      (% 0 $ d)
+                (seec-singleton (% 1 $ n)))))
 (define bv-neg-1 (bitvector->natural (integer->bv -1)))
-(define fmt-decrement (seec-singleton (unsafe:printf-lang (% ((0 $) (,bv-neg-1 s))))))
+(define fmt-decrement (seec-singleton (% 0 $ bv-neg-1 s)))
 
 (define arglist-0   (safe:printf-lang nil))
 (define arglist-d-1 (seec-singleton (safe:printf-lang 32 #;(bv 32))))
@@ -72,7 +74,7 @@
                                  (safe:make-config-triv 0))
                 (safe:make-behav (mk-trace (list))
                           0
-                          (safe:printf-lang (mcons 0 0 #;(bv 0) mnil)))))
+                          (safe:printf-lang (cons (0 0) nil)))))
 
  (test-case "%0$d"
   ; printf("%0$d") ==> ERR
@@ -90,19 +92,19 @@
                   (safe:make-behav (mk-trace (list (string "foo ")
                                             32))
                             6
-                            (safe:printf-lang (mcons 0 6 #;(bv 6) mnil))))
+                            (safe:printf-lang (cons (0 6) nil))))
     )
   )
 
   (test-case "add argument from memory"
     (define/contract l safe:ident?
       (safe:printf-lang 1))
-    (define fmt  (seec-singleton (safe:printf-lang (% ((0 $) ((* 0) d))))))
+    (define fmt  (seec-singleton (% 0 $ 0 * d)))
     (define args (list->seec (list (safe:printf-lang (* (LOC ,l)))
                                         (safe:printf-lang ""))))
     (define/contract m
       safe:mem?
-      (safe:printf-lang (mcons ,l 3 #;(bv 3) mnil))
+      (safe:printf-lang (cons (,l 3) nil))
       )
     (define behav (safe:interp-fmt fmt
                                    args
