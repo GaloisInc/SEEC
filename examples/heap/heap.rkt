@@ -249,6 +249,7 @@
 
 
 ; apply a single action on a state
+; heap-model.action -> heap-model.state -> heap-model.state
 (define (interpret-action a s)
   (match s
     [(heap-model (b:buf h:heap f:pointer))
@@ -328,7 +329,7 @@
       [(heap-model nil)
        (displayln "")]
       [(heap-model (cons h:value b+:buf))
-       (displayln (format "~a > ~a" addr (print-value h)))
+       (displayln (format "~a > ~a" (~a addr #:width 2) (print-value h)))
        (display-buf+ b+ (+ addr 1))]))
   (display-buf+ b 0))
 
@@ -339,7 +340,7 @@
       [(heap-model nil)
        (displayln "")]
       [(heap-model (cons h1:value (cons h2:value (cons h3:value (cons h4:value h+:heap)))))
-       (displayln (format "~a > | ~a | ~a | ~a | ~a |" addr (print-value h1) (print-value h2) (print-value h3) (print-value h4)))
+       (displayln (format "~a > | ~a | ~a | ~a | ~a |" (~a addr #:width 2) (~a (print-value h1) #:width 4) (~a (print-value h2) #:width 4) (~a (print-value h3) #:width 4) (~a (print-value h4) #:width 4)))
        (display-heap+ h+ (+ addr 4))]))
   (display-heap+ h 0))
 
@@ -354,6 +355,9 @@
        (displayln "FP HEAD:")
        (displayln (print-pointer f)))]))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; TESTING heap-model
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define d (init-state 4 2))
 (define aa0 (heap-model (alloc 0 1)))
