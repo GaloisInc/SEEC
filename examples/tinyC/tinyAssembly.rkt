@@ -68,7 +68,7 @@
 
   ; A memory object is either an integer or a statement tagged with it's
   ; containing procedure 'm'
-  (object       ::= i (proc-name statement))
+  (object       ::= val (proc-name statement))
   ; The program counter 'pc' and stack pointer 'sp' are natural numbers
   (program-counter ::= loc)
   (stack-pointer   ::= loc)
