@@ -17,7 +17,7 @@
   (offset ::= integer)
   (nnvalue ::= integer)
   (value ::= nnvalue pointer)
-;  (writevalue ::= (start natural) (end natural)) ; TODO: limit the offset of writes to start or end of blocks
+  ;  (writevalue ::= (start natural) (end natural)) ; NOTE: could limit the offset of writes to start or end of blocks
   (buf-loc ::= natural)
   (buf ::= list<value>)
   (heap-loc ::= pointer)
@@ -123,7 +123,9 @@
       (heap-model nil)
       (heap-model (cons ,v ,(repeat v (- i 1))))))
 
-; return a string concatenating
+; returns a string concatenating
+; f applied to each of the elements
+; of vs
 (define (print-list f vs)
   (match vs
     [(heap-model nil)
@@ -134,10 +136,7 @@
 
 
 ;; Heap, Buff and State operations
-
-
 ; write value at the ith position of cell
-; TODO: confirm this is same as replace on list?
 (define/contract (write hp i v)
   (-> any/c natural-number/c any/c any/c)
   (if (equal? i 0)
@@ -168,7 +167,7 @@
     [(heap-model n:natural)
      (+ (* n 4) 2)]))
 
-; Function to calculate the address of a heap-loc in the heap
+; calculate the address of a heap-loc in the heap
 (define (heap-loc-addr hl)
   (match hl
     [(heap-model n:natural)
@@ -329,7 +328,9 @@
       [(heap-model nil)
        (displayln "")]
       [(heap-model (cons h:value b+:buf))
-       (displayln (format "~a > ~a" (~a addr #:width 2) (print-value h)))
+       (displayln (format "~a > ~a"
+                          (~a addr #:width 2)
+                          (print-value h)))
        (display-buf+ b+ (+ addr 1))]))
   (display-buf+ b 0))
 
@@ -340,7 +341,12 @@
       [(heap-model nil)
        (displayln "")]
       [(heap-model (cons h1:value (cons h2:value (cons h3:value (cons h4:value h+:heap)))))
-       (displayln (format "~a > | ~a | ~a | ~a | ~a |" (~a addr #:width 2) (~a (print-value h1) #:width 4) (~a (print-value h2) #:width 4) (~a (print-value h3) #:width 4) (~a (print-value h4) #:width 4)))
+       (displayln (format "~a > | ~a | ~a | ~a | ~a |"
+                          (~a addr #:width 2)
+                          (~a (print-value h1) #:width 4)
+                          (~a (print-value h2) #:width 4)
+                          (~a (print-value h3) #:width 4)
+                          (~a (print-value h4) #:width 4)))
        (display-heap+ h+ (+ addr 4))]))
   (display-heap+ h 0))
 
