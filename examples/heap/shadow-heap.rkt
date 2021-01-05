@@ -28,7 +28,7 @@
 (define empty-payload
   (heap-model (cons 0 (cons 0 nil))))
 
-; TODO: maybe limit free to offset 0?
+; NOTE: could limit free to offset 0
 (define (no-freelist-free h hl)
   (match hl
     [(no-freelist (p:natural o:natural))
@@ -132,7 +132,9 @@
       [(no-freelist nil)
        (displayln "")]
       [(no-freelist (cons h:value b+:buf))
-       (displayln (format "~a > ~a" addr (print-nf-value h)))
+       (displayln (format "~a > ~a"
+                          (~a addr #:width 2)
+                          (print-nf-value h)))
        (display-nf-buf+ b+ (+ addr 1))]))
   (display-nf-buf+ b 0))
 
@@ -142,7 +144,9 @@
       [(no-freelist nil)
        (displayln "")]
       [(no-freelist (cons p:payload h+:heap))
-       (displayln (format "~a > ~a" addr (print-nf-payload p)))
+       (displayln (format "~a > ~a"
+                          (~a addr #:width 2)
+                          (print-nf-payload p)))
        (display-nf-heap+ h+ (+ addr 1))]))
   (display-nf-heap+ h 0))
 
