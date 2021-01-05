@@ -15,7 +15,7 @@
 ;; This shadow model does away with the freelist,
 ;; instead representing the heap as an infinitely growing list of payload
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define-grammar no-freelist
+(define-grammar no-freelist #| TODO: try this #:extends heap-model |#
   (pointer ::= (natural natural) null)
   (nnvalue ::= integer)
   (value ::= nnvalue pointer)
@@ -132,7 +132,7 @@
       [(no-freelist nil)
        (displayln "")]
       [(no-freelist (cons h:value b+:buf))
-       (displayln (format "~a > ~a" addr (print-nf-value h)))
+       (displayln (format "~a > ~a" (~a addr #:width 2) (print-nf-value h)))
        (display-nf-buf+ b+ (+ addr 1))]))
   (display-nf-buf+ b 0))
 
@@ -142,7 +142,7 @@
       [(no-freelist nil)
        (displayln "")]
       [(no-freelist (cons p:payload h+:heap))
-       (displayln (format "~a > ~a" addr (print-nf-payload p)))
+       (displayln (format "~a > ~a" (~a addr #:width 2) (print-nf-payload p)))
        (display-nf-heap+ h+ (+ addr 1))]))
   (display-nf-heap+ h 0))
 
