@@ -413,7 +413,8 @@
             [eq (lambda (r l) (equal?
                                (dec r)
                                (dec l)))])
-        (and (eq (succ-s (pred-s x)) (pred-s (succ-s x)))
+        (and (eq (succ-s (pred-s x)) x)
+             (eq (pred-s (succ-s x)) x)
              (not (eq x (pred-s x)))
              (not (eq x (succ-s x)))))))
 

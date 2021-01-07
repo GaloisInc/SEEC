@@ -122,3 +122,5 @@
 #;(run-tests printf-unit-tests-safe-correct)
 #;(run-tests printf-unit-tests-unsafe-correct)
 #;(run-tests printf-unit-tests-safe-unsafe-consistent)
+
+; Best practice: put tests in test modules
