@@ -23,13 +23,11 @@
 (provide char?
          char
          digit->char
-         new-symbolic-char
          new-symbolic-char*
 
          string?
          string
          symbolic-string?
-         new-symbolic-string
          new-symbolic-string*
          string-length
          number->string
@@ -155,12 +153,6 @@
 ; if the input is a concrete string, apply mk-string
 (define (string s) (mk-string s))
 
-
-(define (new-symbolic-char)
-  (begin
-    (define-symbolic c integer?)
-    (assert (char? (seec-char c)))
-    (seec-char c)))
 (define (new-symbolic-char*)
   (begin
     (define-symbolic* c integer?)
@@ -170,13 +162,6 @@
 
 ; create a symbolic string of length len
 ; len must not be symbolic or termination could occur
-(define (new-symbolic-string len)
-  (letrec ([make-string (lambda (n)
-                          (if (<= n 0)
-                              '()
-                              (cons (new-symbolic-char*) (make-string (- n 1)))))]
-           )
-    (seec-string (make-string len))))
 (define (new-symbolic-string* len)
   (letrec ([c (new-symbolic-char*)]
            [make-string (lambda (n)
@@ -289,9 +274,9 @@
   (define hello (string "hello"))
   (printf "hello: ~a~n" hello)
 
-  (define c-symbolic (new-symbolic-char))
+  (define c-symbolic (new-symbolic-char*))
   (printf "symbolic: ~a~n" c-symbolic)
-  (define s-symbolic (new-symbolic-string 3))
+  (define s-symbolic (new-symbolic-string* 3))
   (printf "symbolic: ~a~n" s-symbolic)
 
 
