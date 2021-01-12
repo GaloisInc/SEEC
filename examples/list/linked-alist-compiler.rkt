@@ -69,3 +69,45 @@
   #:behavior-relation equal?
   #:context-relation alist-ll-ci-equal?-minus-attack
   #:compile alist->ll)
+
+
+; Test for termination of nil-state actions on symbolic states
+(define (test-nil-state)
+  (define x0 (alist-api key 1))
+  (define x1 (alist-api key 1))
+  (define x2 (alist-api key 1))
+  (define x3 (alist-api key 1))
+  (define x4 (alist-api key 1))
+  (define v0 (alist-api value 1))
+  (define v1 (alist-api value 1))
+  (define v2 (alist-api value 1))
+  (define v3 (alist-api value 1))
+  (define v4 (alist-api value 1))
+
+
+  #;(define lst (alist-api (0 100 (1 101 (2 102 (3 103 (4 104 empty)))))))
+  #;(define lst (alist-api (,x0 ,v0 (,x1 ,v1 (,x2 ,v2 (,x3 ,v3 (,x4 ,v4 empty)))))))
+  (define lst (alist-api alist 6))
+  (define s (alist->ll lst))
+  #;(display-state s)
+
+
+  (define-symbolic new-fp integer?)
+  #;(define new-fp (linked-list pointer 1))
+  (define a (linked-list (change-free-pointer ,new-fp)))
+  (define new-s (interpret-attack-ll a s))
+
+
+  #;(define after (nil-state new-s))
+  #;(define ints (linked-list (mnil empty)))
+  #;(define ints (linked-list interaction 3))
+  #;(define ints (linked-list ((mcons 3) (mnil empty))))
+  #;(define after (interpret-interaction-ll ints new-s))
+
+  (define s+ (cons-state 3 new-s))
+  #;(render-value/window s+)
+  (define s++ (nil-state s+))
+  (printf "result: ~a~n" s++)
+  )
+#;(test-nil-state)
+

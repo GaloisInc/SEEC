@@ -144,21 +144,17 @@
     [(<= fuel 0) (raise-arguments-error 'append-ll-inner
                                         "ran out of fuel")]
     [else
-;     (begin (for/all ([hp hp]) ; this for/all helps with efficiency
-            (let ([hd1 (nth-heap n1 hp)]) ; this for/all ensures we can iterate over
-                                              ; concrete cells in the heap
-              (match hd1
-                [(linked-list (v:value null))
-                 (let ([newhd1 (linked-list (,v ,ptr2))])
-                   (first (overwrite-heap n1 newhd1 hp)))]
-                [(linked-list (_:value n:natural))
-                 (append-ll-inner (- fuel 1) n ptr2 hp)]))]
-     ))
+     (let ([hd1 (nth-heap n1 hp)])
+       (match hd1
+         [(linked-list (v:value null))
+          (let ([newhd1 (linked-list (,v ,ptr2))])
+            (first (overwrite-heap n1 newhd1 hp)))]
+         [(linked-list (_:value n:natural))
+          (append-ll-inner (- fuel 1) n ptr2 hp)]))]
+    ))
 (define (append-ll n1 ptr2 hp)
-  (printf "==append-ll==~n")
-;  (for/all ([hp hp])
-;    (printf "- on heap size: ~a~n" (heap-length hp))
     (append-ll-inner (rec-bound) n1 ptr2 hp))
+
 
 ; push v on top of heap (at the end of the list)
 (define (snoc-heap c h)
@@ -170,7 +166,7 @@
      (linked-list (,hd-c ,(snoc-heap c tl-hp)))]))
 
 (define (nil-state s)
-  (printf "(nil-state)~n")
+  #;(printf "(nil-state)~n")
   (for/all ([s s])
   (match s
     [(linked-list (hd:pointer fp:pointer hp:heap))
@@ -183,7 +179,7 @@
 
 ; Add a cell with (v, hd) in front of the hd-list represented in hp
 (define (cons-state v s)
-  (printf "(cons-state)~n")
+  #;(printf "(cons-state)~n")
   (for/all ([s s])
   (match s
     [(linked-list (hd:pointer fp:pointer hp:heap))
@@ -229,7 +225,7 @@
        (nth-ll-inner n hd hp)])]))
 
 (define (interpret-interaction-ll ints s)
-  (printf "(interpret-interaction-ll ~a)~n" ints)
+  #;(printf "(interpret-interaction-ll ~a)~n" ints)
   #;(display-state s)
   (for/all ([ints ints])
   (match ints
@@ -247,7 +243,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (empty?-ll s)
-  (printf "(empty?-ll)~n")
+  #;(printf "(empty?-ll)~n")
   (for/all ([s s])
   (match s 
     [(linked-list (null _:pointer _:heap))
@@ -277,13 +273,13 @@
   (for/all ([s s]) ; Because we are doing case analysis on the state here (and
                    ; further analysis in lookup-ll-inner), for/all improves
                    ; performance here
-  (printf "(lookup-ll)~n")
+  #;(printf "(lookup-ll)~n")
   (match s
     [(linked-list (hd:pointer _:pointer hp:heap))
      (lookup-ll-inner (rec-bound) k hd hp)])))
 
 (define (interpret-observation-ll obs s)
-  (printf "(interpret-observation-ll ~a)~n" obs)
+  #;(printf "(interpret-observation-ll ~a)~n" obs)
   #;(display-state s)
   (match obs
     [(linked-list empty?)

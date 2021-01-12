@@ -260,13 +260,13 @@
   nat-val)
 
 (define (new-char!)
-  (define char-val (new-symbolic-char))
+  (define char-val (new-symbolic-char*))
   char-val)
 
 (define (new-string! max-length)
   (assert (>= max-length 0))
   (if (havoc!)
-      (new-symbolic-string max-length)
+      (new-symbolic-string* max-length)
       (new-string! (- max-length 1))))
 
 ; Define abstract terminal values
