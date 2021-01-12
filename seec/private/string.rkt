@@ -34,6 +34,7 @@
          char->string
          string-append
          string->char-list
+         char-list->string
          char->ascii
 
          max-str-len
@@ -132,26 +133,24 @@
 ; (define-symbolic c char?)
 ; or construct a concrete character from a racket char using 
 ; (define c (mk-char c0))
-(define/contract (mk-char c)
+(define/contract (char c)
   (-> racket/char? char?)
   (seec-char (racket/char->integer c)))
-(define/contract (mk-string s)
+
+(define (char->string c)
+  (-> char? string?)
+  (seec-string (list c)))
+
+; construct either a concrete OR symbolic string
+; if the input is already a rosette string, do nothing
+; if the input is a concrete string, apply mk-string
+(define/contract (string s)
   (-> (or/c string? racket/string?) string?)
   (cond
     [(string? s) s]
     [(racket/string? s) (seec-string (map char (racket/string->list s)))]
     ))
 
-(define (char->string c)
-  (-> char? string?)
-  (seec-string (list c)))
-
-(define (char c) (mk-char c))
-
-; construct either a concrete OR symbolic string
-; if the input is already a rosette string, do nothing
-; if the input is a concrete string, apply mk-string
-(define (string s) (mk-string s))
 
 (define (new-symbolic-char*)
   (begin
@@ -162,7 +161,7 @@
 
 ; create a symbolic string of length len
 ; len must not be symbolic or termination could occur
-(define (new-symbolic-string* len)
+#;(define (new-symbolic-string* len)
   (letrec ([c (new-symbolic-char*)]
            [make-string (lambda (n)
                           (if (<= n 0)
@@ -170,7 +169,12 @@
                               (cons c (make-string (- n 1)))))]
            )
     (seec-string (make-string len))))
-
+(define (new-symbolic-string* len)
+  (define (make-string n)
+    (if (<= n 0)
+        '()
+        (cons (new-symbolic-char*) (make-string (- n 1)))))
+  (seec-string (make-string len)))
 
 ;; functions on strings ;;
 (define/contract (string-length s)
@@ -189,6 +193,9 @@
 (define/contract (string->char-list s)
   (-> string? (listof char?))
   (seec-string-value s))
+(define (char-list->string l)
+  #;(-> (listof char?) string?)
+  (seec-string l))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Convert nat to string ;;

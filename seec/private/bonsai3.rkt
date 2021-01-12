@@ -116,6 +116,7 @@
   #:transparent
   #:methods gen:custom-write
   [(define write-proc bonsai-write)])
+(define *null* (bonsai-null))
 (struct bonsai-list (nodes)
   #:transparent
   #:methods gen:custom-write
@@ -263,11 +264,26 @@
   (define char-val (new-symbolic-char*))
   char-val)
 
+
 (define (new-string! max-length)
   (assert (>= max-length 0))
-  (if (havoc!)
+
+  ; First produce the naked list of seec-char?
+  (define/contract (new-string+ len)
+    (-> integer? list?)
+    (cond
+      [(= len 0) (list )]
+      [(havoc!)  (list )]
+      [else      (let ([c  (new-char!)])
+                   (cons c (new-string+ (- len 1)))
+                   )]
+      ))
+  (char-list->string (new-string+ max-length))
+  #;(if (havoc!)
       (new-symbolic-string* max-length)
-      (new-string! (- max-length 1))))
+      (new-string! (- max-length 1)))
+  )
+
 
 ; Define abstract terminal values
 (define (new-term!)
@@ -283,17 +299,20 @@
 ; Make a bonsai tree of given depth and width. Both depth and width should be
 ; concrete positive integers
 (define (make-tree! depth width)
+  (assert (> depth 0))
   (cond
-    [(<= depth 0) (bonsai-null)]
+    #;[(<= depth 0) *null*]
     [(havoc!) (bonsai-list (make-list width (λ () (make-tree! (- depth 1) width))))]
     [(havoc!) (new-term!)]
-    [(havoc!) (new-integer!)]
-    [(havoc!) (new-natural!)]
+    [(havoc!) (let ([x (new-integer!)])
+                  (cond [(havoc!)
+                         (assert (>= x 0))]) ; either a natural number, or not
+                  x)]
     [(havoc!) (new-boolean!)]
     [(havoc!) (new-bv!)]
     [(havoc!) (new-char!)]
     [(havoc!) (new-string! depth)]
-    [else     (bonsai-null)]
+    [else     *null*]
     ))
 
 
@@ -387,7 +406,7 @@
   #;(-> bonsai? seec-list? seec-list?)
   (bonsai-list (list x xs))) ; This is `list` here, not a cons, because
                              ; seec-lists are made up of cons cells
-(define seec-empty (bonsai-null))
+(define seec-empty *null*)
 (define (seec-singleton x)
   #;(-> bonsai? seec-list?)
   (seec-cons x seec-empty))
