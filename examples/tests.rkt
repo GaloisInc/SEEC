@@ -59,20 +59,20 @@
 
 (define find-weird-component-tests
   (test-suite "find-weird-component"
-               (test-case "testing query"
+               #;(test-case "testing query"
                    (apply check-pred simp+nat:test-wc-nat-to-integer))
                (test-case "testing arguments to query"
-                 (apply check-pred simp+nat:test-wc-arg-count-nat-to-integer)
+                 #;(apply check-pred simp+nat:test-wc-arg-count-nat-to-integer)
                  (apply check-pred simp+nat:test-wc-arg-source-exp-bound-nat-to-integer) ; NOTE: with bound=6, this test takes 30 min, with bound=5, takes only 12 s
-                 (apply check-pred simp+nat:test-wc-arg-source-exp-where-nat-to-integer)
-                 (apply check-pred simp+nat:test-wc-arg-source-context-bound-nat-to-integer)
-                 (apply check-pred simp+nat:test-wc-arg-source-context-where-nat-to-integer)
-                 (apply check-pred simp+nat:test-wc-arg-target-context-bound-nat-to-integer)
-                 (apply check-pred simp+nat:test-wc-arg-target-context-where-nat-to-integer)
-                 (apply check-pred simp+nat:test-wc-arg-target-context-where-fail-nat-to-integer) ; NOTE: This test runs for a long time (162 min). All others in this category are fine.
-                 (apply check-pred simp+nat:test-wc-arg-source-behavior-where-nat-to-integer)
-                 (apply check-pred simp+nat:test-wc-arg-target-behavior-where-nat-to-integer)
-                 (apply check-pred simp+nat:test-wc-all-args-nat-to-integer))))
+                 #;(apply check-pred simp+nat:test-wc-arg-source-exp-where-nat-to-integer)
+                 #;(apply check-pred simp+nat:test-wc-arg-source-context-bound-nat-to-integer)
+                 #;(apply check-pred simp+nat:test-wc-arg-source-context-where-nat-to-integer)
+                 #;(apply check-pred simp+nat:test-wc-arg-target-context-bound-nat-to-integer)
+                 #;(apply check-pred simp+nat:test-wc-arg-target-context-where-nat-to-integer)
+                 #;(apply check-pred simp+nat:test-wc-arg-target-context-where-fail-nat-to-integer) ; NOTE: This test runs for a long time (162 min). All others in this category are fine.
+                 #;(apply check-pred simp+nat:test-wc-arg-source-behavior-where-nat-to-integer)
+                 #;(apply check-pred simp+nat:test-wc-arg-target-behavior-where-nat-to-integer)
+                 #;(apply check-pred simp+nat:test-wc-all-args-nat-to-integer))))
 
 ; n-to-z
 
@@ -118,7 +118,7 @@
 ; Best practice: put tests in test modules
 
 #;(time (run-tests find-changed-component-tests))
-#;(time (run-tests find-weird-component-tests))
+(time (run-tests find-weird-component-tests))
 #;(time (run-tests set-tests))
 #;(time (run-tests ll-tests))
 #;(run-tests printf-unit-tests-safe-correct)

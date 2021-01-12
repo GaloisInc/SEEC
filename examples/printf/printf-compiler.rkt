@@ -14,7 +14,9 @@
 (require (only-in seec/private/string
                   char->string))
 (require (prefix-in safe:
-                    (file "printf-spec.rkt")))
+                    (file "printf-spec.rkt"))
+         (only-in   (file "printf-spec.rkt") %)
+         )
 (require (prefix-in unsafe:
                     (file "printf-impl.rkt")))
 
@@ -103,8 +105,7 @@
   (set-bitwidth 16 8)
   (define/contract fmt-example
     safe:fmt?
-    (safe:fmt-string (cons (% ((0 $) (NONE d)))
-                           nil)))
+    (seec-singleton (% 0 $ d)))
   (define-symbolic l-val integer?)
   (define target-args (seec-singleton (unsafe:printf-lang (LOC ,l-val))))
   (define target-conf  (unsafe:printf-lang ((bv 0) nil)))
