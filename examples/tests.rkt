@@ -113,3 +113,9 @@
   printf:unsafe-correct)
 (define printf-unit-tests-safe-unsafe-consistent
   printf:safe-unsafe-consistent)
+
+#;(time (run-tests find-changed-component-tests))
+#;(time (run-tests find-weird-component-tests))
+#;(time (run-tests set-tests))
+#;(time (run-tests ll-tests))
+

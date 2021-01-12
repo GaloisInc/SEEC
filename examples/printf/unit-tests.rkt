@@ -13,7 +13,7 @@
 
 (define (check-safe-unsafe-consistent f args conf)
   (check-equal? (compile-behavior (safe:interp-fmt f args conf))
-                (unsafe:interp-fmt (compile-fmt f) (compile-arglist args) (compile-config conf))))
+                (unsafe:interp-fmt f (compile-arglist args) (compile-config conf))))
 
 
 (define/contract (racket->constant x)
@@ -28,12 +28,12 @@
 
 (set-bitwidth 64 32)
 
-(define fmt-d-1 (ll-singleton (safe:printf-lang (% (0 $) NONE d))))
-(define fmt-s-1 (ll-singleton (safe:printf-lang (% (0 $) NONE s))))
-(define fmt-n-1 (ll-singleton (safe:printf-lang (% (0 $) NONE n))))
+(define fmt-d-1 (ll-singleton (safe:printf-lang (% ((0 $) (NONE d))))))
+(define fmt-s-1 (ll-singleton (safe:printf-lang (% ((0 $) (NONE s))))))
+(define fmt-n-1 (ll-singleton (safe:printf-lang (% ((0 $) (NONE n))))))
 (define fmt-d-n (ll-cons      (safe:printf-lang "foo ")
-                (ll-cons      (safe:printf-lang (% (0 $) NONE d))
-                (ll-singleton (safe:printf-lang (% (1 $) NONE n))))))
+                (ll-cons      (safe:printf-lang (% ((0 $) (NONE d))))
+                (ll-singleton (safe:printf-lang (% ((1 $) (NONE n))))))))
 (define bv-neg-1 (bitvector->natural (bonsai-bv-value (integer->bonsai-bv -1))))
 (define fmt-decrement (ll-singleton (unsafe:printf-lang (% ((0 $) (,(bonsai-integer bv-neg-1) s))))))
 
@@ -100,7 +100,7 @@
   (test-case "add argument from memory"
     (define/contract l safe:ident?
       (safe:printf-lang 1))
-    (define fmt  (ll-singleton (safe:printf-lang (% (0 $) (* 0) d))))
+    (define fmt  (ll-singleton (safe:printf-lang (% ((0 $) ((* 0) d))))))
     (define args (list->bonsai-ll (list (safe:printf-lang (* (LOC ,l)))
                                         (safe:printf-lang ""))))
     (define/contract m
@@ -118,7 +118,7 @@
                                                      
 )
 ; TODO: add test cases for padding
-(run-tests safe-correct)
+#;(run-tests safe-correct)
 
 (define/provide-test-suite unsafe-correct
 
@@ -134,7 +134,7 @@
   (test-case "%0$d"
   ; printf("%0$d","hi") 
   ; note: the character h is encoded as the number 104
-  (check-equal? (unsafe:interp-fmt (compile-fmt fmt-d-1)
+  (check-equal? (unsafe:interp-fmt fmt-d-1
                                    (compile-arglist arglist-s-1)
                                    (unsafe:make-config-triv 0))
                 (unsafe:make-behav-triv (mk-trace (list 104)) 3))
@@ -143,7 +143,7 @@
   #;(test-case "%0$s" ; we took out this conversion in the model
   ; printf("%0$s",32)
   ; note: 32 is the ASCII representation of the space character
-  (check-equal? (unsafe:interp-fmt (compile-fmt fmt-s-1)
+  (check-equal? (unsafe:interp-fmt fmt-s-1
                                    (compile-arglist arglist-d-1)
                                    (unsafe:make-config-triv 0))
                 (unsafe:make-behav-triv (mk-trace (list (string " ")))
@@ -152,7 +152,7 @@
 
   (test-case "%0$n"
   ; printf("%0$n,32)
-  (check-equal? (unsafe:interp-fmt (compile-fmt fmt-n-1)
+  (check-equal? (unsafe:interp-fmt fmt-n-1
                                    (compile-arglist arglist-d-1)
                                    (unsafe:make-config-triv 0))
                 (unsafe:make-behav (mk-trace (list))
@@ -162,14 +162,14 @@
 
   (test-case "%0$d"
   ; printf("%0$d")
-  (check-equal? (unsafe:interp-fmt (compile-fmt fmt-d-1)
+  (check-equal? (unsafe:interp-fmt fmt-d-1
                                    (compile-arglist arglist-0)
                                    (unsafe:make-config-triv 0))
                 (unsafe:make-behav-triv (mk-trace (list )) 0))
   )
 
   )
-(run-tests unsafe-correct)
+#;(run-tests unsafe-correct)
 
 
 (define/provide-test-suite safe-unsafe-consistent
@@ -183,7 +183,7 @@
                                 arglist-n-1
                                 (safe:make-config-triv 0))
   )
-(parameterize ([safe:debug? #f]
+#;(parameterize ([safe:debug? #f]
                [unsafe:debug? #f]
                )
   (run-tests safe-unsafe-consistent)
