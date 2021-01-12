@@ -115,12 +115,12 @@
   printf:safe-unsafe-consistent)
 
 
-#;(run-tests find-changed-component-tests)
+; Best practice: put tests in test modules
+
+#;(time (run-tests find-changed-component-tests))
 #;(time (run-tests find-weird-component-tests))
-#;(run-tests set-tests)
-#;(run-tests ll-tests)
+#;(time (run-tests set-tests))
+#;(time (run-tests ll-tests))
 #;(run-tests printf-unit-tests-safe-correct)
 #;(run-tests printf-unit-tests-unsafe-correct)
 #;(run-tests printf-unit-tests-safe-unsafe-consistent)
-
-; Best practice: put tests in test modules
