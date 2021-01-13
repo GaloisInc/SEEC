@@ -76,13 +76,13 @@
 
 (define (find-add-constant-gadget c)
 
-  (define g (find-gadget safe:printf-spec
-                         ((curry safe:add-constant-spec) c)
+  (define g (find-gadget printf-impl
+                         ((curry add-constant-spec) c)
                          #:expr-bound 5
                          #:context-bound 3
                          ; NOTE: will not find gadget without this context-constraint. WHY????
-                         #:context-constraint (λ (ctx) (match (safe:context->arglist ctx)
-                                                         [(safe:printf-lang (cons s:string arglist))
+                         #:context-constraint (λ (ctx) (match (context->arglist ctx)
+                                                         [(printf-lang (cons s:string arglist))
                                                           ; need to compare the
                                                           ; string via equal?
                                                           ; because pattern
@@ -95,6 +95,7 @@
   (display-gadget g displayln)
   )
 #;(find-add-constant-gadget 100)
+#;(find-add-constant-gadget 16383)
 
 (define (find-add-argument-gadget)
 
