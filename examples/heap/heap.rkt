@@ -32,6 +32,10 @@
   (interaction ::= ; list of actions
                (action interaction)
                nop)
+  (observation ::=
+               (get buf-loc))
+  (total-interaction ::= ; perform interaction, then get nth value from buffer
+                     (interaction observation))
   #;(bug ::= ; the hope is that we do not have to use this, and instead can characterize the bugs synthesized 
        overflow
        write-after-free
@@ -60,6 +64,12 @@
 ; free - generate an index into allocated-object list 
 ; write - write according to 
 
+(define (uncurry f)
+  (lambda (ab)
+    (match ab
+      [(cons a b)
+       (f a b)])))
+
 ;; lifted list operations
 (define (length s)
   (match s
@@ -78,7 +88,13 @@
     [(heap-model nil) (assert #f)]
     [(heap-model (cons any tl:any))
      tl]))
-          
+
+(define (append s1 s2)
+  (match s1
+    [(heap-model nil) s2]
+    [(heap-model (cons hd:any tl:any))
+     (heap-model (cons ,hd ,(append tl s2)))]))
+    
 (define/contract (nth s i)
   (-> any/c natural-number/c any/c)
   ;(displayln (format "Nth with i: ~a" i))
@@ -296,6 +312,27 @@
     [(heap-model nop)
      s]))
 
+(define (interpret-observation o s)
+  (match o 
+    [(heap-model (get n:natural))
+     (match s
+       [(heap-model (b:buf any any))
+        (nth b n)])]))
+
+(define (interpret-total-interaction ig s)
+  (match ig
+    [(heap-model (i:interaction o:observation))
+     (let ([s+ (interpret-interaction i s)])
+       (interpret-observation o s+))]))
+
+
+
+(define-language heap-lang
+  #:grammar heap-model
+  #:expression interaction #:size 4
+  #:context state #:size 8
+  #:link cons
+  #:evaluate (uncurry interpret-interaction))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
