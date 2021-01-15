@@ -24,6 +24,7 @@
   (heap ::= list<payload>)
   (state ::= (buf heap))
   ;; copied from heap.rkt
+  (buf-loc ::= natural)
   (action ::=
           (set buf-loc nnvalue) ; Set element at buf-loc in buffer to nnvalue
           (read buf-loc buf-loc) ; place the element at pointer (1)buf-loc in heap into the buffer at (2)buf-loc
@@ -116,7 +117,7 @@
   (match o 
     [(no-freelist (get n:natural))
      (match s
-       [(no-freelist (b:buf any any))
+       [(no-freelist (b:buf any))
         (nth b n)])]))
 
 (define (no-freelist-total-interaction ig s)
@@ -205,6 +206,35 @@
 (define nf+3 (no-freelist-action as nf++))
 (define nf+4 (no-freelist-action aw nf+3))
 (define nf+5 (no-freelist-action ar nf+4))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; SYMBOLIC TESTING no-freelist
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define (nf-test0)
+  (begin
+    (define b0* (no-freelist buf 4))
+    (define h0* (no-freelist heap 5))
+    (define s0* (no-freelist (,b0* ,h0*)))
+    (define s0+* (no-freelist state 6))
+    (define i0* (no-freelist interaction 4))
+    (define o0* (no-freelist observation 2))
+    (define d0+* (no-freelist-interaction i0* nf+5))
+    (define beh0* (no-freelist-observation o d0+*))
+    (define sol (verify #:guarantee (assert (not (equal? beh0* 5)))))
+    (define s0 (concretize s0* sol))
+    (define d0+ (concretize d0+* sol))
+    (define i0 (concretize i0* sol))
+    (define o0 (concretize o0* sol))
+    (define beh0 (concretize beh0* sol))
+    (displayln "State:")
+    (display-nf-state s0)
+    (displayln "Interaction:")
+    (displayln i0)
+    (displayln "Observation:")
+    (displayln o0)
+    (displayln "Behavior:")
+    (displayln beh0)))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; COMPILING  no-freelist into heap-model
@@ -379,6 +409,34 @@
      (match s
        [(heap-model (b:buf h:heap any))
         (deep-nf-buf-eq nf-h h nf-b b)])]))
+#|
+;; Testing synthesis with the no-freelist to heap-model compiler
+; Make a schema for a heap-model.state with buf = 4 and state of size 8
+(define b* (heap-model buf 4))
+(define h* (heap-model heap 8))
+(define fp* (heap-model pointer 1))
+(define s* (heap-model (,b* ,h* ,fp*)))
+(define s+* (heap-model state 8))
+
+; Make a schema for a no-freelist.state with buf = 4 and state of max size 5?
+(define nfb* (no-freelist buf 4))
+(define nfh* (no-freelist heap 5))
+(define nfs* (no-freelist (,nfb* ,nfh*)))
+(define nfs+* (no-freelist state 8))
+
+; find a context and a total interaction that evaluates to 4
+(define ti* (heap-model total-interaction 4))
+(define (ex1)
+  (begin
+    (define beh* (interpret-total-interaction ti* s+*))
+    (define nf-beh* (no-freelist-total-interaction ti* nfs+*))
+    ;(assert (equal? nf-b* 5))
+    (define sol (verify #:guarantee (assert (equal? beh* nf-beh*))))
+    sol))
+|#
+#;(find-changed-component nf-to-heap-compiler
+                        #:source-context nfs*
+                        #:target-context s*)
 
 
 

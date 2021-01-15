@@ -97,12 +97,9 @@
     
 (define/contract (nth s i)
   (-> any/c natural-number/c any/c)
-  ;(displayln (format "Nth with i: ~a" i))
-  (match i
-    [(heap-model 0)
-     (head s)]
-    [(heap-model i:natural)
-     (nth (tail s) (- i 1))]))
+  (if (equal? i 0)
+     (head s)
+     (nth (tail s) (- i 1))))
 
 ; add v at the end of list s
 (define (snoc s v)
@@ -384,7 +381,11 @@
                           (~a (print-value h2) #:width 4)
                           (~a (print-value h3) #:width 4)
                           (~a (print-value h4) #:width 4)))
-       (display-heap+ h+ (+ addr 4))]))
+       (display-heap+ h+ (+ addr 4))]
+      [(heap-model any)
+       (displayln "HEAP not a multiple of 4")
+       (displayln (print-list print-value h))
+       ]))
   (display-heap+ h 0))
 
 (define (display-state s)
@@ -422,7 +423,38 @@
 (define d+4 (interpret-action aw d+3))
 (define d+5 (interpret-action ar d+4))
 
-  
-                              
+(define i (heap-model (,aa1 (,aa0 (,as (,aw (,ar nop)))))))
+(define o (heap-model (get 2)))
+(define ti (heap-model (,i ,o)))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; SYMBOLIC TESTING heap-model
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define (d-test0)
+  (begin
+    (define b0* (heap-model buf 4))
+    (define h0* (heap-model heap 5))
+    (define fp0* (heap-model pointer 1))
+    (define s0* (heap-model (,b0* ,h0* ,fp0*)))
+    (define s0+* (heap-model state 6))
+    (define i0* (heap-model interaction 4))
+    (define o0* (heap-model observation 2))
+    (define d0+* (interpret-interaction i0* d+5))
+    (define beh0* (interpret-observation o  s0*))
+    (define sol (verify #:guarantee (assert (not (equal? beh0* 5)))))
+    (define s0 (concretize s0* sol))
+    (define d0+ (concretize d0+* sol))
+    (define i0 (concretize i0* sol))
+    (define o0 (concretize o0* sol))
+    (define beh0 (concretize beh0* sol))
+    (displayln "State:")
+    (display-state s0)
+    (displayln "Interaction:")
+    (displayln i0)
+    (displayln "Observation:")
+    (displayln o0)
+    (displayln "Behavior:")
+    (displayln beh0)))
+
+    
