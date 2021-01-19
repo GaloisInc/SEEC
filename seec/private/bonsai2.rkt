@@ -325,10 +325,12 @@
   (bonsai-char char-val))
 
 (define (new-string! max-length)
-  (assert (>= max-length 0))
-  (if (havoc!)
-      (bonsai-string (new-symbolic-string max-length))
-      (new-string! (- max-length 1))))
+  (cond
+    [(<= max-length 0) (bonsai-string (string ""))]
+    [(havoc!)          (bonsai-string (new-symbolic-string max-length))]
+    [else              (new-string! (- max-length 1))]
+    ))
+      
 
 (define (new-natural!)
   (define-symbolic* nat-val integer?)
@@ -373,8 +375,8 @@
       '()))
 
 (define (make-tree! depth width)
-  (assert (> depth 0))
   (cond
+    [(<= depth 0) *null*]
     [(havoc!) (bonsai-list (make-list width (λ () (make-tree! (- depth 1) width))))]
     [(havoc!) (new-term!)]
     [(havoc!) (new-integer!)]
