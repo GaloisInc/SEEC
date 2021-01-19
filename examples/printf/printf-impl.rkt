@@ -182,7 +182,7 @@
   (-> printf-lang-config? bv?)
   (match c
     [(printf-lang (acc:bvint mem)) (bonsai->bv acc)]
-    [_ (raise-argument-error 'conf->acc "conf" c)]
+    #;[_ (raise-argument-error 'conf->acc "conf" c)]
     ))
 
 (define/contract (param->offset param)
