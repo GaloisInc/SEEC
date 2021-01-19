@@ -116,8 +116,13 @@
 
 (define (max-width ls)
   (cond
-    [(list? ls) (apply max (length ls) (map max-width ls))]
-    [else 0]))
+    [(list? ls)
+     (apply max (length ls) (map max-width ls))]
+    [(symbol-is-polymorphic-type? "list" ls)
+     2]
+    [else
+     1]
+    ))
 
 (begin-for-syntax
   (define builtin-nonterminals '(integer natural boolean bitvector char string any))
