@@ -160,7 +160,7 @@
   (-> printf-lang-config? bv?)
   (match c
     [(printf-lang (acc:bitvector mem)) acc]
-    [_ (raise-argument-error 'conf->acc "conf" c)]
+    #;[_ (raise-argument-error 'conf->acc "conf" c)]
     ))
 
 (define/contract (behavior->trace b)
@@ -370,7 +370,7 @@
 (define/contract (print-n-loc conf l)
   (-> printf-lang-config? printf-lang-ident? printf-lang-config?)
   (debug (thunk (printf "(print-n-loc ~a)~n" l)))
-  (let* ([acc (printf-lang ,(conf->acc conf))]
+  (let* ([acc (conf->acc conf)]
          [new-mem (mem-update (conf->mem conf) l acc)]
          )
     (printf-lang (,acc ,new-mem))
