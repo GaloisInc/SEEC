@@ -340,7 +340,6 @@
             [conf+ (config-add conf len-c)]
             )
        (printf-lang ((cons ,c ,t) ,conf+)))]
-    [_ (raise-argument-error 'print-constant "(or/c printf-lang-config? printf-lang-behavior?)" conf-or-behav)]
     )
   )
   (debug (thunk (printf "computed print-constant: ~a~n" res)))
@@ -351,10 +350,14 @@
   (-> printf-lang-config? (or/c err? printf-lang-trace?) (or/c err? printf-lang-behavior?))
   (debug (thunk (printf "(print-trace ~a ~a)~n" conf t)))
   (define res (match t
-    [(printf-lang ERR) (printf-lang ERR)]
+    [(printf-lang ERR) t]
     [(printf-lang nil) (printf-lang (nil ,conf))]
     [(printf-lang (cons c:constant t+:trace))
-     (print-constant (print-trace conf t+) c)]
+     (match (print-trace conf t+)
+       [(printf-lang ERR) (printf-lang ERR)]
+       [(printf-lang behav:behavior)
+        (print-constant behav c)]
+       )]
     [_ (raise-argument-error 'print-trace "printf-lang-trace?" t)]
     ))
   (debug (thunk (printf "result of print-trace: ~a~n" res)))
