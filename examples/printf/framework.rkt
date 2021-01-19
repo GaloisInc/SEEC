@@ -90,7 +90,7 @@
                          ))
   (display-gadget g displayln)
   )
-(find-add-constant-gadget -1)
+#;(find-add-constant-gadget -1)
 ; -1 == 16383
 
 (define (find-add-argument-gadget)
