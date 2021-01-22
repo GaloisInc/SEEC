@@ -202,8 +202,6 @@
    (thunk (find-weird-component SIMP-NAT-TO-INTEGER #:count 3))
   "count argument to find-weird-component"))
 
-; With source-expression-bound=5, completed in 12 s
-; With source-expression-bound=6, completed in 30 min?
 (define test-wc-arg-source-exp-bound-nat-to-integer
   (list
    (lambda (r) (r))
