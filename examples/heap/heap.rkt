@@ -32,6 +32,15 @@
   (interaction ::= ; list of actions
                (action interaction)
                nop)
+  (action-hl ::= ; like action but with heap-loc
+             (set buf-loc nnvalue)
+             (read heap-loc buf-loc)
+             (write buf-loc heap-loc)
+             (free heap-loc)
+             (alloc buf-loc natural))
+  (interaction-hl ::= ; like interaction but with heap-loc
+                  (action-hl interaction-hl)
+                  nop)
   (observation ::=
                (get buf-loc))
   (total-interaction ::= ; perform interaction, then get nth value from buffer
@@ -94,10 +103,17 @@
     [(heap-model nil) s2]
     [(heap-model (cons hd:any tl:any))
      (heap-model (cons ,hd ,(append tl s2)))]))
-    
+
+; TODO: make interaction a list...
+(define (append-interaction i1 i2)
+  (match i1
+    [(heap-model nop) i2]
+    [(heap-model (hd:any tl:any))
+                 (heap-model (,hd ,(append-interaction tl i2)))]))
+
 (define/contract (nth s i)
   (-> any/c natural-number/c any/c)
-  (if (equal? i 0)
+  (if (= i 0)
      (head s)
      (nth (tail s) (- i 1))))
 
@@ -331,6 +347,99 @@
   #:link cons
   #:evaluate (uncurry interpret-interaction))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Alternative interaction language (where heap-loc provided directly)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (interpret-action-hl a s)
+  (match s
+    [(heap-model (b:buf h:heap f:pointer))
+     ;(displayln "matched heap")
+     (match a
+       [(heap-model (free p:heap-loc))
+          (heap-model (,b ,(interpret-free h f p) ,p))]
+       [(heap-model (alloc bl:buf-loc n:natural))
+        (match f
+          [(heap-model n:natural)
+           (let* ([ph+ (interpret-alloc-free h n)]
+                  [b+ (replace b bl f)])
+             (heap-model (,b+ ,(cdr ph+) ,(car ph+))))]
+          [(heap-model null)
+           (let* ([ph+ (interpret-alloc-no-free h)]
+                  [b+ (replace b bl (car ph+))])
+             (heap-model (,b+ ,(cdr ph+) ,f)))])]
+       [(heap-model (set bl:buf-loc val:nnvalue))
+        (let* ([b+ (replace b bl val)])
+          (heap-model (,b+ ,h ,f)))]
+       [(heap-model (read hl:heap-loc bl:buf-loc))
+        (let* ([loc (heap-loc-addr hl)] ; compute the address
+               [val (nth h loc)] ; get the value at the location
+               [b+ (replace b bl val)]) ; place the value in the buffer
+               (heap-model (,b+ ,h ,f)))]
+       [(heap-model (write bl:buf-loc hl:heap-loc))
+        (let* ([val (nth b bl)] ; get the value from the buffer
+               [loc (heap-loc-addr hl)] ; compute the address in the heap
+               [h+ (write h loc val)]) ; overwrite the location in the heap with the value
+          (heap-model (,b ,h+ ,f)))])]))
+
+
+(define (interpret-interaction-hl i s)
+    (match i
+    [(heap-model (a:action-hl i+:interaction-hl))
+     (interpret-interaction-hl i+ (interpret-action-hl a s))]
+    [(heap-model nop)
+     s]))
+
+; translate an action into a list of action-hl
+; heap-model.action -> heap-model.interaction-hl
+(define (translate-action-hl a s)
+    (match s
+    [(heap-model (b:buf h:heap f:pointer))
+     ;(displayln "matched heap")
+     (match a
+       [(heap-model (free bl:buf-loc))
+        (let* ([p (nth b bl)])
+          (heap-model ((free ,p) ((set ,bl null) nop))))]
+        [(heap-model (read bhl:buf-loc bl:buf-loc))
+        ;(displayln "action read")
+         (let* ([hl (nth b bhl)]) ; get the pointer
+                (heap-model ((read ,hl ,bl) nop)))]
+       [(heap-model (write bl:buf-loc bhl:buf-loc))
+        ;(displayln "action write")
+        (let* ([hl (nth b bhl)])
+          (heap-model ((write ,bl ,hl) nop)))]
+       [(heap-model any) ; set, alloc
+        (heap-model (,a nop))]
+       )]))
+
+; translate an interaction into an interaction-hl
+; heap-model.interaction -> heap-model.state -> heap-model.interaction-hl
+(define (translate-interaction-hl i s)
+  (match i
+    [(heap-model nop)
+     (heap-model nop)]
+    [(heap-model (a:action i+:interaction))
+     (let* ([i-hl (translate-action-hl a s)]
+            [s+ (interpret-action a s)]
+            [i-hl+ (translate-interaction-hl i+ s+)])
+       (heap-model ,(append-interaction i-hl i-hl+)))]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Validity predicate for heap-model
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+; heap -> pointer -> boolean
+; true if the pointer is wellscoped in heap
+(define (scoped-pointer? h p)
+  (match p
+    [(heap-model null)
+     #t]
+    [(heap-model l:natural)
+     ; checks if l is smaller than the length of h
+     (not (< (seec-length h) l))]))
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Pretty-printing
@@ -400,6 +509,39 @@
        (displayln (print-pointer f)))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Predicate to validate heap-model
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; all the buf and heap-loc in the action/interaction are scoped (to the size of buf)
+(define (heap-model-valid-action b-size a)
+  (match a
+    [(heap-model (set b:buf-loc any))
+     (<= b b-size)]
+    [(heap-model (read b1:buf-loc b2:buf-loc))
+     (and (<= b1 b-size)
+          (<= b2 b-size))]
+    [(heap-model (write b1:buf-loc b2:buf-loc))
+          (and (<= b1 b-size)
+          (<= b2 b-size))]
+    [(heap-model (free b:buf-loc))
+          (<= b b-size)]
+    [(heap-model (alloc b:buf-loc natural))
+     (<= b b-size)]))
+
+(define (heap-model-valid-interaction s i)
+  (define (heap-model-valid-interaction+ b-size h-size i)
+    (match i
+      [(heap-model nop)
+       #t]
+      [(heap-model (a:action i+:interaction))
+       (and (heap-model-valid-action b-size a)
+            (heap-model-valid-interaction b-size h-size i+))]))
+  (match s
+    [(heap-model (b:buf h:heap any))
+     (heap-model-valid-interaction+ (seec-length b) (seec-length h) i)]))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; TESTING heap-model
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -439,21 +581,17 @@
     (define s0* (heap-model (,b0* ,h0* ,fp0*)))
     (define s0+* (heap-model state 6))
     (define i0* (heap-model interaction 4))
-    (define o0* (heap-model observation 2))
     (define d0+* (interpret-interaction i0* d+5))
     (define beh0* (interpret-observation o  s0*))
     (define sol (verify #:guarantee (assert (not (equal? beh0* 5)))))
     (define s0 (concretize s0* sol))
     (define d0+ (concretize d0+* sol))
     (define i0 (concretize i0* sol))
-    (define o0 (concretize o0* sol))
     (define beh0 (concretize beh0* sol))
     (displayln "State:")
     (display-state s0)
     (displayln "Interaction:")
     (displayln i0)
-    (displayln "Observation:")
-    (displayln o0)
     (displayln "Behavior:")
     (displayln beh0)))
 

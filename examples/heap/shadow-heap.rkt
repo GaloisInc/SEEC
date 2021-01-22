@@ -33,7 +33,8 @@
           (alloc buf-loc natural)) ; alloc an object with n blocks, placing its pointer in buffer at buf-loc
   (interaction ::= ; list of actions
                (action interaction)
-               nop)
+               nop)  
+ 
   (observation ::=
                (get buf-loc))
   (total-interaction ::= ; perform interaction, then get nth value from buffer
@@ -126,13 +127,70 @@
      (let ([s+ (no-freelist-interaction i s)])
        (no-freelist-observation o s+))]))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Validity predicate for no-freelist
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+; heap -> pointer -> boolean
+; true if the pointer is wellscoped in heap
+(define (no-freelist-scoped-pointer? h p)
+  ;(displayln "Is pointer well scoped?")
+  ;(displayln p)
+  (match p
+    [(no-freelist null)
+     #t]
+    [(no-freelist (l:natural o:natural))
+     ; checks if l is smaller than the length of h
+     (if (< (seec-length h) l)
+         #f
+         (let ([v (nth h l)])          
+           ; checks if o is smaller than the size of the l-th entry in h
+           (match v
+             [(no-freelist v:list<any>)
+              (not (< (seec-length v) o))]
+             [(no-freelist any)
+              #f])))]))
+
+; heap -> buf -> boolean
+(define (no-freelist-valid-buf h b)
+  (match b
+    [(no-freelist nil)
+     #t]
+    [(no-freelist (cons p:pointer b+:buf))
+     (and (no-freelist-scoped-pointer? h p)
+          (no-freelist-valid-buf h b+))]
+    [(no-freelist (cons any b+:buf))
+     (no-freelist-valid-buf h b+)]))
+
+(define (no-freelist-valid-heap full-h h)
+  (match h
+    [(no-freelist nil)
+     #t]
+    [(no-freelist (cons p:pointer h+:heap))
+     (and (no-freelist-scoped-pointer? full-h p)
+          (no-freelist-valid-heap full-h h+))]
+    [(no-freelist (cons any h+:heap))
+      (no-freelist-valid-heap full-h h+)]))
+
+; heap -> heap -> boolean  
+
+(define (no-freelist-valid-state s)
+  (match s
+    [(no-freelist (b:buf h:heap))
+     (and
+      (no-freelist-valid-buf h b)
+      (no-freelist-valid-heap h h))]))
+    
+
 
 (define-language no-freelist-lang
   #:grammar no-freelist
   #:expression interaction #:size 4
-  #:context state #:size 8
+  #:context state #:size 8 #:where no-freelist-valid-state
   #:link cons
   #:evaluate (uncurry no-freelist-interaction))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Pretty-printing no-freelist
@@ -210,6 +268,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; SYMBOLIC TESTING no-freelist
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define o0* (no-freelist observation 2))
+(define h0* (no-freelist buf 5))
+
+
 (define (nf-test0)
   (begin
     (define b0* (no-freelist buf 4))
@@ -235,6 +297,31 @@
     (displayln "Behavior:")
     (displayln beh0)))
 
+
+; Testing the synthesis of an interaction to make a symbolic no-freelist.state similar (shallow) to a heap-model.state
+(define (nf-test1)
+  (begin
+    (define b0* (heap-model buf 4))
+    (define h0* (heap-model heap 5))
+    (define fp0* (heap-model pointer 1))
+    (define s1* (heap-model (,b0* ,h0* ,fp0*)))
+    (assert (no-freelist-valid-state s1*))
+    (define i1* (no-freelist interaction 4))
+    (define s1+* (no-freelist-interaction i1* s1*))
+    (define sol (verify #:guarantee (assert (not (shallow-nf-state-eq s1* d+5)))))
+    (define s1 (concretize s1* sol))
+    (define s1+ (concretize s1+* sol))
+    (define i1 (concretize i1* sol))
+    (displayln "State pre:")
+    (display-nf-state s1)
+    (displayln "Interaction:")
+    (displayln i1)
+    (displayln "State post:")
+    (display-nf-state s1+)
+    (displayln "Shallow eq:")
+    (displayln (shallow-nf-state-eq s1 d+5 #:debug #t))
+    (displayln "Deep eq:")
+    (displayln (deep-nf-state-eq s1 d+5))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; COMPILING  no-freelist into heap-model
@@ -288,50 +375,81 @@
        (heap-model (,b+ ,h+ null)))]))
 
 ;; compare nnvalues out of shadow-heap.value and heap-model.value
-;; always #t if nf-v is a pointer
-(define (shallow-nf-val-eq nf-v v)
-  (match nf-v
-    [(no-freelist nf-i:integer)
-     (match v
-       [(heap-model i:integer)
-        (equal? nf-i i)]
-       [(heap-model any)
-        #f])]
-    [(no-freelist any)
-     #t]))
+;; returns #:default (#t) if nf-v is a pointer
+(define/contract shallow-nf-val-eq
+  (->* (any/c any/c)
+       (#:debug boolean?
+        #:default boolean?)
+       boolean?)
+  (lambda (nf-v
+           v
+           #:debug [d #f]
+           #:default [def #t])
+    (begin
+      ;(displayln "in shallow-nf-val-eq")
+      (match nf-v
+        [(no-freelist nf-i:integer)
+         (match v
+           [(heap-model i:integer)
+            (equal? nf-i i)]
+           [(heap-model any)
+            #f])]
+        [(no-freelist any)
+         def]))))
 
 
 ;; shallow (compare non-pointer value) buffer equality
-(define (shallow-nf-buf-eq nf-b b)
-  (match nf-b
-    [(no-freelist nil)
-       (match b
-         [(heap-model nil)
-          #t]
-         [(heap-model any)
-          #f])]
-    [(no-freelist (cons nf-v:value nf-b+:buf))
-       (match b
-         [(heap-model (cons v:value b+:buf))
-          (and               
-           (shallow-nf-val-eq nf-v v)
-           (shallow-nf-buf-eq nf-b+ b+))]
-         [(heap-model any)
-          #f])]))
+(define/contract shallow-nf-buf-eq
+  (->* (any/c any/c)
+       (#:debug boolean?)
+       boolean?)
+  (lambda (nf-b
+           b
+           #:debug [d #f])
+    (begin
+      (match nf-b
+        [(no-freelist nil)
+         (match b
+           [(heap-model nil)
+            #t]
+           [(heap-model any)
+            #f])]
+        [(no-freelist (cons nf-v:value nf-b+:buf))
+         (match b
+           [(heap-model (cons v:value b+:buf))
+            (and               
+             (shallow-nf-val-eq nf-v v #:debug d)
+             (shallow-nf-buf-eq nf-b+ b+ #:debug d))]
+           [(heap-model any)
+            #f])]))))
 
 ;; shallow (buffer only) equality
-(define (shallow-nf-state-eq nf-s s)
+(define/contract shallow-nf-state-eq
+  (->* (any/c any/c)
+       (#:debug boolean?)
+       boolean?)
+  (lambda (nf-s s
+                #:debug [d #f])
+    (begin
+      (match nf-s
+        [(no-freelist (nf-b:buf any))
+         (match s
+           [(heap-model (b:buf any any))
+            (shallow-nf-buf-eq nf-b b #:debug d)])]))))
+
+;; compare the value in buf zero w
+(define (buf-z-nf-eq nf-s s)
   (match nf-s
     [(no-freelist (nf-b:buf any))
      (match s
        [(heap-model (b:buf any any))
-        (shallow-nf-buf-eq nf-b b)])]))
+        (shallow-nf-val-eq (nth nf-b 0) (nth b 0) #:default #f)])]))
 
 
 (define-compiler nf-to-heap-compiler
-  #:source no-freelist
-  #:target heap-model
-  #:behavior-relation equal?
+  #:source no-freelist-lang
+  #:target heap-lang
+  #:behavior-relation buf-z-nf-eq
   #:context-relation shallow-nf-state-eq
   #:compile (lambda (x) x))
 
@@ -516,8 +634,31 @@
     [(heap-model nop)
      (cons s fs)]))
 
+(define (heap-and-freelist-interaction i sfs)
+  (freelist-shadow-interaction i (car sfs) (cdr sfs)))
+
 (define (init-freelist)
   (freelist nil))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; COMPILING heap-model to freelist
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; heap-model.state -> freelist.state
+(define (compile-heap-to-freelist s)
+  (define (compile-into-freelist h p )
+    (match p
+      [(heap-model null)
+       (freelist nil)]
+      [(heap-model n:natural)
+       (let* ([new-p (nth h n)]
+              [rest (compile-into-freelist h new-p)])
+         (freelist (cons ,n ,rest)))]))
+  (match s
+    [(heap-model (any h:heap p:pointer))
+                 (compile-into-freelist h p)]))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Pretty-printing freelist
@@ -554,6 +695,15 @@
 (define df+4 (heap-and-freelist-action aw df+3))
 (define df+5 (heap-and-freelist-action ar df+4))
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; PREDICATES for freelist
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; freelist.state -> natural
+(define (freelist-size fs)
+  (seec-length fs))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Relating the heap-model freelist with the shadow freelist
 ;; no need for fuel since fl is a finite list?
@@ -574,4 +724,30 @@
     [(heap-model (any h:heap f:pointer))
      (freelist-shadow? h f fs)]))
 
-(define df-state-shadow? (uncurry freelist-state-shadow?))
+(define heap-and-freelist-shadow? (uncurry freelist-state-shadow?))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; SYMBOLIC TESTING df-state-shadow
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define (df-test0)
+  (begin
+    (define b0* (heap-model buf 4))
+    (define h0* (heap-model heap 5))
+    (define fp0* (heap-model pointer 1))
+    (define s0* (heap-model (,b0* ,h0* ,fp0*)))
+    (define i0* (heap-model interaction 4))
+    (define ns0* (freelist state 4))
+    (define df0* (cons s0* ns0*))
+    ;(assert (heap-and-freelist-shadow? df0*))
+    (define df0+* (heap-and-freelist-interaction i0* df0*))
+    (define sol (verify #:guarantee (assert #f) #;(assert (freelist-size (cdr df0+*)))))
+    (define df0 (concretize df0* sol))
+    (define i0 (concretize i0* sol))
+    (define df0+ (concretize df0+* sol))
+    (displayln "State pre:")
+    (display-hf-state df0)
+    (displayln "Interaction:")
+    (displayln i0)
+    (displayln "State post:")
+    (display-hf-state df0+)))
+
