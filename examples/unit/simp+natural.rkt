@@ -49,7 +49,7 @@
     [(simp+natural var)
      (match v
        [(simp+natural x:natural) x]
-       [_ (raise-argument-error 'eval-simp+natural
+       #;[_ (raise-argument-error 'eval-simp+natural
                                 "Expected a simp+natural-num? when evaluating an open term"
                                 v)]
        )]
