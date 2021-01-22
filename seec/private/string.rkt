@@ -191,7 +191,7 @@
   )
 
 (define/contract (string->char-list s)
-  (-> string? (listof char?))
+  (-> string? list?)
   (seec-string-value s))
 (define (char-list->string l)
   #;(-> (listof char?) string?)

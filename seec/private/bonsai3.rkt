@@ -299,9 +299,8 @@
 ; Make a bonsai tree of given depth and width. Both depth and width should be
 ; concrete positive integers
 (define (make-tree! depth width)
-  (assert (> depth 0))
   (cond
-    #;[(<= depth 0) *null*]
+    [(<= depth 0) *null*]
     [(havoc!) (bonsai-list (make-list width (λ () (make-tree! (- depth 1) width))))]
     [(havoc!) (new-term!)]
     [(havoc!) (let ([x (new-integer!)])

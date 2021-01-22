@@ -35,7 +35,7 @@
     [(simp+integer var)
      (match v
        [(simp+integer x:integer) x]
-       [_ (raise-argument-error 'eval-simp+integer
+       #;[_ (raise-argument-error 'eval-simp+integer
                                 "Expected a simp+integer-num? when evaluating an open term"
                                 v)]
        )]

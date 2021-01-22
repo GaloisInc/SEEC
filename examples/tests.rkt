@@ -63,13 +63,13 @@
                    (apply check-pred simp+nat:test-wc-nat-to-integer))
                (test-case "testing arguments to query"
                  (apply check-pred simp+nat:test-wc-arg-count-nat-to-integer)
-                 (apply check-pred simp+nat:test-wc-arg-source-exp-bound-nat-to-integer) ; NOTE: with bound=6, this test takes 30 min, with bound=5, takes only 12 s
+                 (apply check-pred simp+nat:test-wc-arg-source-exp-bound-nat-to-integer)
                  (apply check-pred simp+nat:test-wc-arg-source-exp-where-nat-to-integer)
                  (apply check-pred simp+nat:test-wc-arg-source-context-bound-nat-to-integer)
                  (apply check-pred simp+nat:test-wc-arg-source-context-where-nat-to-integer)
                  (apply check-pred simp+nat:test-wc-arg-target-context-bound-nat-to-integer)
                  (apply check-pred simp+nat:test-wc-arg-target-context-where-nat-to-integer)
-                 (apply check-pred simp+nat:test-wc-arg-target-context-where-fail-nat-to-integer) ; NOTE: This test runs for a long time (162 min). All others in this category are fine.
+                 (apply check-pred simp+nat:test-wc-arg-target-context-where-fail-nat-to-integer) ; NOTE: This test runs for a long time (>1hr). This is true on master as well. All others in this category are fine.
                  (apply check-pred simp+nat:test-wc-arg-source-behavior-where-nat-to-integer)
                  (apply check-pred simp+nat:test-wc-arg-target-behavior-where-nat-to-integer)
                  (apply check-pred simp+nat:test-wc-all-args-nat-to-integer))))
@@ -95,10 +95,10 @@
 ; linked list
 (define ll-tests 
   (test-suite "Linked and association lists"
-              #;(test-case "Working compiler"
+              (test-case "Working compiler"
                 (check-false (linked-list:ex1) "Behaviors should be preserved through alist->ll compilation"))
               (test-case "Attacked compiler (free-pointer modification)"
-                #;(check-not-false (linked-list:ex2) "Behaviors can be introduced by changing the free pointer")
+                (check-not-false (linked-list:ex2) "Behaviors can be introduced by changing the free pointer")
                 (let* ([ll3 (linked-list:ex3)]
                        [ll3-s (unpack-language-witness (first ll3))]
                        [ll3-t (unpack-language-witness (second ll3))])
