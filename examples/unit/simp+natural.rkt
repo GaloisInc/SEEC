@@ -208,7 +208,7 @@
   (list
    (lambda (r) (r))
    (thunk (find-weird-component SIMP-NAT-TO-INTEGER
-                           #:source-expression-bound 5))
+                           #:source-expression-bound 6))
   "source-expression-bound argument to find-weird-component"))
 
 
