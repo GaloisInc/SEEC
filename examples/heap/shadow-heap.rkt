@@ -31,10 +31,7 @@
           (write buf-loc buf-loc); place the element at (1)buf-loc in buffer into the heap pointer (2)buf-loc
           (free buf-loc) ; free the object at the pointer held in buf-loc in buffer
           (alloc buf-loc natural)) ; alloc an object with n blocks, placing its pointer in buffer at buf-loc
-  (interaction ::= ; list of actions
-               (action interaction)
-               nop)  
- 
+  (interaction ::= list<action>)
   (observation ::=
                (get buf-loc))
   (total-interaction ::= ; perform interaction, then get nth value from buffer
@@ -109,9 +106,9 @@
 ;; heap-model.interaction -> no-freelist.state -> no-freelist.state
 (define (no-freelist-interaction i s)
   (match i
-    [(heap-model (a:action i+:interaction))
+    [(heap-model (cons a:action i+:interaction))
      (no-freelist-interaction i+ (no-freelist-action a s))]
-    [(heap-model nop)
+    [(heap-model nil)
      s]))
 
 (define (no-freelist-observation o s)
@@ -570,8 +567,7 @@
     (action ::=
           (free natural) ; free the object natural if it is allocated
           alloc) ; allocate an object
-  (interaction ::= (action interaction)
-               nop)
+  (interaction ::= list<action>)
    (state ::= (list<natural>) ; list of free blocks
           ))
 
@@ -592,9 +588,9 @@
 ;; freelist.interaction -> freelist.state -> freelist.state
 (define (freelist-interaction i s)
   (match i
-    [(freelist (a:action i+:interaction))
+    [(freelist (cons a:action i+:interaction))
      (freelist-interaction i+ (freelist-action a s))]
-    [(freelist nop)
+    [(freelist nil)
      s]))
 
 
@@ -624,15 +620,16 @@
 ;; heap-model.interaction -> heap-model.state -> freelist.state -> heap-model.state X freelist.state
 (define (freelist-shadow-interaction i s fs)  
   (match i
-    [(heap-model (a:action i+:interaction))
+    [(heap-model (cons a:action i+:interaction))
      (let* ([s+ (interpret-action a s)]
             [af (freelist-shadow-action a s)]
             [fs+ (if af
                      (freelist-action af fs)
                      fs)])
        (interpret-interaction i+ s+ fs+))]
-    [(heap-model nop)
+    [(heap-model nil)
      (cons s fs)]))
+
 
 (define (heap-and-freelist-interaction i sfs)
   (freelist-shadow-interaction i (car sfs) (cdr sfs)))
@@ -645,6 +642,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; COMPILING heap-model to freelist
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ; heap-model.state -> freelist.state
 (define (compile-heap-to-freelist s)
   (define (compile-into-freelist h p )
@@ -658,6 +656,8 @@
   (match s
     [(heap-model (any h:heap p:pointer))
                  (compile-into-freelist h p)]))
+
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

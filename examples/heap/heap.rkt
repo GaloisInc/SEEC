@@ -29,18 +29,14 @@
           (write buf-loc buf-loc); place the element at (1)buf-loc in buffer into the heap pointer (2)buf-loc
           (free buf-loc) ; free the object at the pointer held in buf-loc in buffer
           (alloc buf-loc natural)) ; alloc an object with n blocks, placing its pointer in buffer at buf-loc
-  (interaction ::= ; list of actions
-               (action interaction)
-               nop)
+  (interaction ::= list<action>) ; list of actions
   (action-hl ::= ; like action but with heap-loc
              (set buf-loc nnvalue)
              (read heap-loc buf-loc)
              (write buf-loc heap-loc)
              (free heap-loc)
              (alloc buf-loc natural))
-  (interaction-hl ::= ; like interaction but with heap-loc
-                  (action-hl interaction-hl)
-                  nop)
+  (interaction-hl ::= list<action-hl>) ; like interaction but with heap-loc
   (observation ::=
                (get buf-loc))
   (total-interaction ::= ; perform interaction, then get nth value from buffer
@@ -104,12 +100,6 @@
     [(heap-model (cons hd:any tl:any))
      (heap-model (cons ,hd ,(append tl s2)))]))
 
-; TODO: make interaction a list...
-(define (append-interaction i1 i2)
-  (match i1
-    [(heap-model nop) i2]
-    [(heap-model (hd:any tl:any))
-                 (heap-model (,hd ,(append-interaction tl i2)))]))
 
 (define/contract (nth s i)
   (-> any/c natural-number/c any/c)
@@ -320,9 +310,9 @@
 ; interaction -> state -> state
 (define (interpret-interaction i s)
   (match i
-    [(heap-model (a:action i+:interaction))
+    [(heap-model (cons a:action i+:interaction))
      (interpret-interaction i+ (interpret-action a s))]
-    [(heap-model nop)
+    [(heap-model nil)
      s]))
 
 (define (interpret-observation o s)
@@ -385,9 +375,9 @@
 
 (define (interpret-interaction-hl i s)
     (match i
-    [(heap-model (a:action-hl i+:interaction-hl))
+    [(heap-model (cons a:action-hl i+:interaction-hl))
      (interpret-interaction-hl i+ (interpret-action-hl a s))]
-    [(heap-model nop)
+    [(heap-model nil)
      s]))
 
 ; translate an action into a list of action-hl
@@ -399,30 +389,30 @@
      (match a
        [(heap-model (free bl:buf-loc))
         (let* ([p (nth b bl)])
-          (heap-model ((free ,p) ((set ,bl null) nop))))]
+          (heap-model (cons (free ,p) (cons (set ,bl null) nil))))]
         [(heap-model (read bhl:buf-loc bl:buf-loc))
         ;(displayln "action read")
          (let* ([hl (nth b bhl)]) ; get the pointer
-                (heap-model ((read ,hl ,bl) nop)))]
+                (heap-model (cons (read ,hl ,bl) nil)))]
        [(heap-model (write bl:buf-loc bhl:buf-loc))
         ;(displayln "action write")
         (let* ([hl (nth b bhl)])
-          (heap-model ((write ,bl ,hl) nop)))]
+          (heap-model (cons (write ,bl ,hl) nil)))]
        [(heap-model any) ; set, alloc
-        (heap-model (,a nop))]
+        (heap-model (cons ,a nil))]
        )]))
 
 ; translate an interaction into an interaction-hl
 ; heap-model.interaction -> heap-model.state -> heap-model.interaction-hl
 (define (translate-interaction-hl i s)
   (match i
-    [(heap-model nop)
-     (heap-model nop)]
-    [(heap-model (a:action i+:interaction))
+    [(heap-model nil)
+     (heap-model nil)]
+    [(heap-model (cons a:action i+:interaction))
      (let* ([i-hl (translate-action-hl a s)]
             [s+ (interpret-action a s)]
             [i-hl+ (translate-interaction-hl i+ s+)])
-       (heap-model ,(append-interaction i-hl i-hl+)))]))
+       (heap-model ,(append i-hl i-hl+)))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Validity predicate for heap-model
@@ -531,9 +521,9 @@
 (define (heap-model-valid-interaction s i)
   (define (heap-model-valid-interaction+ b-size h-size i)
     (match i
-      [(heap-model nop)
+      [(heap-model nil)
        #t]
-      [(heap-model (a:action i+:interaction))
+      [(heap-model (cons a:action i+:interaction))
        (and (heap-model-valid-action b-size a)
             (heap-model-valid-interaction b-size h-size i+))]))
   (match s
@@ -565,7 +555,7 @@
 (define d+4 (interpret-action aw d+3))
 (define d+5 (interpret-action ar d+4))
 
-(define i (heap-model (,aa1 (,aa0 (,as (,aw (,ar nop)))))))
+(define i (heap-model (cons ,aa1 (cons ,aa0 (cons ,as (cons ,aw (cons ,ar nil)))))))
 (define o (heap-model (get 2)))
 (define ti (heap-model (,i ,o)))
 
