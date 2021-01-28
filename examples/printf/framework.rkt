@@ -11,8 +11,6 @@
 (require (only-in racket/base
                   for/list
                   exact-nonnegative-integer?
-                  raise-argument-error
-                  raise-arguments-error
                   parameterize))
 
 

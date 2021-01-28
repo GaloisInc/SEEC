@@ -2,8 +2,6 @@
 #;(require racket/base)
 (require racket/contract)
 (require (only-in racket/base
-                  raise-argument-error
-                  raise-arguments-error
                   make-parameter
                   ))
 (require rosette/lib/value-browser)
@@ -144,7 +142,7 @@
   (-> printf-lang-bitvector? integer?)
   (match v
     [(printf-lang n:bitvector) (bitvector->integer n)]
-    [_ (raise-argument-error 'val->number "printf-lang-bitvector?" v)]
+    #;[_ (raise-argument-error 'val->number "printf-lang-bitvector?" v)]
     ))
 (define/contract (val->loc v)
   (-> loc? printf-lang-ident?)
@@ -358,7 +356,7 @@
        [(printf-lang behav:behavior)
         (print-constant behav c)]
        )]
-    [_ (raise-argument-error 'print-trace "printf-lang-trace?" t)]
+    #;[_ (raise-argument-error 'print-trace "printf-lang-trace?" t)]
     ))
   (debug (thunk (printf "result of print-trace: ~a~n" res)))
   res)
@@ -512,7 +510,7 @@
           )]
        )]
 
-    [_ (raise-argument-error 'interp-fmt-elt-unsafe "(printf-lang fmt-elt)" f)]
+    #;[_ (raise-argument-error 'interp-fmt-elt-unsafe "(printf-lang fmt-elt)" f)]
     ))
   (debug (thunk (printf "result of interp-fmt-elt-unsafe: ~a~n" res)))
   res

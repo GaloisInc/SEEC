@@ -2,8 +2,6 @@
 #;(require racket/base)
 (require racket/contract)
 (require (only-in racket/base
-                  raise-argument-error
-                  raise-arguments-error
                   make-parameter
                   ))
 (require (for-syntax syntax/parse))
@@ -186,7 +184,7 @@
   (-> printf-lang-integer? integer?)
   (match v
     [(printf-lang n:integer) n]
-    [_ (raise-argument-error 'val->number "(printf-lang integer)" v)]
+    #;[_ (raise-argument-error 'val->number "(printf-lang integer)" v)]
     ))
 (define/contract (val->loc v)
   (-> loc? printf-lang-ident?)
@@ -202,7 +200,7 @@
   (-> printf-lang-config? integer?)
   (match c
     [(printf-lang (acc:integer mem)) acc]
-    [_ (raise-argument-error 'conf->acc "conf" c)]
+    #;[_ (raise-argument-error 'conf->acc "conf" c)]
     ))
 
 (define/contract (param->offset param)
@@ -382,7 +380,7 @@
             [conf+ (config-add conf len-c)]
             )
        (printf-lang ((cons ,c ,t) ,conf+)))]
-    [_ (raise-argument-error 'print-constant "(or/c printf-lang-config? printf-lang-behavior?)" conf-or-behav)]
+    #;[_ (raise-argument-error 'print-constant "(or/c printf-lang-config? printf-lang-behavior?)" conf-or-behav)]
     )
   )
   (debug (thunk (printf "computed print-constant: ~a~n" res)))
@@ -399,7 +397,7 @@
     [(printf-lang nil) (printf-lang (nil ,conf))]
     [(printf-lang (cons c:constant t+:trace))
      (print-constant (print-trace conf t+) c)]
-    [_ (raise-argument-error 'print-trace "printf-lang-trace?" t)]
+    #;[_ (raise-argument-error 'print-trace "printf-lang-trace?" t)]
     ))
   (debug (thunk (printf "result of print-trace: ~a~n" res)))
   res)
@@ -503,7 +501,7 @@
        [_ (printf-lang ERR)]
        )]
 
-    [_ (raise-argument-error 'interp-fmt-elt-safe "(printf-lang fmt-elt)" f)]
+    #;[_ (raise-argument-error 'interp-fmt-elt-safe "(printf-lang fmt-elt)" f)]
     ))
     
   (debug (thunk (printf "done with interp-fmt-elt-safe: ~a~n" res)))
