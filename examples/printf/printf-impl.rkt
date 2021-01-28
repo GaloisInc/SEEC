@@ -166,7 +166,7 @@
   (match v
     #;[(printf-lang n:integer) (bonsai->number n)]
     [(printf-lang n:bvint) (bvint->number n)]
-    [_ (raise-argument-error 'val->number "(printf-lang bvint)" v)]
+    #;[_ (raise-argument-error 'val->number "(printf-lang bvint)" v)]
     ))
 (define/contract (val->loc v)
   (-> loc? bonsai-integer?)
@@ -391,7 +391,7 @@
        [(printf-lang b:behavior) (print-constant b c)]
        [(printf-lang ERR)        (printf-lang ERR)]
        )]
-    [_ (raise-argument-error 'print-trace "printf-lang-trace?" t)]
+    #;[_ (raise-argument-error 'print-trace "printf-lang-trace?" t)]
     ))
   (debug (thunk (printf "result of print-trace: ~a~n" res)))
   res)
@@ -541,7 +541,7 @@
           )]
        )]
 
-    [_ (raise-argument-error 'interp-fmt-elt-unsafe "(printf-lang fmt-elt)" f)]
+    #;[_ (raise-argument-error 'interp-fmt-elt-unsafe "(printf-lang fmt-elt)" f)]
     ))
   (debug (thunk (printf "result of interp-fmt-elt-unsafe: ~a~n" res)))
   res
