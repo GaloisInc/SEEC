@@ -384,7 +384,8 @@
 
 (define/contract (unsafe:ident->number l)
   (-> printf-lang-ident? integer?)
-  (match l
+  l
+  #;(match l
     [(printf-lang x:integer) x]
     ))
 
@@ -446,12 +447,12 @@
     [(printf-lang v:val)
      (match ftype
        ; if ftype = 'd', interpret the argument as an integer
-       [(printf-lang %d) (printf-lang ,(unsafe:val->integer v))]
+       [(printf-lang %d) (unsafe:val->integer v)]
        ; if ftype = 's', interpret the argument as a string
-       [(printf-lang %s) #;(printf-lang ,(unsafe:val->string v))
+       [(printf-lang %s)
         (match v
-          [(printf-lang s:string) (printf-lang ,s)]
-          [_ (printf-lang ERR)]
+          [(printf-lang s:string) v]
+          [_                      (printf-lang ERR)]
           )]
        ; if ftype = 'n', interpret the argument as a location aka an integer
        [(printf-lang %n) (printf-lang ,(unsafe:val->integer v))]

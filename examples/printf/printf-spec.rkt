@@ -408,7 +408,7 @@
 (define/contract (print-n-loc conf l)
   (-> printf-lang-config? printf-lang-ident? printf-lang-config?)
   (debug (thunk (printf "(print-n-loc ~a)~n" l)))
-  (let* ([acc (printf-lang ,(conf->acc conf))]
+  (let* ([acc (conf->acc conf)]
          [new-mem (mem-update (conf->mem conf) l acc)]
          )
     (printf-lang (,acc ,new-mem))
@@ -431,9 +431,9 @@
   (define res
       (match (cons ftype (lookup-offset (param->offset param) ctx))
         [(cons (printf-lang %d) (printf-lang n:integer))
-         (printf-lang ,n)]
+         n]
         [(cons (printf-lang %s) (printf-lang s:string))
-         (printf-lang ,s)]
+         s]
         [_ (printf-lang ERR)]
         ))
   (debug (thunk (printf "result of fmt->constant: ~a~n" res)))
@@ -447,8 +447,7 @@
 (define/contract (pad-constant c w)
   (-> printf-lang-constant? integer? printf-lang-trace?)
   (debug (thunk (printf "(pad-constant ~a ~a)~n" c w)))
-  (define res (let* ([c-len (constant-length c)]
-         )
+  (define res (let* ([c-len (constant-length c)])
     (cond
       [(<= w c-len) (seec-singleton c)]
       [else         (seec-cons (printf-lang (pad-by ,(- w c-len))) (seec-singleton c))]
@@ -465,7 +464,7 @@
   (define conf (context->config ctx))
   (define res (match f
     [(printf-lang s:string)
-     (print-constant conf (printf-lang ,s))]
+     (print-constant conf s)]
 
     ; the width parameter doesn't make a difference for n formats
     [(printf-lang (%n (p:parameter _:width)))
