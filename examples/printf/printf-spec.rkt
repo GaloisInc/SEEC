@@ -164,15 +164,15 @@
 #| Projections out of types |#
 #||||||||||||||||||||||||||||#
 
-(define/contract (loc? v)
-  (-> any/c boolean?)
+(define (loc? v)
+  #;(-> any/c boolean?)
   (match v
     [(printf-lang (LOC l:ident)) #t]
     [_ #f]
     ))
 
-(define/contract (err? x)
-  (-> any/c boolean?)
+(define (err? x)
+  #;(-> any/c boolean?)
   (match x
     [(printf-lang ERR) #t]
     [_ #f]))
@@ -180,67 +180,67 @@
   (and (integer? n)
        (>= n 0)))
 
-(define/contract (val->number v)
-  (-> printf-lang-integer? integer?)
+(define (val->number v)
+  #;(-> printf-lang-integer? integer?)
   (match v
     [(printf-lang n:integer) n]
     #;[_ (raise-argument-error 'val->number "(printf-lang integer)" v)]
     ))
-(define/contract (val->loc v)
-  (-> loc? printf-lang-ident?)
+(define (val->loc v)
+  #;(-> loc? printf-lang-ident?)
   (match v
     [(printf-lang (LOC x:ident)) x]
     ))
-(define/contract (conf->mem c)
-  (-> printf-lang-config? printf-lang-mem?)
+(define (conf->mem c)
+  #;(-> printf-lang-config? printf-lang-mem?)
   (match c
     [(printf-lang (integer m:mem)) m]
     ))
-(define/contract (conf->acc c)
-  (-> printf-lang-config? integer?)
+(define (conf->acc c)
+  #;(-> printf-lang-config? integer?)
   (match c
     [(printf-lang (acc:integer mem)) acc]
     #;[_ (raise-argument-error 'conf->acc "conf" c)]
     ))
 
-(define/contract (param->offset param)
-  (-> fmt-string-parameter? integer?)
+(define (param->offset param)
+  #;(-> fmt-string-parameter? integer?)
   param
   #;(match param
     [(printf-lang (o:offset $)) o]
     ))
 
 
-(define/contract (behavior->trace b)
-  (-> printf-lang-behavior? printf-lang-trace?)
+(define (behavior->trace b)
+  #;(-> printf-lang-behavior? printf-lang-trace?)
   (match b
     [(printf-lang (t:trace config)) t]))
-(define/contract (behavior->config b)
-  (-> printf-lang-behavior? printf-lang-config?)
+(define (behavior->config b)
+  #;(-> printf-lang-behavior? printf-lang-config?)
   (match b
     [(printf-lang (trace c:config)) c]
     ))
 
 (define (make-context args conf)
   (printf-lang (,args ,conf)))
-(define/contract (make-config n m)
-  (-> integer? printf-lang-mem? printf-lang-config?)
+(define (make-config n m)
+  #;(-> integer? printf-lang-mem? printf-lang-config?)
   (printf-lang (,n ,m)))
 (define (make-config-triv n)
   (make-config n (printf-lang nil)))
-(define/contract (make-behav t n m)
-  (-> printf-lang-trace? integer? printf-lang-mem? printf-lang-behavior?)
+(define (make-behav t n m)
+  #;(-> printf-lang-trace? integer? printf-lang-mem? printf-lang-behavior?)
   (printf-lang (,t ,(make-config n m))))
 (define (make-behav-triv t n)
   (printf-lang (,t ,(make-config-triv n))))
 
-(define/contract (context->config ctx)
-  (-> printf-lang-context? printf-lang-config?)
+(define (context->config ctx)
+  #;(-> printf-lang-context? printf-lang-config?)
   (match ctx
     [(printf-lang (args:arglist cfg:config)) cfg]
     ))
-(define/contract (context->arglist ctx)
-  (-> printf-lang-context? printf-lang-arglist?)
+(define (context->arglist ctx)
+  #;(-> printf-lang-context? printf-lang-arglist?)
   (match ctx
     [(printf-lang (args:arglist cfg:config)) args]
     ))
@@ -250,20 +250,20 @@
        (printf-lang-context? (car p))
        (fmt-string-fmt? (cdr p))
        ))
-(define/contract (program->fmt p)
-  (-> printf-program? fmt-string-fmt?)
+(define (program->fmt p)
+  #;(-> printf-program? fmt-string-fmt?)
   (cdr p))
-(define/contract (program->context p)
-  (-> printf-program? printf-lang-context?)
+(define (program->context p)
+  #;(-> printf-program? printf-lang-context?)
   (car p))
-(define/contract (program->arglist p)
-  (-> printf-program? printf-lang-arglist?)
+(define (program->arglist p)
+  #;(-> printf-program? printf-lang-arglist?)
   (context->arglist (car p)))
-(define/contract (program->config p)
-  (-> printf-program? printf-lang-config?)
+(define (program->config p)
+  #;(-> printf-program? printf-lang-config?)
   (context->config (car p)))
-(define/contract (make-program f args conf)
-  (-> fmt-string-fmt? printf-lang-arglist? printf-lang-config? printf-program?)
+(define (make-program f args conf)
+  #;(-> fmt-string-fmt? printf-lang-arglist? printf-lang-config? printf-program?)
   (cons (printf-lang (,args ,conf)) f))
 
 
@@ -274,8 +274,8 @@
 
 ; INPUT: a location identifier l and a memory value m with l in the domain of m
 ; OUTPUT: the value mapped to by the identifier
-(define/contract (lookup-loc l m)
-  (-> printf-lang-ident? printf-lang-mem? (or/c err? printf-lang-val?))
+(define (lookup-loc l m)
+  #;(-> printf-lang-ident? printf-lang-mem? (or/c err? printf-lang-val?))
   (debug (thunk (printf "(lookup-loc ~a ~a)~n" l m)))
   (match m
     [(printf-lang nil) (printf-lang ERR)]
@@ -285,8 +285,8 @@
          (lookup-loc l m0))]
     ))
 
-(define/contract (eval-expr e m)
-  (-> printf-lang-expr? printf-lang-mem? (or/c err? printf-lang-val?))
+(define (eval-expr e m)
+  #;(-> printf-lang-expr? printf-lang-mem? (or/c err? printf-lang-val?))
   (debug (thunk (printf "(eval-expr ~a ~a)~n" e m)))
   (match e
     [(printf-lang v:val) v]
@@ -299,8 +299,8 @@
 
 ; INPUT: an integer offset and an argument list args such that offset < length(args)
 ; OUTPUT: the value mapped to the offset
-(define/contract (lookup-offset offset ctx)
-  (-> integer? printf-lang-context? (or/c err? printf-lang-val?))
+(define (lookup-offset offset ctx)
+  #;(-> integer? printf-lang-context? (or/c err? printf-lang-val?))
   (debug (thunk (printf "(lookup-offset ~a ~a)~n" offset ctx)))
   (define res 
     (let ([args (context->arglist ctx)]
@@ -321,8 +321,8 @@
 
 ; INPUT: a configuration (acc,mem) and a number n
 ; OUTPUT: a new configuration (acc+n,mem)
-(define/contract (config-add conf n)
-  (-> printf-lang-config? integer? printf-lang-config?)
+(define (config-add conf n)
+  #;(-> printf-lang-config? integer? printf-lang-config?)
   (debug (thunk (printf "(config-add ~a ~a)~n" conf n)))
   (let* ([acc   (conf->acc conf)]
          [m     (conf->mem conf)]
@@ -336,8 +336,8 @@
 
 ; INPUT: a mem, a location, and a value
 ; OUTPUT: an updated memory with the location mapping to the new value
-(define/contract (mem-update m l v)
-  (-> printf-lang-mem? printf-lang-ident? printf-lang-val? printf-lang-mem?)
+(define (mem-update m l v)
+  #;(-> printf-lang-mem? printf-lang-ident? printf-lang-val? printf-lang-mem?)
   (printf-lang (cons (,l ,v) ,m)))
 
 
@@ -352,8 +352,8 @@
 ; If the constant is a string, give the length of the string
 ; If the constant is an integer (represented by a bitvector) give the length of
 ; the string representing the number.
-(define/contract (constant-length c)
-  (-> printf-lang-constant? integer?)
+(define (constant-length c)
+  #;(-> printf-lang-constant? integer?)
   (debug (thunk (printf "(constant-length ~a)~n" c)))
   (define res (match c
     [(printf-lang s:string)   (string-length s)]
@@ -366,8 +366,8 @@
 
 ; INPUT: a config OR behavior conf-or-behav and constant c
 ; OUTPUT: a behavior consisting of the trace containing n and the upated configuration
-(define/contract (print-constant conf-or-behav c)
-  (-> (or/c printf-lang-config? printf-lang-behavior?) printf-lang-constant? printf-lang-behavior?)
+(define (print-constant conf-or-behav c)
+  #;(-> (or/c printf-lang-config? printf-lang-behavior?) printf-lang-constant? printf-lang-behavior?)
   (debug (thunk (printf "(print-constant ~a ~a)~n" conf-or-behav c)))
   (define res (match conf-or-behav
     [(printf-lang conf:config)
@@ -389,8 +389,8 @@
 
 
 ; Input: t is either a trace or ERR
-(define/contract (print-trace conf t)
-  (-> printf-lang-config? (or/c err? printf-lang-trace?) (or/c err? printf-lang-behavior?))
+(define (print-trace conf t)
+  #;(-> printf-lang-config? (or/c err? printf-lang-trace?) (or/c err? printf-lang-behavior?))
   (debug (thunk (printf "(print-trace ~a ~a)~n" conf t)))
   (define res (match t
     [(printf-lang ERR) (printf-lang ERR)]
@@ -405,8 +405,8 @@
 
 ; INPUT: a config conf and a location identifier l
 ; OUTPUT: an updated configuration that assigns l the value of the accumulator.
-(define/contract (print-n-loc conf l)
-  (-> printf-lang-config? printf-lang-ident? printf-lang-config?)
+(define (print-n-loc conf l)
+  #;(-> printf-lang-config? printf-lang-ident? printf-lang-config?)
   (debug (thunk (printf "(print-n-loc ~a)~n" l)))
   (let* ([acc (conf->acc conf)]
          [new-mem (mem-update (conf->mem conf) l acc)]
@@ -425,8 +425,8 @@
 
 ; returns the contant to be printed, or ERR
 ; expects ftype to not be equal to `n`
-(define/contract (fmt->constant ftype param ctx)
-  (-> fmt-string-fmt-type? fmt-string-parameter? printf-lang-context? (or/c err? printf-lang-constant?))
+(define (fmt->constant ftype param ctx)
+  #;(-> fmt-string-fmt-type? fmt-string-parameter? printf-lang-context? (or/c err? printf-lang-constant?))
   (debug (thunk (printf "(fmt->constant ~a ~a ~a)~n" ftype param ctx)))
   (define res
       (match (cons ftype (lookup-offset (param->offset param) ctx))
@@ -444,8 +444,8 @@
 ;
 ; TODO: do we need to use bitvectors to keep track of potential overflow? Right
 ; now both the constant lengths and widths are integers, rather than bitvectors.
-(define/contract (pad-constant c w)
-  (-> printf-lang-constant? integer? printf-lang-trace?)
+(define (pad-constant c w)
+  #;(-> printf-lang-constant? integer? printf-lang-trace?)
   (debug (thunk (printf "(pad-constant ~a ~a)~n" c w)))
   (define res (let* ([c-len (constant-length c)])
     (cond
@@ -458,8 +458,8 @@
 
 ; INPUT: a format string, an argument list, and a configuration
 ; OUTPUT: an outputted string and a configuration OR ERR
-(define/contract (interp-fmt-elt-safe f ctx)
-  (-> fmt-string-fmt-elt? printf-lang-context? (or/c err? printf-lang-behavior?))
+(define (interp-fmt-elt-safe f ctx)
+  #;(-> fmt-string-fmt-elt? printf-lang-context? (or/c err? printf-lang-behavior?))
   (debug (thunk (printf "(interp-fmt-elt-safe ~a ~a)~n" f ctx)))
   (define conf (context->config ctx))
   (define res (match f
@@ -507,8 +507,8 @@
   res)
 
 
-(define/contract (interp-fmt f args conf)
-  (-> fmt-string-fmt? printf-lang-arglist? printf-lang-config? (or/c err? printf-lang-behavior?))
+(define (interp-fmt f args conf)
+  #;(-> fmt-string-fmt? printf-lang-arglist? printf-lang-config? (or/c err? printf-lang-behavior?))
   (debug (thunk (printf "(safe:interp-fmt ~a ~a ~a)~n" f args conf)))
   (define res (match f
     [(printf-lang nil) (printf-lang (nil ,conf))]
@@ -538,8 +538,8 @@
 
 ; p is the parameter offset
 ; ftype is the format type associated with the parameter
-(define/contract (parameter-consistent-with-arglist p ftype ctx)
-  (-> fmt-string-parameter? fmt-string-fmt-type? printf-lang-context? boolean?)
+(define (parameter-consistent-with-arglist p ftype ctx)
+  #;(-> fmt-string-parameter? fmt-string-fmt-type? printf-lang-context? boolean?)
   (let* ([offset (param->offset p)]
          [arg (lookup-offset offset ctx)])
     (and (< offset (seec-length (context->arglist ctx)))
@@ -550,7 +550,7 @@
            [_                                                #f]
            ))))
 (define (width-consistent-with-arglist w ctx)
-  (-> fmt-string-width? printf-lang-context? boolean?)
+  #;(-> fmt-string-width? printf-lang-context? boolean?)
   (match w
     [(printf-lang NONE) #t]
     [(printf-lang natural) #t]
