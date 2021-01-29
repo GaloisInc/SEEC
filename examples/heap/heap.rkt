@@ -429,6 +429,57 @@
      ; checks if l is smaller than the length of h
      (not (< (seec-length h) l))]))
 
+; heap -> pointer -> boolean
+; p is the head of a freelist in h
+
+(define (valid-freelist fuel h p)
+  (define (valid-freelist+ fuel h p prev-p)
+    (if (<= fuel 0)
+        #f
+        (match p      
+          [(heap-model null)
+           #t]
+          [(heap-model l:natural)
+           (let* ([forward-p (nth h l)]
+                  [backward-p (nth h (+ l 1))]
+                  [check-v (nth h (+ l 2))])
+             (if (and (equal? check-v (heap-model 0)) (equal? backward-p prev-p))
+                 (valid-freelist+ (- fuel 1) h forward-p p)
+             (begin
+               #f)))])))
+  (valid-freelist+ fuel h p (heap-model null)))
+
+;; heap in heap-model is valid if length is divisible by 4
+(define (valid-heap h)
+  (zero? (remainder (seec-length h) 4)))
+
+(define (valid-state fuel s)
+  (match s
+    [(heap-model (b:buf h:heap p:pointer))
+     (and (<= 1 (length b))
+          (scoped-pointer? h p)
+          (valid-heap h)
+          (valid-freelist fuel h p))]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Other predicates for heap-model
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; returns the length of the free-list 
+(define (freelist-length fuel s)
+  (define (freelist-length+ fuel h p)
+    (if (<= fuel 0)
+        #f
+        (match p
+          [(heap-model null)
+           0]
+          [(heap-model l:natural)
+           (let* ([forward-p (nth h l)])
+             (+ (freelist-length+ (- fuel 1) h forward-p) 1))])))
+    (match s
+      [(heap-model (b:buf h:heap p:pointer))
+       (freelist-length+ fuel h p)
+       ]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -497,6 +548,7 @@
        (display-heap h)
        (displayln "FP HEAD:")
        (displayln (print-pointer f)))]))
+      
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Predicate to validate heap-model
@@ -559,6 +611,10 @@
 (define o (heap-model (get 2)))
 (define ti (heap-model (,i ,o)))
 
+(define i-attack (heap-model (cons (set 0 2) (cons (set 1 3) (cons (write 0 1) nil)))))
+(define d+5* (interpret-interaction i-attack d+4*))
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; SYMBOLIC TESTING heap-model
@@ -566,23 +622,68 @@
 (define (d-test0)
   (begin
     (define b0* (heap-model buf 4))
-    (define h0* (heap-model heap 5))
+    (define h0* (heap-model heap 9))
     (define fp0* (heap-model pointer 1))
     (define s0* (heap-model (,b0* ,h0* ,fp0*)))
-    (define s0+* (heap-model state 6))
+    (assert (valid-state 3 s0*))
+    (define beh0* (interpret-observation o s0*))
+    (assert (not (equal? beh0* 5)))    
     (define i0* (heap-model interaction 4))
-    (define d0+* (interpret-interaction i0* d+5))
-    (define beh0* (interpret-observation o  s0*))
-    (define sol (verify #:guarantee (assert (not (equal? beh0* 5)))))
+    (define s0+* (interpret-interaction i0* s0*))
+    (define beh0+* (interpret-observation o  s0+*))
+    (define sol (verify #:guarantee (assert (not (equal? beh0+* 5)))))
     (define s0 (concretize s0* sol))
-    (define d0+ (concretize d0+* sol))
     (define i0 (concretize i0* sol))
-    (define beh0 (concretize beh0* sol))
+    (define beh0+ (concretize beh0+* sol))
     (displayln "State:")
     (display-state s0)
     (displayln "Interaction:")
     (displayln i0)
     (displayln "Behavior:")
-    (displayln beh0)))
+    (displayln beh0+)))
+
+; create a heap with a free-list of length 2 (fails at the moment, only 0 works)
+(define (d-test1)
+  (begin
+    (define b1* (heap-model buf 4))
+    (define h1* (heap-model heap 9))
+    (define fp1* (heap-model pointer 1))
+    (define s1* (heap-model (,b1* ,h1* ,fp1*)))
+    (assert (valid-state 3 s1*))
+    (define sol (solve (assert (= 1 (freelist-length 3 s1*)))))
+    (define s1 (concretize s1* sol))   
+    (displayln "State:")
+    (display-state s1)))
+
+
+; try to make the state invalid
+(define (d-test2)
+  (begin
+    (define b2* (heap-model buf 4))
+    (define h2* (heap-model heap 5))
+    (define fp2* (heap-model pointer 2))
+    (define s2* (heap-model (,b2* ,h2* ,fp2*)))
+    ;(define s2* (heap-model state 6))
+    (assert (valid-state 3 s2*))
+    ; test with fixed interaction 
+    (define i2* (heap-model interaction-hl 4))
+    ;    (define s2+* (interpret-interaction i-attack s2*))
+;    (define s2+* (interpret-action-hl (heap-model (set 0 2)) s2*))
+    ;    (define s2++* (interpret-action-hl (heap-model (write 0 3)) s2+*))
+    (define s2++* (interpret-interaction-hl i2* s2*))
+;    (define s2++* (interpret-interaction-hl (heap-model (cons (set 0 2) (cons (write 0 3) nil))) s2*))
+    (define sol (verify #:guarantee (assert (valid-state 3 s2++*))))
+    (define s2 (concretize s2* sol))   
+    (define i2 (concretize i2* sol))
+    (define s2+ (concretize s2++* sol))
+    (displayln "State:")
+    (display-state s2)
+    (displayln "Interaction:")
+    (displayln i2)
+    (displayln "State+:")
+    (display-state s2+)
+    (displayln (valid-state 3 s2+))))
+
+
 
     

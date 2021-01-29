@@ -696,6 +696,7 @@
 (define df+5 (heap-and-freelist-action ar df+4))
 
 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; PREDICATES for freelist
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -703,6 +704,16 @@
 (define (freelist-size fs)
   (seec-length fs))
 
+
+(define (f-test0)
+  (begin
+    (define f0* (freelist state 4))
+    (define sol (solve (= (freelist-size f0*) 2)))    
+    (if sol
+        (begin
+          (define f0 (concretize f0* sol))
+          (display-f-state f0))
+        (displayln "unsat"))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Relating the heap-model freelist with the shadow freelist
@@ -740,7 +751,7 @@
     (define df0* (cons s0* ns0*))
     ;(assert (heap-and-freelist-shadow? df0*))
     (define df0+* (heap-and-freelist-interaction i0* df0*))
-    (define sol (verify #:guarantee (assert #f) #;(assert (freelist-size (cdr df0+*)))))
+    (define sol (solve (not (= (freelist-size (cdr df0+*)) (freelist-length 3 (car df0+*))))))
     (define df0 (concretize df0* sol))
     (define i0 (concretize i0* sol))
     (define df0+ (concretize df0+* sol))
@@ -750,4 +761,5 @@
     (displayln i0)
     (displayln "State post:")
     (display-hf-state df0+)))
+
 
