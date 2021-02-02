@@ -110,7 +110,6 @@
   (define target-args (seec-singleton (unsafe:printf-lang (LOC ,l-val))))
   (define target-conf  (unsafe:printf-lang ((bv 0) nil)))
   (define target-ctx
-    unsafe:context?
     (unsafe:printf-lang (,target-args ,target-conf)))
 #|
 
