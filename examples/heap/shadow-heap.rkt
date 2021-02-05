@@ -1,7 +1,7 @@
 #lang seec
 (set-bitwidth 4)
 (require racket/format)
-(require racket/contract)
+;(require racket/contract)
 (provide (all-defined-out))
 (require (file "heap.rkt"))
 ;
@@ -268,57 +268,130 @@
 (define o0* (no-freelist observation 2))
 (define h0* (no-freelist buf 5))
 
-
+; trying to synthesize a no-freelist.state which is the same as a concrete state
+; works
 (define (nf-test0)
   (begin
-    (define b0* (no-freelist buf 4))
-    (define h0* (no-freelist heap 5))
-    (define s0* (no-freelist (,b0* ,h0*)))
-    (define s0+* (no-freelist state 6))
-    (define i0* (no-freelist interaction 4))
-    (define o0* (no-freelist observation 2))
-    (define d0+* (no-freelist-interaction i0* nf+5))
-    (define beh0* (no-freelist-observation o d0+*))
-    (define sol (verify #:guarantee (assert (not (equal? beh0* 5)))))
-    (define s0 (concretize s0* sol))
-    (define d0+ (concretize d0+* sol))
-    (define i0 (concretize i0* sol))
-    (define o0 (concretize o0* sol))
-    (define beh0 (concretize beh0* sol))
+;    (define b0* (no-freelist buf 4))
+;    (define h0* (no-freelist heap 5))
+;    (define s1* (no-freelist (,b0* ,h0*)))
+    (define s1* (no-freelist state 7))
+    ;    (assert (no-freelist-valid-state s1*))
+    ;    (define sol (solve (assert (equal? s1* (no-freelist-init 4)))))
+;    (define concr (no-freelist-init 4))
+    (define concr nf+5)
+    (define sol (solve (assert (equal? s1* concr))))
+    (define s1 (concretize s1* sol))
+    (clear-asserts!)
     (displayln "State:")
-    (display-nf-state s0)
-    (displayln "Interaction:")
-    (displayln i0)
-    (displayln "Observation:")
-    (displayln o0)
-    (displayln "Behavior:")
-    (displayln beh0)))
+    (display-nf-state s1)
+    (displayln "Ref:")
+    (display-nf-state concr)               
+    (equal? s1 concr)))
 
 
-; Testing the synthesis of an interaction to make a symbolic no-freelist.state similar (shallow) to a heap-model.state
+
+; Trying to synthesize a state which is shallowly equal to a concrete heap-model.state
+; works 
 (define (nf-test1)
   (begin
-    (define b0* (heap-model buf 4))
-    (define h0* (heap-model heap 5))
-    (define fp0* (heap-model pointer 1))
-    (define s1* (heap-model (,b0* ,h0* ,fp0*)))
-    (assert (no-freelist-valid-state s1*))
-    (define i1* (no-freelist interaction 4))
-    (define s1+* (no-freelist-interaction i1* s1*))
-    (define sol (verify #:guarantee (assert (not (shallow-nf-state-eq s1* d+5)))))
+;    (define b0* (no-freelist buf 4))
+;    (define h0* (no-freelist heap 5))
+;    (define s1* (no-freelist (,b0* ,h0*)))
+    (define s1* (no-freelist state 7))
+;    (assert (no-freelist-valid-state s1*))
+    (define sol (solve (assert (shallow-nf-state-eq s1* d+5))))
     (define s1 (concretize s1* sol))
-    (define s1+ (concretize s1+* sol))
-    (define i1 (concretize i1* sol))
-    (displayln "State pre:")
+    (clear-asserts!)
+    (displayln "State:")
     (display-nf-state s1)
-    (displayln "Interaction:")
-    (displayln i1)
-    (displayln "State post:")
-    (display-nf-state s1+)
     (displayln "Shallow eq:")
     (displayln (shallow-nf-state-eq s1 d+5 #:debug #t))
     (displayln "Deep eq:")
     (displayln (deep-nf-state-eq s1 d+5))))
+
+; Trying to synthesize a heap-model.state which is shallowly equal to a concrete no-freelist.state
+; works
+(define (nf-test1+)
+  (begin
+    (define s1* (heap-model state 7))
+    (assert (valid-state 3 s1*))
+    ;    (assert (no-freelist-valid-state s1*))
+    ;    (define sol (solve (assert (equal? s1* (no-freelist-init 4)))))
+;    (define concr (no-freelist-init 4))
+    (define concr nf+5)
+    (define sol (solve (assert (shallow-nf-state-eq concr s1*))))
+    (define s1 (concretize s1* sol))
+    (clear-asserts!)
+    (displayln "State:")
+    (display-state s1)
+    (displayln "Ref:")
+    (display-nf-state concr)               
+    (shallow-nf-state-eq concr s1)
+    (deep-nf-state-eq concr s1)))
+
+
+;Trying to synthesize a state which is equivalent to a concrete heap-model.state
+; works
+(define (nf-test2)
+  (begin
+    (define s2* (no-freelist state 7))
+    ;    (assert (no-freelist-valid-state s1*))
+    ;    (define sol (solve (assert (equal? s1* (no-freelist-init 4)))))
+;    (define concr (no-freelist-init 4))
+    (define concr d+4*)
+    (define sol (solve (assert (deep-nf-state-eq s2* concr))))
+    (define s2 (concretize s2* sol))
+    (clear-asserts!)
+    (displayln "State:")
+    (display-nf-state s2)
+    (displayln "Ref:")
+    (display-state concr)               
+    (deep-nf-state-eq s2 concr)))
+
+;Trying to synthesize a heap-model.state which is equivalent to a concrete no-freelist.state
+; works
+(define (nf-test2+)
+  (begin
+    (define s2* (heap-model state 7))
+    (assert (valid-state 3 s2*))
+    ;    (assert (no-freelist-valid-state s1*))
+    ;    (define sol (solve (assert (equal? s1* (no-freelist-init 4)))))
+;    (define concr (no-freelist-init 4))
+    (define concr nf+5)
+    (define sol (solve (assert (deep-nf-state-eq concr s2*))))
+    (define s2 (concretize s2* sol))
+    (clear-asserts!)
+    (displayln "State:")
+    (display-state s2)
+    (displayln "Ref:")
+    (display-nf-state concr)               
+    (deep-nf-state-eq concr s2)))
+
+; synthesize state, interaction and behavior to achieve a certain behavior (obs = 5)
+; works
+(define (nf-test3)
+  (begin
+    (define s3* (no-freelist state 6))
+    (define i3* (no-freelist interaction 4))
+    (define o3* (no-freelist observation 2))
+    (define d3+* (no-freelist-interaction i3* s3*))
+    (define beh3* (no-freelist-observation o3* d3+*))
+    (define sol (solve (assert (equal? beh3* 5))))
+    (define s3 (concretize s3* sol))
+    (define d3+ (concretize d3+* sol))
+    (define i3 (concretize i3* sol))
+    (define o3 (concretize o3* sol))
+    (define beh3 (concretize beh3* sol))
+    (displayln "State:")
+    (display-nf-state s3)
+    (displayln "Interaction:")
+    (displayln i3)
+    (displayln "Observation:")
+    (displayln o3)
+    (displayln "Behavior:")
+    (displayln beh3)))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; COMPILING  no-freelist into heap-model
@@ -373,8 +446,8 @@
 
 ;; compare nnvalues out of shadow-heap.value and heap-model.value
 ;; returns #:default (#t) if nf-v is a pointer
-(define/contract shallow-nf-val-eq
-  (->* (any/c any/c)
+(define shallow-nf-val-eq
+  #;(->* (any/c any/c)
        (#:debug boolean?
         #:default boolean?)
        boolean?)
@@ -396,8 +469,8 @@
 
 
 ;; shallow (compare non-pointer value) buffer equality
-(define/contract shallow-nf-buf-eq
-  (->* (any/c any/c)
+(define shallow-nf-buf-eq
+  #;(->* (any/c any/c)
        (#:debug boolean?)
        boolean?)
   (lambda (nf-b
@@ -421,8 +494,8 @@
             #f])]))))
 
 ;; shallow (buffer only) equality
-(define/contract shallow-nf-state-eq
-  (->* (any/c any/c)
+(define shallow-nf-state-eq
+  #;(->* (any/c any/c)
        (#:debug boolean?)
        boolean?)
   (lambda (nf-s s
@@ -568,8 +641,8 @@
           (free natural) ; free the object natural if it is allocated
           alloc) ; allocate an object
   (interaction ::= list<action>)
-   (state ::= (list<natural>) ; list of free blocks
-          ))
+  (state ::= list<natural>) ; list of free blocks
+         )
 
 ;; freelist.action -> freelist.state -> freelist.state
 (define (freelist-action a s)
@@ -684,6 +757,9 @@
 ; TESTING freelist
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(define f (freelist (cons 1 nil)))
+(define f+ (freelist (cons 5 ,f)))
+(define f++ (freelist (cons 9 ,f+)))
 
 (define df (cons (init-state 4 2) (init-freelist)))
 
@@ -702,18 +778,32 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; freelist.state -> natural
 (define (freelist-size fs)
-  (seec-length fs))
+  (length fs))
 
 
+; This is not working
 (define (f-test0)
   (begin
     (define f0* (freelist state 4))
-    (define sol (solve (= (freelist-size f0*) 2)))    
+    (define sol (solve (assert (equal? (freelist-size f0*) 1))))
     (if sol
         (begin
           (define f0 (concretize f0* sol))
           (display-f-state f0))
         (displayln "unsat"))))
+
+; Find a symbolic freelist equal to a concrete one
+(define (f-test1)
+  (begin
+    (define concr f)
+    (define f1* (freelist state 4))
+    (define sol1 (solve (assert (equal? f1* concr))))
+    (if sol1
+        (begin
+          (define f1 (concretize f1* sol1))
+          (display-f-state f1))
+        (displayln "unsat"))))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Relating the heap-model freelist with the shadow freelist
@@ -740,26 +830,33 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; SYMBOLIC TESTING df-state-shadow
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; synthesize the shadow freelist of a concrete heap-model.state
 (define (df-test0)
   (begin
-    (define b0* (heap-model buf 4))
-    (define h0* (heap-model heap 5))
-    (define fp0* (heap-model pointer 1))
-    (define s0* (heap-model (,b0* ,h0* ,fp0*)))
-    (define i0* (heap-model interaction 4))
-    (define ns0* (freelist state 4))
-    (define df0* (cons s0* ns0*))
-    ;(assert (heap-and-freelist-shadow? df0*))
-    (define df0+* (heap-and-freelist-interaction i0* df0*))
-    (define sol (solve (not (= (freelist-size (cdr df0+*)) (freelist-length 3 (car df0+*))))))
-    (define df0 (concretize df0* sol))
-    (define i0 (concretize i0* sol))
-    (define df0+ (concretize df0+* sol))
-    (displayln "State pre:")
-    (display-hf-state df0)
-    (displayln "Interaction:")
-    (displayln i0)
-    (displayln "State post:")
-    (display-hf-state df0+)))
+    (define concr d+4*)
+    (define f0* (freelist state 4))
+    (define sol (solve (assert (freelist-state-shadow? concr f0*))))
+    (define f0 (concretize f0* sol))
+    (displayln "State:")
+    (display-state concr)
+    (displayln "Freelist:")
+    (displayln f0)
+    (displayln "Shadows?:")
+    (displayln (freelist-state-shadow? concr f0))))
 
 
+; synthesize a heap-model.state that is shadowed by given concrete freelist
+(define (df-test0+)
+  (begin
+    (define concr f)
+    (define d0* (heap-model state 6))
+    (assert (valid-state 3 d0*))
+    (define sol (solve (assert (freelist-state-shadow? d0* concr))))
+    (define d0 (concretize d0* sol))
+    (displayln "State:")
+    (display-state d0)
+    (displayln "Freelist:")
+    (displayln concr)
+    (displayln "Shadows?:")
+    (displayln (freelist-state-shadow? d0 concr))))
