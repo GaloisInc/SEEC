@@ -12,7 +12,6 @@
 
 
 (define (ex2) (find-weird-component abstract-to-buggyconcrete
-                                    #:source-expression-bound 5
                                     #:source-context-bound 2
                                     #:target-context-bound 2))
 #;(begin
@@ -25,7 +24,6 @@
 ; witnessed by target-level context *null*
 
 (define (ex3) (find-weird-component abstract-to-concrete
-                                    #:source-expression-bound 5
                                     #:source-context-bound 2
                                     #:target-context-bound 2))
 #;(begin
