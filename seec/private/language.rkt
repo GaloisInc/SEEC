@@ -5,11 +5,20 @@
          enumerate
          make-generator)
 
-(require "bonsai2.rkt"
+(require "bonsai3.rkt"
          "match.rkt"
          (only-in "string.rkt"
                   char
-                  string))
+                  string
+                  char?
+                  string?
+                  ))
+(require (only-in racket/base
+                  [string? racket/string?]
+                  [char? racket/char?]
+                  raise-argument-error
+                  ))
+
 
 (require (for-syntax syntax/parse)
          (for-syntax (only-in racket/syntax
@@ -107,8 +116,13 @@
 
 (define (max-width ls)
   (cond
-    [(list? ls) (apply max (length ls) (map max-width ls))]
-    [else 0]))
+    [(list? ls)
+     (apply max (length ls) (map max-width ls))]
+    [(symbol-is-polymorphic-type? "list" ls)
+     2]
+    [else
+     1]
+    ))
 
 (begin-for-syntax
   (define builtin-nonterminals '(integer natural boolean bitvector char string any))
@@ -189,23 +203,18 @@
 ; return #t if if `pattern` is a type compatible with the grammar `lang` and
 ; `tree` is a data structure of that type.
 (define (syntax-match? lang pattern tree)
-  #;(printf "(syntax-match? ~a ~a ~a)~n" lang pattern tree)
     (for/all [(tree tree)]
       (cond
         ; tree patterns
         [(equal? 'nil pattern)
-         (bonsai-null? tree)]
+         (seec-empty? tree)]
         [(and (list? pattern)
               (= (length pattern) 3)
               (equal? (first pattern) 'cons))
-         (bonsai-cons-match?
+         (seec-cons-match?
           (curry syntax-match? lang (second pattern))
           (curry syntax-match? lang (third pattern))
           tree)]
-
-        [(symbol-is-polymorphic-type? "list" pattern)
-         (let* ([a (extract-polymorphic-type-symbol "list" pattern)])
-           (bonsai-linked-list-match? (curry syntax-match? lang) a tree))]
 
         ; test if pattern is a tuple of patterns
         [(list? pattern)
@@ -221,21 +230,23 @@
         [(equal? 'any pattern)
          (bonsai? tree)]
         [(equal? 'integer pattern)
-         (bonsai-integer? tree)]
+         (integer? tree)]
         [(equal? 'natural pattern)
-         (and (bonsai-integer? tree)
-              (>= (bonsai-integer-value tree) 0))]
+         (and (integer? tree)
+              (>= tree 0))]
         [(equal? 'char pattern)
-         (bonsai-char? tree)]
+         (char? tree)]
         [(equal? 'string pattern)
-         (bonsai-string? tree)]
+         (string? tree)]
         [(equal? 'boolean pattern)
-         (bonsai-boolean? tree)]
+         (boolean? tree)]
         [(equal? 'bitvector pattern)
-         (bonsai-bv? tree)]
+         (bv? tree)]
+        [(symbol-is-polymorphic-type? "list" pattern)
+         (let* ([a (extract-polymorphic-type-symbol "list" pattern)])
+           (seec-list-match? (curry syntax-match? lang) a tree))]
         [(member pattern (grammar-nonterminals lang))
          (let ([productions (cdr (assoc pattern (grammar-productions lang)))])
-           #;(printf "productions: ~a~n" productions)
            (ormap (λ (pat) (syntax-match? lang pat tree)) productions))]
         [(member pattern (grammar-terminals lang))
          (and (bonsai-terminal? tree)
@@ -304,7 +315,7 @@
     #:literal-sets (builtin-terminals)
     #:description (format "~a pattern ~a" lang-name terminals)
     #:opaque
-    (pattern n:id
+    (pattern n:id ; (lang-name X) for X a type
              #:when (and (syntax? #'n)
                          (not (syntax-has-colon? #'n))
                          (is-type? terminals #'n)
@@ -313,7 +324,7 @@
              #:attr match-pattern #'_
              #:attr stx-pattern   #'n
              #:attr depth         #'1)
-    (pattern n:id
+    (pattern n:id ; (lang-name n:X) for X a type
              #:when (and (syntax? #'n)
                          (syntax-has-colon? #'n)
                          (is-type? terminals (after-colon #'n))
@@ -324,34 +335,34 @@
              #:attr depth         #'1)
     (pattern n:integer
              #:when (and (set-member? terminals 'natural) (>= (syntax->datum #'n) 0))
-             #:attr match-pattern #'(bonsai-integer (? (λ (v) (equal? n v)) _))
+             #:attr match-pattern #'(? (λ (v) (equal? n v)) _)
              #:attr stx-pattern   #'integer
              #:attr depth         #'1)
     (pattern n:integer
              #:when (set-member? terminals 'integer)
-             #:attr match-pattern #'(bonsai-integer (? (λ (v) (equal? n v)) _))
+             #:attr match-pattern #'(? (λ (v) (equal? n v)) _)
              #:attr stx-pattern   #'integer
              #:attr depth         #'1)
     (pattern c:char
              #:when (set-member? terminals 'char)
-             #:attr match-pattern #'(bonsai-char (? (λ (v) (equal? (char c) v)) _))
+             #:attr match-pattern #'(? (λ (v) (equal? (char c) v)) _)
              #:attr stx-pattern   #'char
              #:attr depth         #'1)
     (pattern s:string
              #:when (set-member? terminals 'string)
-             #:attr match-pattern #'(bonsai-string (? (λ (v) (equal? (string s) v)) _))
+             #:attr match-pattern #'(? (λ (v) (equal? (string s) v)) _)
              #:attr stx-pattern   #'string
              #:attr depth         #'1)
     (pattern b:boolean
              #:when (set-member? terminals 'boolean)
-             #:attr match-pattern #'(bonsai-boolean (? (λ (v) (equal? b v)) _))
+             #:attr match-pattern #'(? (λ (v) (equal? b v)) _)
              #:attr stx-pattern   #'boolean
              #:attr depth         #'1)
 
     (pattern (bv b)
              #:declare b integer
              #:when (set-member? terminals 'bitvector)
-             #:attr match-pattern #'(bonsai-bv (? (λ (v) (equal? b v)) _))
+             #:attr match-pattern #'(? (λ (v) (equal? b v)) _)
              #:attr stx-pattern   #'bitvector
              #:attr depth         #'1)
     (pattern nil
@@ -645,29 +656,30 @@
     #:literals (unquote)
     #:literal-sets (builtin-terminals)
     [(_ lang:id nil)
-     #'(bonsai-null)]
+     #'seec-empty]
     [(_ lang:id (cons p-first p-rest))
-     #`(bonsai-list (list (make-concrete-term! lang p-first) (make-concrete-term! lang p-rest)))]
+     #`(seec-cons (make-concrete-term! lang p-first) (make-concrete-term! lang p-rest))]
     [(_ lang:id (bv b))
-     #`(integer->bonsai-bv b)]
+     #`(integer->bv b)]
 
     [(_ lang:id n:integer)
-     #`(bonsai-integer n)]
+     #'n]
     [(_ lang:id c:char)
-     #`(bonsai-char (char c))]
+     #'(char c)]
     [(_ lang:id s:string)
-     #`(bonsai-string (string s))]
+     #'(string s)]
     [(_ lang:id b:boolean)
-     #`(bonsai-boolean b)]
+     #'b]
     [(_ lang:id s:id)
      #`(bonsai-terminal (symbol->enum 's))]
-    [(_ lang:id (unquote e:expr))
-     #'e]
+    [(_ lang:id (unquote e:expr)) #'e] ; TODO: do  we want to add a check that e
+                                       ;  has bonsai?  type? If  so, I'm  afraid
+                                       ;  doing  it  here  would add  a  lot  of
+                                       ; unnecessary noise on symbolic terms.
     [(_ lang:id (pat ...))
      #`(bonsai-list (list (make-concrete-term! lang pat) ...))]))
 
 (define-syntax (make-term! stx)
-  #;(printf "make-term! ~a ~n" stx)
   (syntax-parse stx
     [(_ lang:id pat depth:expr)
      #`(let ([tree (make-tree! depth (grammar-max-width lang))])
@@ -706,6 +718,10 @@
                            [t (unsafe:in-producer generator #f)])
                           t))]))
 
+;;;;;;;;;;;
+;; TESTS ;;
+;;;;;;;;;;;
+
 (module* test rosette/safe
   (require rackunit)
   (require (only-in racket/base
@@ -715,13 +731,14 @@
                     current-continuation-marks))
   (require (submod ".."))
   (require seec/private/match
-           seec/private/bonsai2)
+           seec/private/bonsai3)
   (require (for-syntax syntax/parse))
+
 
   (define-grammar test-grammar
     (base     ::= integer natural boolean bitvector)
     (op       ::= + - and or)
-    (exp      ::= base (op exp exp))
+    (exp      ::= base (op exp exp) (Var integer))
     (prog     ::= list<exp>))
 
   (define-grammar test-grammar-extra #:extends test-grammar
@@ -744,9 +761,10 @@
                   (test-grammar and))
     (check-equal? (bonsai-list
                    (list (bonsai-terminal (symbol->enum '+))
-                         (bonsai-integer 42)
-                         (bonsai-boolean #f)))
-                  (test-grammar (+ 42 #f))))
+                         42
+                         #f))
+                  (test-grammar (+ 42 #f)))
+    )
 
   (define-syntax (match-check stx)
     (syntax-parse stx
@@ -761,28 +779,27 @@
     (match-check
      (test-grammar 5)
      (test-grammar i:integer)
-     (eq? 5 (bonsai-integer-value i)))
+     (eq? 5 i))
     (match-check
      (test-grammar -5)
      (test-grammar i:integer)
-     (eq? -5 (bonsai-integer-value i)))
+     (eq? -5 i))
     (match-check
      (test-grammar 5)
      (test-grammar n:natural)
-     (eq? 5 (bonsai-integer-value n)))
+     (eq? 5 n))
     (match-check
      (test-grammar #t)
      (test-grammar b:boolean)
-     (bonsai-boolean-value b))
+     b)
     (match-check
      (test-grammar #f)
      (test-grammar b:boolean)
-     (not (bonsai-boolean-value b)))
-    ; TODO: change bv to to-bv ?
+     (not b))
     (match-check
      (test-grammar (bv 3))
      (test-grammar b:bitvector)
-     (eq? (integer->bonsai-bv 3) b))
+     (eq? (integer->bv 3) b))
     (match-check
      (test-grammar (+ 5 #f))
      (test-grammar exp)
@@ -811,15 +828,19 @@
     (match-check
      (test-grammar integer 1)
      (test-grammar i:integer)
-     (bonsai-integer? i))
+     (integer? i))
     (match-check
      (test-grammar integer 1)
      (test-grammar n:natural)
-     (>= (bonsai-integer-value n) 0))
+     (>= n 0))
+    (match-check
+     (test-grammar exp 3)
+     (test-grammar (Var x:integer))
+     (= x 0))
     (match-check
      (test-grammar-extra foo 2)
-     (test-grammar-extra b:integer)
-     (bonsai-integer? b))
+     (test-grammar-extra (b:integer))
+     (integer? b))
     (match-check
      (test-grammar-extra foo 2)
      (test-grammar-extra FOO)

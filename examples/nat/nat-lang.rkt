@@ -3,16 +3,16 @@
 (define (subst n exp)
   (match exp
     [(nat-exp input) n]
-    [(nat-exp v:natural) v]
+    [(nat-exp v:natural) exp]
     [(nat-exp (+ l:exp r:exp))
      (nat-exp (+ ,(subst n l) ,(subst n r)))]))
 
 (define (eval exp)
   (match exp
-    [(nat-exp n:natural) n]
+    [(nat-exp n:natural) exp]
     [(nat-exp (+ l:exp r:exp))
-     (nat-exp ,(seec-add (eval l)
-                         (eval r)))]))
+     (nat-exp ,(+ (eval l)
+                  (eval r)))]))
 
 (define-language nat-lang
   #:grammar    nat-exp

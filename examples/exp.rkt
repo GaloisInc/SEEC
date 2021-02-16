@@ -5,7 +5,7 @@
                   exn:fail?
                   exn-message))
 
-(define-language exp
+(define-grammar exp
   (exp   ::= boolean natural (S exp) (binop exp exp))
   (binop ::= = and or)
   (type  ::= nat bool))
@@ -34,9 +34,7 @@
     [(exp natural) e]
     [(exp boolean) e]
     [(exp (S n:exp))
-     (match (eval-exp n)
-       [(bonsai-integer i)
-        (bonsai-integer (+ i 1))])]
+     (+ (eval-exp n) 1)]
     [(exp (= l:exp r:exp))
      (if (equal? (eval-exp l) (eval-exp r))
          (exp #t)

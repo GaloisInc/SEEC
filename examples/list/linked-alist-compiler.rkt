@@ -94,7 +94,7 @@
 
   (define-symbolic new-fp integer?)
   #;(define new-fp (linked-list pointer 1))
-  (define a (linked-list (change-free-pointer ,(bonsai-integer new-fp))))
+  (define a (linked-list (change-free-pointer ,new-fp)))
   (define new-s (interpret-attack-ll a s))
 
 
@@ -104,7 +104,7 @@
   #;(define ints (linked-list ((mcons 3) (mnil empty))))
   #;(define after (interpret-interaction-ll ints new-s))
 
-  (define s+ (cons-state (bonsai-integer 3) new-s))
+  (define s+ (cons-state 3 new-s))
   #;(render-value/window s+)
   (define s++ (nil-state s+))
   (printf "result: ~a~n" s++)

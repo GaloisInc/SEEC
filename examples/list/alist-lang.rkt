@@ -121,6 +121,6 @@
     (define interact (alist-api ((add-elem 7 8) empty)))
     (define store+i (interpret-interaction-alist interact store))
     (display-alist store+i)
-    (displayln (lookup-alist (bonsai-integer 2) store+i))
-    (displayln (lookup-alist (bonsai-integer 7) store+i))))
+    (displayln (lookup-alist (alist-api 2) store+i))
+    (displayln (lookup-alist (alist-api 7) store+i))))
 

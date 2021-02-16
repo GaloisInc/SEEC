@@ -1,8 +1,9 @@
 #lang seec
+(require racket/contract)
 (provide (all-defined-out))
 (set-bitwidth 4)
 
-(define (bonsai->number n)
+#;(define (bonsai->number n)
   (match n
     [(bonsai-integer i) i]
     ))
@@ -267,20 +268,20 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; dec-fold -> int -> int -> int
-(define (interpret-dec-fun p e v)
+(define/contract (interpret-dec-fun p e v)
+  (-> set-api-dec-fold? integer? integer? integer?)
   (match p
     [(set-api var-element)
      e]
     [(set-api var-value)
      v]
-    [(set-api i:integer)
-     (bonsai->number i)]
+    [(set-api i:integer) i]
     [(set-api (if-el-eq i:integer p1:dec-fun p2:dec-fun))
-     (if (equal? (bonsai->number i) e)
+     (if (equal? i e)
          (interpret-dec-fun p1 e v)
          (interpret-dec-fun p2 e v))]
     [(set-api (if-val-eq i:integer p1:dec-fun p2:dec-fun))
-     (if (equal? (bonsai->number i) v)
+     (if (equal? i v)
          (interpret-dec-fun p1 e v)
          (interpret-dec-fun p2 e v))]
 
@@ -298,14 +299,14 @@
     [(set-api nil)
      v]
     [(set-api (cons e:integer s+:set))
-     (interpret-dec-fold+ f s+ (interpret-dec-fun f (bonsai->number e) v))]))
+     (interpret-dec-fold+ f s+ (interpret-dec-fun f e v))]))
 
 ; Folds over state s using function p and default value 0
 ;; dec-fold -> set -> int
 (define (interpret-dec-fold p s)
   (match p
     [(set-api (fold f:dec-fun i:integer))
-     (interpret-dec-fold+ f s (bonsai->number i))]))
+     (interpret-dec-fold+ f s i)]))
 
 (define-attack dec-fold-int
   #:grammar set-api
@@ -347,11 +348,16 @@
              (not (eq x (neg-s x)))))))
 
 
+; Expected:
+; Decoder: (member? -6)
+; Gadget 0: nop
+; Gadget 1: (if (not (member? -6)) (seq (insert -6) nop) (seq (remove -6) nop))
 (define (test-spec-member)
     (display-related-gadgets (find-related-gadgets set-lang obs-int bool-funs) displayln))
 
 (define (test-spec-member-axioms)
     (display-related-gadgets (find-related-gadgets set-lang obs-int empty-funs #:valid boolean-axioms) displayln))
+
 
 
 ; Natural numbers in set from definition of z and +
@@ -407,7 +413,8 @@
             [eq (lambda (r l) (equal?
                                (dec r)
                                (dec l)))])
-        (and (eq (succ-s (pred-s x)) (pred-s (succ-s x)))
+        (and (eq (succ-s (pred-s x)) x)
+             (eq (pred-s (succ-s x)) x)
              (not (eq x (pred-s x)))
              (not (eq x (succ-s x)))))))
 

@@ -1,6 +1,6 @@
 #lang rosette/safe
 
-(require "private/bonsai2.rkt"
+(require "private/bonsai3.rkt"
          "private/match.rkt"
          "private/language.rkt"
          "private/string.rkt"
@@ -12,9 +12,11 @@
          
          (all-from-out "private/string.rkt")
 
-         bonsai->racket
-         (rename-out [bonsai->racket seec->racket]
-                     [bonsai-integer-value seec->int])
+         seec->racket
+
+         ; bonsai types
+         bonsai?
+         bonsai-depth
 
          bonsai-null
          bonsai-null?
@@ -23,61 +25,43 @@
          bonsai-terminal?
          bonsai-terminal-value
 
-         bonsai-boolean
-         bonsai-boolean?
-         bonsai-boolean-value
-
-         bonsai-integer
-         bonsai-integer?
-         bonsai-integer-value
-
-         bonsai-bv
-         bonsai-bv?
-         bonsai-bv-value
-         integer->bonsai-bv
+         ; bitvectors
+         integer->bv
          set-bitwidth
+         get-bv-width
 
-         bonsai-string
-         bonsai-string?
-         bonsai-string-value
+         ; lists
+         seec-list?
+         seec-list-of?
+         seec-empty?
+         seec-empty
+         seec-cons?
+         seec-cons
+         seec-singleton
+         seec-head
+         seec-tail
+         list->seec
+         seec->list
+         seec-length
+         seec-append
 
-         bonsai-char
-         bonsai-char?
-         bonsai-char-value
-
-         bonsai-list
-         bonsai-list?
-         bonsai-list-nodes
-
-         bonsai?
-         bonsai-depth
-         bonsai-leaves
-
-         bonsai-cons?
-         bonsai-linked-list?
-         bonsai-ll-head
-         bonsai-ll-tail
-         bonsai-ll-length
-         bonsai-ll-append
-         ll-cons
-         ll-singleton
-         list->bonsai-ll
-
-
-         make-tree!
-
+         ; nondeterminism
          nondet!
          capture-nondeterminism
 
+         ; solver interfaces
          concretize
          concretize+
          instantiate
          expand-solution
 
+         ; utilities
          match
          match-let*
 
          define-grammar
          enumerate
+         make-tree!
+         havoc!
 
          (all-from-out "private/framework.rkt"))

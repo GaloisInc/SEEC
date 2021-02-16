@@ -5,6 +5,9 @@
 ; Testing grammar and language definitions with integers
 ; lib
 
+(require racket/contract)
+(require (only-in racket/base
+                  raise-argument-error))
 
 ; SIMP with integer
 (define-grammar simp+integer
@@ -23,13 +26,20 @@
 
 ; exp -> racket integer
 (define (eval-simp+integer v exp)
+  #;(-> (or/c simp+integer-num? #f) simp+integer-exp? integer?)
   (match exp
     [(simp+integer (o:op e1:exp e2:exp))
      (interp-binop o (eval-simp+integer v e1) (eval-simp+integer v e2))]
     [(simp+integer n:num)
-     (bonsai->number n)]
+     n]
     [(simp+integer var)
-     (bonsai->number v)]))
+     (match v
+       [(simp+integer x:integer) x]
+       #;[_ (raise-argument-error 'eval-simp+integer
+                                "Expected a simp+integer-num? when evaluating an open term"
+                                v)]
+       )]
+    ))
 
 (define (eval-simp+integer-closed exp)
   (eval-simp+integer #f exp))
@@ -37,7 +47,7 @@
 (define-language SIMP+INTEGER
   #:grammar simp+integer
   #:expression exp #:size 4
-  #:context num #:size 4
+  #:context num #:size 1
   #:link cons
   #:evaluate (uncurry eval-simp+integer))
 
@@ -82,3 +92,4 @@
 ;; no changed or weird component should exist
 (define (test-cc-simp-to-integer) (find-changed-component SIMP-TO-INTEGER))
 (define (test-wc-simp-to-integer) (find-weird-component SIMP-TO-INTEGER))
+
