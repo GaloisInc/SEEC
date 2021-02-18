@@ -10,7 +10,6 @@
                        racket/contract
                        ))
 
-
 (define/contract (make-declaration name params locals statements)
     (-> string? (listof tinyC-param-decl?)
                 (listof tinyC-local-decl?)
@@ -230,6 +229,7 @@
        ))
   (run-tests eval-tests)
 
+
   (define/contract (check-lookup-context? ctx l obj)
     (-> tinyC-context? tinyC-loc? tinyC-object? void?)
     (check-equal? (tinyC:lookup-mem l (tinyC:context->memory ctx))
@@ -411,7 +411,6 @@
                                (list 3)))
     (check-equal? (tinyC:state->trace run-fac)
                   (seec-singleton 6))
-
 
     (check-equal? (tinyC:state->trace run-loop)
                   (seec-singleton 20))

@@ -119,9 +119,6 @@
 
   (let* ([F (declaration->frame decl)]
          [p (tinyC:declaration->name decl)]
-         [last-insn (if (equal? p (string "main"))
-                            (tinyA HALT)
-                            (tinyA RETURN))]
          [body (tinyC:declaration->body decl)]
          )
     (let-values ([(pc+ mem+) (tinyC->tinyA-statement body p pc seec-empty)])

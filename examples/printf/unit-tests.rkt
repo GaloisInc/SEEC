@@ -1,6 +1,8 @@
 #lang seec
 (require (prefix-in safe:
-                    (file "printf-spec.rkt")))
+                    (file "printf-spec.rkt"))
+         (only-in   (file "printf-spec.rkt") %)
+         )
 (require (prefix-in unsafe:
                     (file "printf-impl.rkt")))
 (require (file "printf-compiler.rkt"))
@@ -18,31 +20,28 @@
 
 (define/contract (racket->constant x)
   (-> (or/c integer? string?) safe:const?)
-  (cond
-    [(integer? x) (bonsai-integer x)]
-    [(string? x)  (bonsai-string  x)]
-    ))
+  (safe:printf-lang ,x))
 (define/contract (mk-trace l)
   (-> (listof (or/c integer? string?)) safe:trace?)
-  (list->bonsai-ll (map racket->constant l)))
+  (list->seec (map racket->constant l)))
 
 (set-bitwidth 64 32)
 
-(define fmt-d-1 (ll-singleton (safe:printf-lang (% ((0 $) (NONE d))))))
-(define fmt-s-1 (ll-singleton (safe:printf-lang (% ((0 $) (NONE s))))))
-(define fmt-n-1 (ll-singleton (safe:printf-lang (% ((0 $) (NONE n))))))
-(define fmt-d-n (ll-cons      (safe:printf-lang "foo ")
-                (ll-cons      (safe:printf-lang (% ((0 $) (NONE d))))
-                (ll-singleton (safe:printf-lang (% ((1 $) (NONE n))))))))
-(define bv-neg-1 (bitvector->natural (bonsai-bv-value (integer->bonsai-bv -1))))
-(define fmt-decrement (ll-singleton (unsafe:printf-lang (% ((0 $) (,(bonsai-integer bv-neg-1) s))))))
+(define fmt-d-1 (seec-singleton (% 0 $ d)))
+(define fmt-s-1 (seec-singleton (% 0 $ s)))
+(define fmt-n-1 (seec-singleton (% 0 $ n)))
+(define fmt-d-n (seec-cons      (safe:printf-lang "foo ")
+                (seec-cons      (% 0 $ d)
+                (seec-singleton (% 1 $ n)))))
+(define bv-neg-1 (bitvector->natural (integer->bv -1)))
+(define fmt-decrement (seec-singleton (% 0 $ bv-neg-1 s)))
 
 (define arglist-0   (safe:printf-lang nil))
-(define arglist-d-1 (ll-singleton (safe:printf-lang 32 #;(bv 32))))
-(define arglist-s-1 (ll-singleton (safe:printf-lang "hi")))
-(define arglist-n-1 (ll-singleton (safe:printf-lang (LOC 0))))
-(define arglist-d-n (bonsai-ll-append arglist-d-1 arglist-n-1))
-(define arglist-s-0 (ll-singleton (safe:printf-lang "")))
+(define arglist-d-1 (seec-singleton (safe:printf-lang 32 #;(bv 32))))
+(define arglist-s-1 (seec-singleton (safe:printf-lang "hi")))
+(define arglist-n-1 (seec-singleton (safe:printf-lang (LOC 0))))
+(define arglist-d-n (seec-append arglist-d-1 arglist-n-1))
+(define arglist-s-0 (seec-singleton (safe:printf-lang "")))
 
 (define/provide-test-suite safe-correct
  (test-case "%0$d"
@@ -54,7 +53,7 @@
    )
  (test-case "hello world"
   ; printf("hello world")
-  (check-equal? (safe:interp-fmt (ll-singleton (safe:printf-lang "hello world"))
+  (check-equal? (safe:interp-fmt (seec-singleton (safe:printf-lang "hello world"))
                                  arglist-0
                                  (safe:make-config-triv 0))
                 (safe:make-behav-triv (mk-trace (list (string "hello world")))
@@ -75,7 +74,7 @@
                                  (safe:make-config-triv 0))
                 (safe:make-behav (mk-trace (list))
                           0
-                          (safe:printf-lang (mcons 0 0 #;(bv 0) mnil)))))
+                          (safe:printf-lang (cons (0 0) nil)))))
 
  (test-case "%0$d"
   ; printf("%0$d") ==> ERR
@@ -93,19 +92,19 @@
                   (safe:make-behav (mk-trace (list (string "foo ")
                                             32))
                             6
-                            (safe:printf-lang (mcons 0 6 #;(bv 6) mnil))))
+                            (safe:printf-lang (cons (0 6) nil))))
     )
   )
 
   (test-case "add argument from memory"
     (define/contract l safe:ident?
       (safe:printf-lang 1))
-    (define fmt  (ll-singleton (safe:printf-lang (% ((0 $) ((* 0) d))))))
-    (define args (list->bonsai-ll (list (safe:printf-lang (* (LOC ,l)))
+    (define fmt  (seec-singleton (% 0 $ 0 * d)))
+    (define args (list->seec (list (safe:printf-lang (* (LOC ,l)))
                                         (safe:printf-lang ""))))
     (define/contract m
       safe:mem?
-      (safe:printf-lang (mcons ,l 3 #;(bv 3) mnil))
+      (safe:printf-lang (cons (,l 3) nil))
       )
     (define behav (safe:interp-fmt fmt
                                    args

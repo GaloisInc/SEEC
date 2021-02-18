@@ -400,7 +400,7 @@
     [(tinyA (JMPZ e:expr l:loc))
      (match (eval-expr e st)
        [(tinyA 0) (update-state st #:pc l)]
-       [_        (update-state st #:increment-pc #t)]
+       [_         (update-state st #:increment-pc #t)]
        )]
 
     [(tinyA (ASSIGN lv:lval e:expr))

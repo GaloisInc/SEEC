@@ -102,6 +102,6 @@
      (equal? (* m (eval-num c)) b)]))
 
 (define simp-mult-term (simp (* (s (s (s z))) var)))
-(mult-spec 3 (cons simp-term-1 simp-mult-term) 3)
+#;(mult-spec 3 (cons simp-term-1 simp-mult-term) 3)
 
-;(find-gadget SIMP (mult-spec 2))
+#;(find-gadget SIMP (mult-spec 2))

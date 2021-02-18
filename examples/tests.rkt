@@ -69,7 +69,7 @@
                  (apply check-pred simp+nat:test-wc-arg-source-context-where-nat-to-integer)
                  (apply check-pred simp+nat:test-wc-arg-target-context-bound-nat-to-integer)
                  (apply check-pred simp+nat:test-wc-arg-target-context-where-nat-to-integer)
-                 (apply check-pred simp+nat:test-wc-arg-target-context-where-fail-nat-to-integer)
+                 (apply check-pred simp+nat:test-wc-arg-target-context-where-fail-nat-to-integer) ; NOTE: This test runs for a long time (>1hr). This is true on master as well. All others in this category are fine.
                  (apply check-pred simp+nat:test-wc-arg-source-behavior-where-nat-to-integer)
                  (apply check-pred simp+nat:test-wc-arg-target-behavior-where-nat-to-integer)
                  (apply check-pred simp+nat:test-wc-all-args-nat-to-integer))))
@@ -114,8 +114,13 @@
 (define printf-unit-tests-safe-unsafe-consistent
   printf:safe-unsafe-consistent)
 
+
+; Best practice: put tests in test modules
+
 #;(time (run-tests find-changed-component-tests))
 #;(time (run-tests find-weird-component-tests))
 #;(time (run-tests set-tests))
 #;(time (run-tests ll-tests))
-
+#;(run-tests printf-unit-tests-safe-correct)
+#;(run-tests printf-unit-tests-unsafe-correct)
+#;(run-tests printf-unit-tests-safe-unsafe-consistent)

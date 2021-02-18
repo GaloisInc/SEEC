@@ -2,12 +2,11 @@
 
 (require seec/private/string)
 (require (only-in racket/base integer->char))
-(require seec/private/bonsai2)
 
 (require rosette/lib/value-browser) ; debugging
 
 (define-grammar constants
-  (const ::= (BOOL boolean) num (STR string) (CHAR char))
+  (const ::= (BOOL boolean) num (STR string) (CHAR char) (BV bitvector))
   (num ::= (NAT natural))
 )
 
@@ -17,18 +16,25 @@
 (define b (constants (BOOL #f)))
 (define five (constants (NAT 5)))
 
-
-(define hi-desired (constants (STR "hi")))
+(define x (string-append (string "h") (string "i")))
+(define hi-desired (constants (STR ,x)))
 (define c-desired (constants (CHAR #\x)))
-#;(displayln hi-desired)
+(displayln hi-desired)
 #;(displayln c-desired)
 #;(match hi-desired
-  [(constants (STR s:string)) (print-string (bonsai-string-value s))]
+  [(constants (STR s:string)) (print-string s)]
   )
 #;(match c-desired
   [(constants (CHAR c:char)) (displayln c)]
   )
 
+(define-symbolic x-id boolean?)
+(define n (constants (BOOL ,x-id)))
+(displayln n)
+(constants-const? n)
+(match (constants (STR "hello"))
+  [(constants (STR s:string)) (constants ,"hi")]
+  )
 
 #|
 (define (any-lang x)
@@ -73,12 +79,12 @@
   (define (is-char)
     (match symbolic-exp
       #;[(constants (CHAR c:char)) #t]
-      [(constants (CHAR c:char)) (equal? (bonsai-char-value c) (char #\y))]
+      [(constants (CHAR c:char)) (equal? c (char #\y))]
       [_ #f]))
   (define (is-string)
     (match symbolic-exp
       #;[(constants (STR s:string)) #t]
-      [(constants (STR s:string)) (equal? (bonsai-string-value s) (string "hello"))]
+      [(constants (STR s:string)) (equal? s (string "hello"))]
       [_ #f]))
   (define (is-bool)
     (match symbolic-exp
@@ -107,37 +113,34 @@
         (displayln instance)
         ))
   )
-#;(synthesize-string-in-lang)
+(synthesize-string-in-lang)
 
 
 
 
 
 (define (more-tests)
-  #;(define t (bonsai-list (cons (new-char!) (cons (new-char!) (cons (bonsai-null) '())))))
-  #;(define t (make-string-tree! 2 2))
-  #;(define t (new-string! 5))
   (define t (constants string 5))
   (define x (match t
-              [(constants s:string) (equal? (bonsai-string-value s) (string "hi"))]
-              #;[(constants s:string) (equal? (string-length (bonsai-string-value s)) 3)]
+              [(constants s:string) (equal? s (string "hi"))]
+              #;[(constants s:string) (equal? (string-length s) 3)]
               [_ #f]))
   (displayln x)
-  #;(displayln (string-length (bonsai-string-value t)))
-  #;(displayln (print-string (bonsai-string-value t)))
+  #;(displayln (string-length t))
+  #;(displayln (print-string t))
   #;(displayln t)
-  #;(displayln (= (string-length (bonsai-string-value t)) 3))
-  #;(displayln (equal? (bonsai-string-value t) (string "")))
-  #;(displayln (string? (bonsai-string-value t)))
+  #;(displayln (= (string-length t) 3))
+  #;(displayln (equal? t (string "")))
+  #;(displayln (string? t))
 
   #;(define x (constants string 4))
   #;(match t
-    [(constants s:string) (equal? (bonsai-string-value s) (string "x"))]
+    [(constants s:string) (equal? s (string "x"))]
     [_ #f]
     )
   (displayln #t)
   )
-#;(more-tests)
+(more-tests)
 
 (define (pattern-matching-tests)
   (define t (constants string 2))
@@ -152,6 +155,12 @@
   #;(render-value/window t-equal)
   #;(displayln (do-equal t))
 
-  (do-match t)
+  (define b (constants boolean 1))
+  (match b
+    [(constants #t) #t]
+    [_ #f])
+
+  (define X (constants const 2))
+  (displayln (equal? X (constants (BOOL #t))))
   )
 (pattern-matching-tests)

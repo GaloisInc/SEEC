@@ -1,12 +1,5 @@
 #lang seec
 
-
-; TODO: these should be in a lib
-(define (bonsai->number n)
-  (match n
-    [(bonsai-integer i) i]
-    ))
-
 (define (uncurry f)
   (lambda (ab)
     (match ab
@@ -45,7 +38,10 @@
   [(lang *)
    (* n1 n2)]))
 
-
+(define (name->number n)
+  (match n
+    [(lang i:natural) i]
+    ))
 
 
 
@@ -76,7 +72,7 @@
 (define (scope-expn e)
   (match e
     [(lang (Var n:name))
-     (+ (bonsai->number n) 1)]
+     (+ (name->number n) 1)]
     [(lang (Sn e1:expn))
      (scope-expn e1)]
     [(lang (op:binop e1:expn e2:expn))
@@ -116,13 +112,13 @@
 (define (eval-expn env e)
   (match e
     [(lang (Var n:name))
-     (eval-expn (lang empty) (lookup-envn (bonsai->number n) env))]
+     (eval-expn (lang empty) (lookup-envn (name->number n) env))]
     [(lang (Sn e1:expn))
      (+ 1 (eval-expn env e1))]
     [(lang (op:binop e1:expn e2:expn))
      (interp-binop op (eval-expn env e1) (eval-expn env e2))]
     [(lang (Valn n:natural))
-     (bonsai->number n)]))
+     n]))
 
 ; Alternative way of modeling applicative contexts
 (define (ctx-expn e)
@@ -161,7 +157,7 @@
 (define (scope-expz e)
   (match e
     [(lang (Var n:name))
-     (+ (bonsai->number n) 1)]
+     (+ (name->number n) 1)]
     [(lang (Sz e1:expz))
      (scope-expz e1)]
     [(lang (Pz e1:expz))
@@ -203,7 +199,7 @@
 (define (eval-expz env e)
   (match e
     [(lang (Var n:name))
-     (let ([e1 (lookup-envz (bonsai->number n) env)])
+     (let ([e1 (lookup-envz (name->number n) env)])
      (eval-expz (lang empty) e1))]
     [(lang (Sz e1:expz))
      (+ (eval-expz env e1) 1)]
@@ -212,7 +208,7 @@
     [(lang (op:binop e1:expz e2:expz))
      (interp-binop op (eval-expz env e1) (eval-expz env e2))]
     [(lang (Valz z:integer))
-     (bonsai->number z)]))
+     z]))
 
 
 (define (ctx-expz e)
@@ -345,7 +341,8 @@
 
 
 (begin
-  (displayln "Trying find-changed-component on N-TO-Z")
+  (displayln "Trying find-weird-component on N-TO-Z")
+
   (let* ([lsol (time (find-weird-component CN-TO-CZ #:count 3))])
     (map (lambda (w)
            (begin
@@ -373,7 +370,7 @@
 
 #;(begin
   (displayln "(2) Trying to find n+1 in EXPN1")
-  (display-gadget (find-gadget EXPN1 (lambda (v) #t) addn1spec) displayln))
+  (display-gadget (find-gadget EXPN1 addn1spec) displayln))
 
 
 ; (3)
@@ -394,6 +391,6 @@
 
 #;(begin
   (displayln "(3) Trying to find n+m in EXPN2")
-  (display-gadget (find-gadget EXPN2 (lambda (v) #t) addnmspec) displayln))
+  (display-gadget (find-gadget EXPN2) addnmspec) displayln))
 
 
