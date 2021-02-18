@@ -458,6 +458,7 @@
       [else #f]
       )))
 (define (seec-set-ith i v l)
+  (debug-display "(seec-set-ith ~a ~a ~a)" i v l)
   (cond
     [(seec-empty? l) l]
     [(seec-cons? l)
@@ -479,7 +480,7 @@
 ; Return the object associated with the ident in memory. Returns `#f` if the
 ; ident does not occur in memory.
 (define/contract (lookup-mem-mapping x m)
-    (-> tinyC-loc-ident? tinyC-memory? (or/c #f tinyC-object?))
+  (-> tinyC-loc-ident? tinyC-memory? (or/c #f tinyC-object?))
     (match m
       [(tinyC nil) #f] ; Should this be undef or not actually defined?
       [(tinyC (cons (y:loc-ident obj:object) m+:memory))

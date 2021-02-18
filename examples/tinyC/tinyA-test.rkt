@@ -6,14 +6,15 @@
 
 (module+ test (require rackunit
                        rackunit/text-ui
-                       racket/contract
+                       seec/private/util
                        ))
 
 
 (module+ test
 
-  (check-equal? (tinyA:run factorial
-                           (list 6))
-                (seec-singleton 6))
+  ; Currently debugging is not working--why?
+  (parameterize ([debug? #t])
+    (check-equal? (tinyA:run factorial
+                             (list 6))
+                  (seec-singleton 6)))
   )
-

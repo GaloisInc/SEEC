@@ -8,6 +8,7 @@
                     define/contract))
 (require (only-in racket/base
                   make-parameter
+                  parameterize
                   [raise-user-error      racket:raise-user-error]
                   [raise-argument-error  racket:raise-argument-error]
                   [raise-arguments-error racket:raise-arguments-error]
@@ -17,17 +18,33 @@
                               )))
 
 (provide debug
+         debug-display
          debug?
+         parameterize
+
          define/contract
          use-contracts-globally
          (all-from-out racket/contract) ; Since we didn't import define/contract, no overlap
          )
+
+;;;;;;;;;
+; Debug ;
+;;;;;;;;;
 
 (define debug? (make-parameter #f))
 (define (debug stmt)
   (if (debug?)
       (stmt)
       (void)))
+(define-syntax (debug-display stx)
+  (syntax-case stx ()
+    [(_ str args ...)
+     #'(debug (thunk (displayln (format str args ...))))
+     ]))
+
+;;;;;;;;;;;;;
+; Contracts ;
+;;;;;;;;;;;;;
 
 (begin-for-syntax
   (define use-contracts-internal? (make-parameter #t))
@@ -35,16 +52,24 @@
 
 (define-syntax (define/contract stx)
   (syntax-case stx ()
-    [(_ (name args ...) contract-expr body ...)
+
+    [(_ name contract-expr body ...)
      (cond
        [(use-contracts-internal?)
-        #'(racket:define/contract (name args ...) contract-expr body ...)]
+        #'(racket:define/contract name contract-expr body ...)]
        [else
-        #'(define (name args ...) body ...)]
+        #'(define name body ...)]
+     )]
+
+    ; Optionally turn on debugging (see below)
+    [(_ name contract-expr body ...)
+     (cond
+       [(use-contracts-internal?)
+        #'(racket:define/contract name contract-expr body ...)]
+       [else
+        #'(define name body ...)]
      )]
     ))
-
-
 
 (define-syntax (use-contracts-globally stx)
   (syntax-case stx ()
@@ -55,6 +80,74 @@
             ]
     ))
 
+;;;;;;;;;;;;;;;;;;;;;
+; Tunable debugging ;
+;;;;;;;;;;;;;;;;;;;;;
+
+
+(begin-for-syntax
+  (define (syntax->string stx)
+    (symbol->string (syntax->datum stx)))
+  )
+
+
+; (define/debug (f xs ...) body)
+; will insert a call to debug-display showing the
+; function name and arguments it is called with.
+; Optionally, you can turn the suffix on, which will
+; also print the result
+(define-syntax (define/debug stx)
+  (syntax-case stx ()
+
+    ; Add contracts. If we had parameterized contracts, we can merge these cases with the ones below
+    [(_ (name args ...) #:contract contract-expr body ...)
+     (let* ([name-as-string (syntax->string #'name)])
+       #`(define/contract (name args ...)
+           contract-expr
+           (debug-display "~a" (list #,name-as-string args ...))
+           body
+           ...
+           )
+       )]
+    [(_ #:suffix (name args ...) #:contract contract-expr body-expr)
+     (let* ([name-as-string (syntax->string #'name)])
+       #`(define/contract (name args ...)
+           contract-expr
+           (debug-display "~a" (list #,name-as-string args ...))
+           (define tmp body-expr)
+           (debug-display "result of ~a: ~a" #,name-as-string tmp)
+           tmp
+           )
+       )]
+
+    ; No contracts. Must come after #:contract because otherwise parsing would be incorrect
+    [(_ (name args ...) body ...)
+     (let* ([name-as-string (syntax->string #'name)])
+       #`(define (name args ...)
+           (debug-display "~a" (list #,name-as-string args ...))
+           body
+           ...
+           )
+       )]
+
+    ; Optionally turn on suffix, but only one body expression is allowed
+    [(_ #:suffix (name args ...) body-expr)
+     (let* ([name-as-string (syntax->string #'name)])
+       #`(define (name args ...)
+           (debug-display "~a" (list #,name-as-string args ...))
+           (define tmp body-expr)
+           (debug-display "result of ~a: ~a" #,name-as-string tmp)
+           tmp
+           )
+       )]
+
+
+    ))
+
+;;;;;;;;;
+; Tests ;
+;;;;;;;;;
+
 (module+ test
   (use-contracts-globally #f)
   (define/contract (foo x) (-> any/c boolean?) 5)
@@ -63,5 +156,20 @@
   (use-contracts-globally #t)
   (foo 3) ; Should return 5
   (define/contract (bar x) (-> any/c boolean?) 5)
-  (bar 3) ; Should throw an exception
+  #;(bar 3) ; Should throw an exception
+
+
+  (define/debug (foobar x y) 10)
+  (parameterize ([debug? #t])
+    (foobar 3 5))
+
+  (define/debug #:suffix (foobar+ x y) 10)
+  (parameterize ([debug? #t])
+    (foobar+ 3 5))
+
+  (define/debug #:suffix (foobar+contract x y)
+    #:contract (-> any/c any/c integer?)
+    10)
+  (parameterize ([debug? #t])
+    (foobar+contract 3 5))
   )
