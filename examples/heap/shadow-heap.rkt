@@ -288,7 +288,7 @@
     (displayln "Ref:")
     (display-nf-state concr)               
     (equal? s1 concr)))
-
+;(nf-test0)
 
 
 ; Trying to synthesize a state which is shallowly equal to a concrete heap-model.state
@@ -445,7 +445,7 @@
        (heap-model (,b+ ,h+ null)))]))
 
 ;; compare nnvalues out of shadow-heap.value and heap-model.value
-;; returns #:default (#t) if nf-v is a pointer
+;; returns #:default (#t) if nf-v is a non-null pointer
 (define shallow-nf-val-eq
   #;(->* (any/c any/c)
        (#:debug boolean?
@@ -462,6 +462,12 @@
          (match v
            [(heap-model i:integer)
             (equal? nf-i i)]
+           [(heap-model any)
+            #f])]
+        [(no-freelist null)
+         (match v
+           [(heap-model null)
+            #t]
            [(heap-model any)
             #f])]
         [(no-freelist any)
@@ -506,6 +512,15 @@
          (match s
            [(heap-model (b:buf any any))
             (shallow-nf-buf-eq nf-b b #:debug d)])]))))
+
+;; compare the value in buf zero w
+(define (buf-z-nf-deep-eq nf-s s)
+  (match nf-s
+    [(no-freelist (nf-b:buf nf-h:heap))
+     (match s
+       [(heap-model (b:buf h:heap any))
+        (deep-nf-val-eq 10 nf-h h (nth nf-b 0) (nth b 0))])]))
+
 
 ;; compare the value in buf zero w
 (define (buf-z-nf-eq nf-s s)
@@ -597,31 +612,56 @@
      (match s
        [(heap-model (b:buf h:heap any))
         (deep-nf-buf-eq nf-h h nf-b b)])]))
-#|
+
 ;; Testing synthesis with the no-freelist to heap-model compiler
 ; Make a schema for a heap-model.state with buf = 4 and state of size 8
 (define b* (heap-model buf 4))
 (define h* (heap-model heap 8))
 (define fp* (heap-model pointer 1))
 (define s* (heap-model (,b* ,h* ,fp*)))
-(define s+* (heap-model state 8))
-
+(define st* (heap-model state 5))
 ; Make a schema for a no-freelist.state with buf = 4 and state of max size 5?
 (define nfb* (no-freelist buf 4))
 (define nfh* (no-freelist heap 5))
-(define nfs* (no-freelist (,nfb* ,nfh*)))
-(define nfs+* (no-freelist state 8))
+(define nf-s* (no-freelist (,nfb* ,nfh*)))
+(define nf-st* (no-freelist state 4))
 
 ; find a context and a total interaction that evaluates to 4
 (define ti* (heap-model total-interaction 4))
 (define (ex1)
   (begin
-    (define beh* (interpret-total-interaction ti* s+*))
-    (define nf-beh* (no-freelist-total-interaction ti* nfs+*))
+    (define s+* (interpret-interaction ti* s*))
+    (define nf-s+* (no-freelist-interaction ti* nf-s*))
     ;(assert (equal? nf-b* 5))
-    (define sol (verify #:guarantee (assert (equal? beh* nf-beh*))))
-    sol))
-|#
+    (define sol (solve (assert (buf-z-nf-eq nf-s+* s+*))))
+    (if sol
+        (displayln "Success")
+        (displayln "Unsat"))))
+
+
+(define (ex2)
+  (begin
+;    (define st+* (interpret-interaction ti* st*))
+;    (define nf-st+* (no-freelist-interaction ti* nfst*))
+    ;(assert (equal? nf-b* 5))
+    (define sol (solve (assert (buf-z-nf-eq nf-st* st*))))
+    (if sol
+        (displayln "Success")
+        (displayln "Unsat"))))
+
+; define a small state and no-freelist state that have equivalent values in 0th slot
+(define (ex2-mini)
+  (define b-mini (heap-model state 4))
+  (define nf-mini (no-freelist state 4))
+  (define i-mini (heap-model action 2))
+  (define b+-mini (interpret-action i-mini b-mini))
+  (define nf+-mini (no-freelist-action i-mini nf-mini))
+  (define sol (solve (assert (buf-z-nf-eq nf+-mini b+-mini))))
+  (if sol
+      (displayln "Success")
+      (displayln "Unsat")))
+  
+;(ex2-mini)
 #;(find-changed-component nf-to-heap-compiler
                         #:source-context nfs*
                         #:target-context s*)
