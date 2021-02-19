@@ -1,10 +1,120 @@
 #lang seec
+
+(require seec/private/util)
 (require "tinyC.rkt")
+
+(provide factorial
+         assign-output-example
+         assign-output-decl
+         simple-call-example
+         )
 
 (module+ test (require rackunit
                        rackunit/text-ui
                        racket/contract
                        ))
+
+(define/contract (make-declaration name params locals statements)
+    (-> string? (listof tinyC-param-decl?)
+                (listof tinyC-local-decl?)
+                (listof tinyC-statement?)
+                tinyC-declaration?)
+    (tinyC (,name ,(list->seec params) ,(list->seec locals) ,(list->seec statements))))
+
+
+;;;;;;;;;;;;;;;;;;;
+; Simple programs ;
+;;;;;;;;;;;;;;;;;;;
+
+(define assign-output-decl (make-declaration (string "main")
+                                         (list (tinyC ("x0" int)))
+                                         (list (tinyC ("x1" (* int))))
+                                         (list (tinyC (ASSIGN "x1" (& "x0")))
+                                               (tinyC (OUTPUT "x1"))
+                                               )))
+(define assign-output-example (list assign-output-decl))
+
+
+;;
+
+(define simple-call-example
+  (list (make-declaration (string "main")
+                          (list (tinyC ("x" int)))
+                          (list )
+                          (list (tinyC (CALL "foo" (cons "x" nil)))))
+        (make-declaration (string "foo")
+                          (list (tinyC ("y" int)))
+                          (list )
+                          (list (tinyC (OUTPUT "y"))))
+        ))
+
+
+;;;;;;;;;;;;;
+; Factorial ;
+;;;;;;;;;;;;;
+
+(define fac (make-declaration
+                 (string "fac")
+                 (list (tinyC ("n" int))
+                       (tinyC ("o" (* int)))
+                       )
+                 (list (tinyC ("prev" int)))
+                 (list (tinyC (IF (= "n" 0)
+                                 (ASSIGN (* "o") 1)
+                                 (SEQ (CALL "fac" (cons (- "n" 1)
+                                                        (cons (& "prev") nil)))
+                                      (ASSIGN (* "o") (* "n" "prev"))
+                                      ))))
+                 ))
+(define fac-main (make-declaration
+                  (string "main")
+                  (list (tinyC ("i" int)))
+                  (list (tinyC ("result" int)))
+                  (list (tinyC (CALL "fac" (cons "i"
+                                          (cons (& "result")
+                                          nil))))
+                        (tinyC (OUTPUT "result"))
+                        )))
+
+(define factorial (list fac-main fac))
+
+;;;;;;;;
+; Loop ;
+;;;;;;;;
+
+    (define loop (make-declaration
+                  (string "main")
+                  (list )
+                  (list (tinyC ("i"   int))
+                        (tinyC ("p"   (array int 10)))
+                        (tinyC ("c"   (* int)))
+                        (tinyC ("sum" int))
+                        )
+                  (list (tinyC (ASSIGN "i" 0))
+                        (tinyC (ASSIGN "c" "p"))
+                        (tinyC (WHILE (< "i" 10)
+                                     (SEQ (ASSIGN (* "c") 2)
+                                     (SEQ (ASSIGN "c" (+ "c" 1))
+                                          (ASSIGN "i" (+ "i" 1))
+                                          ))))
+                        (tinyC (ASSIGN "i" 0))
+                        (tinyC (ASSIGN "sum" 0))
+                        (tinyC (WHILE (< "i" 10)
+                                     (SEQ (ASSIGN "sum" (+ "sum" (* (+ "p" "i"))))
+                                          (ASSIGN "i"   (+ "i" 1))
+                                          )))
+                        (tinyC (OUTPUT "sum")))
+                  ))
+
+
+    (define run-loop (tinyC:run #:fuel 200
+                                (list loop)
+                                (list )))
+
+;;;;;;;;;;;;;;;;;
+; Running tests ;
+;;;;;;;;;;;;;;;;;
+
 
 (module+ test
   (define seec-utils-tests (test-suite "seec-utils"
@@ -30,7 +140,8 @@
                               (list->seec (list #f #f #f)))
                 )
     ))
-  (run-tests seec-utils-tests)
+  (parameterize ([debug? #t])
+    (run-tests seec-utils-tests))
 
 
   (define mem-example (list->seec (list (tinyC (100 0))
@@ -139,17 +250,6 @@
        ))
   (run-tests eval-tests)
 
-  (define/contract (make-declaration name params locals statements)
-    (-> string? (listof tinyC-param-decl?)
-                (listof tinyC-local-decl?)
-                (listof tinyC-statement?)
-                tinyC-declaration?)
-    (tinyC (,name ,(list->seec params) ,(list->seec locals) ,(list->seec statements))))
-  (define main-example (make-declaration (string "main")
-                                         (list (tinyC ("x0" int)))
-                                         (list (tinyC ("x1" (* int))))
-                                         (list (tinyC (ASSIGN "x1" (& "x0"))))))
-  (define g-example (seec-singleton main-example))
 
   (define/contract (check-lookup-context? ctx l obj)
     (-> tinyC-context? tinyC-loc? tinyC-object? void?)
@@ -223,7 +323,7 @@
             ))
 
         (test-case "alloc-frame"
-          (let* ([st+  (tinyC:alloc-frame main-example (list 1) state-example)]
+          (let* ([st+  (tinyC:alloc-frame assign-output-decl (list 1) state-example)]
                  [ctx+ (tinyC:state->context st+)]
                  [F+   (tinyC:context->top-frame ctx+)]
                  [m+   (tinyC:context->memory ctx+)]
@@ -244,7 +344,7 @@
      (test-suite "eval-statement-1"
         (test-suite "ASSIGN"
           ; x0 ↦ (100,0)
-          (let ([st+ (tinyC:eval-statement-1 g-example
+          (let ([st+ (tinyC:eval-statement-1 (list->seec assign-output-example)
                         (tinyC:update-state state-example
                                             #:statement (tinyC (ASSIGN "x0" -1))
                                                            ))])
@@ -261,7 +361,7 @@
             ))
 
         (test-suite "OUTPUT"
-           (let ([st+ (tinyC:eval-statement-1 g-example
+           (let ([st+ (tinyC:eval-statement-1 (list->seec assign-output-example)
                         (tinyC:update-state state-example
                                             #:statement (tinyC (OUTPUT "x0"))
                                             ))])
@@ -271,7 +371,7 @@
              ))
 
         (test-suite "CALL"
-           (let ([st+ (tinyC:eval-statement-1 g-example
+           (let ([st+ (tinyC:eval-statement-1 (list->seec assign-output-example)
                          (tinyC:update-state state-example
                                              #:statement (tinyC (CALL "main"
                                                                       (cons 3 nil)))
@@ -283,7 +383,7 @@
              ))
 
         (test-suite "RETURN"
-           (let ([st+ (tinyC:eval-statement-1 g-example
+           (let ([st+ (tinyC:eval-statement-1 (list->seec assign-output-example)
                          (tinyC:update-state state-example
                                              #:statement (tinyC RETURN))
                          )])
@@ -297,7 +397,7 @@
              ))
 
         (test-suite "SEQ-SKIP"
-           (let ([st+ (tinyC:eval-statement-1 g-example
+           (let ([st+ (tinyC:eval-statement-1 (list->seec assign-output-example)
                          (tinyC:update-state state-example
                                              #:statement (tinyC (SEQ SKIP RETURN))
                                              ))])
@@ -307,10 +407,10 @@
 
         (test-suite "SEQ"
            (let* ([stmt0 (tinyC (ASSIGN "x1" "x0"))]
-                  [st0   (tinyC:eval-statement-1 g-example
+                  [st0   (tinyC:eval-statement-1 (list->seec assign-output-example)
                             (tinyC:update-state state-example
                                                 #:statement stmt0))]
-                  [st+   (tinyC:eval-statement-1 g-example
+                  [st+   (tinyC:eval-statement-1 (list->seec assign-output-example)
                             (tinyC:update-state state-example
                                                 #:statement (tinyC (SEQ ,stmt0 RETURN))))]
                   )
@@ -328,63 +428,11 @@
 
   (define (evaluation-tests)
 
-    (define fac (make-declaration
-                 (string "fac")
-                 (list (tinyC ("n" int))
-                       (tinyC ("o" (* int)))
-                       )
-                 (list (tinyC ("prev" int)))
-                 (list (tinyC (IF (= "n" 0)
-                                 (ASSIGN (* "o") 1)
-                                 (SEQ (CALL "fac" (cons (- "n" 1)
-                                                        (cons (& "prev") nil)))
-                                      (ASSIGN (* "o") (* "n" "prev"))
-                                      ))))
-                 ))
-    (define main (make-declaration
-                  (string "main")
-                  (list (tinyC ("i" int)))
-                  (list (tinyC ("result" int)))
-                  (list (tinyC (CALL "fac" (cons "i"
-                                          (cons (& "result")
-                                          nil))))
-                        (tinyC (OUTPUT "result"))
-                        )))
-
-    (define run-fac (tinyC:run (list main fac)
+    (define run-fac (tinyC:run factorial
                                (list 3)))
     (check-equal? (tinyC:state->trace run-fac)
                   (seec-singleton 6))
 
-
-    (define loop (make-declaration
-                  (string "main")
-                  (list )
-                  (list (tinyC ("i"   int))
-                        (tinyC ("p"   (array int 10)))
-                        (tinyC ("c"   (* int)))
-                        (tinyC ("sum" int))
-                        )
-                  (list (tinyC (ASSIGN "i" 0))
-                        (tinyC (ASSIGN "c" "p"))
-                        (tinyC (WHILE (< "i" 10)
-                                     (SEQ (ASSIGN (* "c") 2)
-                                     (SEQ (ASSIGN "c" (+ "c" 1))
-                                          (ASSIGN "i" (+ "i" 1))
-                                          ))))
-                        (tinyC (ASSIGN "i" 0))
-                        (tinyC (ASSIGN "sum" 0))
-                        (tinyC (WHILE (< "i" 10)
-                                     (SEQ (ASSIGN "sum" (+ "sum" (* (+ "p" "i"))))
-                                          (ASSIGN "i"   (+ "i" 1))
-                                          )))
-                        (tinyC (OUTPUT "sum")))
-                  ))
-
-
-    (define run-loop (tinyC:run #:fuel 200
-                                (list loop)
-                                (list )))
     (check-equal? (tinyC:state->trace run-loop)
                   (seec-singleton 20))
     )

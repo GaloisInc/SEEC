@@ -1,5 +1,5 @@
 #lang seec
-(require racket/contract)
+(require seec/private/util)
 (require "monad.rkt")
 (require (file "tinyC.rkt"))
 (require (only-in racket/base
@@ -27,15 +27,24 @@
          tinyA-declaration?
          tinyA-trace?
 
+         display-state
+         (rename-out [tinyC:display-memory display-memory])
+
          ; For functions that could potentially overlap with tinyC, add a
          ; "tinyA:" prefix
          (prefix-out tinyA: (combine-out
             store-mem
             declaration->pc
+            declaration->frame
             (struct-out state)
+            load-compiled-program
+            eval-statement
+            frame-size
             ))
          )
 
+; Can turn off contracts for definitions defined in this module
+(use-contracts-globally #t)
 
 (define-grammar tinyA #:extends syntax
 
@@ -117,7 +126,7 @@
   (λ (#:global-store G
       #:pc           pc
       #:sp           sp
-      #:mem          mem
+      #:memory       mem
       )
     (state G pc sp mem seec-empty)))
 
@@ -126,7 +135,8 @@
 ;;;;;;;;;;;;;;;;;;;;;
 
 
-(define (display-state st)
+(define/contract (display-state st)
+  (-> state? any/c)
   (printf "== PC: ~a~n" (state-pc st))
   (printf "== SP: ~a~n" (state-sp st))
   (printf "== Trace: ~a~n" (state-trace st))
@@ -207,8 +217,9 @@
     [(tinyA (_:proc-name stmt:statement)) stmt]
     [_ #f]))
 
-(define (state->instruction st)
-  (pc->instruction (state-pc st)))
+(define/contract (state->instruction st)
+  (-> state? (or/c #f tinyA-statement?))
+  (pc->instruction (state-pc st) (state-memory st)))
 
 
 ; Fetch the procedure name that encompasses the current PC. If the PC does not
@@ -356,7 +367,7 @@
      (do (<- l (lookup-var x sp F))
          (loc->val l mem))]
     [(tinyA (& lv:lval))
-     (eval-lval lv sp F mem)]
+     (eval-lval-F lv sp F mem)]
     [(tinyA (op:binop e1:expr e2:expr))
      (do (<- v1 (eval-expr-F e1 sp F mem))
          (<- v2 (eval-expr-F e2 sp F mem))
@@ -366,9 +377,10 @@
 ; does a lookup to find the corresponding frame in the global store, and we
 ; don't want to have to replicate that lookup every time we encounter a variable
 ; in the expression. Same for eval-lval vs eval-lval-F.
-(define (eval-expr e st)
+(define/contract (eval-expr e st)
+  (-> syntax-expr? state? (or/c #f tinyA-val?))
   (do (<- F (state->frame st))
-      (eval-expr e (state-sp st) F (state-memory st))))
+      (eval-expr-F e (state-sp st) F (state-memory st))))
 (define/contract (eval-exprs es st)
   (-> (listof syntax-expr?) state? (or/c #f (listof tinyA-val?)))
   (let* ([vs-maybe (map (λ (e) (eval-expr e st))
@@ -382,7 +394,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define/contract (eval-statement-1 g st)
-  (-> tinyA-global-store? state? state?)
+  (-> tinyA-global-store? state? (or/c #f state?))
+
+  (debug-display "(eval-statement-1 ~a)" (state->instruction st))
 
   (match (state->instruction st)
     [(tinyA SKIP)
@@ -397,8 +411,8 @@
 
     [(tinyA (JMPZ e:expr l:loc))
      (match (eval-expr e st)
-       [(tinyA 0) (update-state #:pc l)]
-       [_        (update-state #:increment-pc #t)]
+       [(tinyA 0) (update-state st #:pc l)]
+       [_         (update-state st #:increment-pc #t)]
        )]
 
     [(tinyA (ASSIGN lv:lval e:expr))
@@ -415,7 +429,7 @@
          ; Evaluate the arguments
      (do (<- vs (eval-exprs (seec->list es) st))
          ; lookup the target procedure's address and layout
-         (<- d2 (proc-name->declaration p))
+         (<- d2 (proc-name->declaration p g))
          (let* ([sp1 (state-sp st)]
                 [pc1 (state-pc st)]
                 [m1  (state-memory st)]
@@ -464,19 +478,23 @@
     [(<= fuel 0) st] ; Fuel ran out. Return #f here instead?
 
     [else 
-     (do (<- st+ (eval-statement-1 st))
+     (do (<- st+ (eval-statement-1 (state-global-store st) st))
          (eval-statement (decrement-fuel fuel) st+))]
     ))
 
-; Load a high-level program into memory at init-pc, initialize the stack at
-; init-sp, and invoke main with arguments vs
-#;(define/contract (load prog init-pc init-sp vs)
-  (-> tinyC:tinyC-program? tinyA-program-counter? tinyA-stack-pointer?
-      (listof tinyA-val?)
-      program?)
-  ())
-  
 
-#;(define run
-  (λ #:fuel [fuel #f]
-     ))
+
+; Given a memory with a compiled program, initialize the stack at 'i_s' and
+; invoke 'main' with arguments 'v ...'
+(define/contract (load-compiled-program G mem sp vals)
+  (-> tinyA-global-store? tinyA-memory? tinyA-stack-pointer? (listof tinyA-val?)
+      (or/c #f state?)
+      )
+  (do (<- decl (proc-name->declaration (string "main") G))
+      (<- mem+ (push-objs (- sp (length vals)) vals mem))
+      (<- sp+  (- sp (frame-size (declaration->frame decl))))
+      (initial-state #:global-store G
+                     #:pc           (declaration->pc decl)
+                     #:sp           sp+
+                     #:memory       mem+)
+      ))

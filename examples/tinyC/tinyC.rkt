@@ -1,5 +1,5 @@
 #lang seec
-(require racket/contract)
+(require seec/private/util)
 (require "monad.rkt")
 (require (only-in racket/base
                   build-list
@@ -87,6 +87,8 @@
             ))
          )
 
+
+(use-contracts-globally #t)
 
 (define-grammar syntax
 
@@ -458,6 +460,7 @@
       [else #f]
       )))
 (define (seec-set-ith i v l)
+;  #:contract (-> integer? bonsai? seec-list? seec-list?)
   (cond
     [(seec-empty? l) l]
     [(seec-cons? l)
@@ -478,8 +481,8 @@
 
 ; Return the object associated with the ident in memory. Returns `#f` if the
 ; ident does not occur in memory.
-(define/contract (lookup-mem-mapping x m)
-    (-> tinyC-loc-ident? tinyC-memory? (or/c #f tinyC-object?))
+(define (lookup-mem-mapping x m)
+  (-> tinyC-loc-ident? tinyC-memory? (or/c #f tinyC-object?))
     (match m
       [(tinyC nil) #f] ; Should this be undef or not actually defined?
       [(tinyC (cons (y:loc-ident obj:object) m+:memory))

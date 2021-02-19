@@ -1,5 +1,5 @@
 #lang seec
-(require racket/contract)
+(require seec/private/util)
 (require "monad.rkt")
 (require (file "tinyC.rkt"))
 (require (file "tinyAssembly.rkt"))
@@ -17,13 +17,18 @@
 (provide (all-defined-out))
 
 
+(define/contract (tinyA:store-insn pc stmt p mem)
+  (-> tinyA-program-counter? tinyA-statement? syntax-proc-name? tinyA-memory?
+      tinyA-memory?)
+  (tinyA:store-mem pc (tinyA (,p ,stmt)) mem))
+
 ; Compile statements into low-level forms. Replace structured control-flow
 ; with jumps
 ;
 ; Compile statement stmt in procedure p at start address init-pc in memory mem
 ; Return both the updated memory and the PC that points to the next address that
 ; has not yet been written to.
-(define (tinyC->tinyA-statement stmt p init-pc mem)
+(define/contract (tinyC->tinyA-statement stmt p init-pc mem)
   (-> tinyC-statement? syntax-proc-name? tinyA-program-counter? tinyA-memory?
       (values integer? tinyA-memory?))
   (match stmt
@@ -33,12 +38,14 @@
                    [(t-pc+ mem+)  (tinyC->tinyA-statement t p t-pc mem)]
                    [(f-pc)        (+ 1 t-pc+)]
                    [(f-pc+ mem++) (tinyC->tinyA-statement f p f-pc mem+)]
-                   [(mem+++)      (tinyA:store-mem init-pc
-                                                  (tinyA (,p (JMPZ ,e ,f-pc)))
-                                                  mem++)]
-                   [(mem++++)     (tinyA:store-mem t-pc+
-                                                  (tinyA (,p (JMPZ 0 ,f-pc+)))
-                                                  mem+++)]
+                   [(mem+++)      (tinyA:store-insn init-pc
+                                                    (tinyA (JMPZ ,e ,f-pc))
+                                                    p
+                                                    mem++)]
+                   [(mem++++)     (tinyA:store-insn t-pc+
+                                                    (tinyA (JMPZ 0 ,f-pc+))
+                                                    p
+                                                    mem+++)]
                    )
        (values f-pc+ mem++++))]
 
@@ -47,12 +54,14 @@
      (let*-values ([(body-pc)       (+ 1 init-pc)]
                    [(body-pc+ mem+) (tinyC->tinyA-statement body p body-pc mem)]
                    [(end-pc)        (+ 1 body-pc+)]
-                   [(mem++)         (tinyA:store-mem init-pc
-                                                    (tinyA (,p (JMPZ ,e ,end-pc)))
-                                                    mem+)]
-                   [(mem+++)        (tinyA:store-mem body-pc+
-                                                    (tinyA (,p (JMPZ 0 ,init-pc)))
-                                                    mem++)]
+                   [(mem++)         (tinyA:store-insn init-pc
+                                                      (tinyA (JMPZ ,e ,end-pc))
+                                                      p
+                                                      mem+)]
+                   [(mem+++)        (tinyA:store-insn body-pc+
+                                                      (tinyA (JMPZ 0 ,init-pc))
+                                                      p
+                                                      mem++)]
                    )
        (values end-pc mem+++))]
 
@@ -64,9 +73,10 @@
     ; Remaining statements do not require compilation
     [_
      (let* ([new-pc (+ 1 init-pc)]
-            [mem+   (tinyA:store-mem init-pc
-                                    (tinyC (,p ,stmt))
-                                    mem)]
+            [mem+   (tinyA:store-insn init-pc
+                                      stmt
+                                      p
+                                      mem)]
             )
        (values new-pc mem+))]
 
@@ -105,21 +115,23 @@
 (define/contract (tinyC->tinyA-declaration decl pc)
   (-> tinyC-declaration? tinyA-program-counter?
       (values tinyA-declaration?
+              tinyA-program-counter?
               tinyA-memory?))
 
   (let* ([F (declaration->frame decl)]
          [p (tinyC:declaration->name decl)]
-         ; Need to insert either a return or halt to the end of the function
-         ; body depending on whether we are currently in "main"
-         [last-insn (if (equal? p (string "main"))
-                            (tinyA HALT)
-                            (tinyA RETURN))]
-         [body (seec-append (tinyC:declaration->body decl)
-                            (seec-singleton last-insn))]
+         [body (tinyC:declaration->body decl)]
          )
     (let-values ([(pc+ mem+) (tinyC->tinyA-statement body p pc seec-empty)])
-      (values (tinyA (,p ,pc+ ,F)) mem+)
-      )))
+      ; Need to insert either a return or halt to the end of the function
+      ; body depending on whether we are currently in "main"
+      (let ([pc++ (+ 1 pc+)]
+            [mem++ (if (equal? p (string "main"))
+                       (tinyA:store-insn pc+ (tinyA HALT)   p mem+)
+                       (tinyA:store-insn pc+ (tinyA RETURN) p mem+))]
+                 )
+      (values (tinyA (,p ,pc ,F)) pc++ mem++)
+      ))))
 
 ; Compile a high-level program by compiling each procedure in turn and
 ; storing the results in memory starting at ll.i
@@ -131,32 +143,33 @@
     [(tinyC nil)
      (values (tinyA nil) (tinyA nil))]
     [(tinyC (cons decl:declaration P+:prog))
-     (let*-values ([(decl+ mem) (tinyC->tinyA-declaration decl pc)]
-                   [(G+    mem+)   (tinyC->tinyA-program P+ (tinyA:declaration->pc decl+))]
+     (let*-values ([(decl+ pc+ mem) (tinyC->tinyA-declaration decl pc)]
+                   [(G+    mem+)    (tinyC->tinyA-program P+ pc+)]
                    )
        (values (tinyA (cons ,decl+ ,G+))
                (seec-append mem mem+))
        )]
     ))
-                  
-; Given a memory with a compiled program, initialize the stack at 'i_s' and
-; invoke 'main' with arguments 'v ...'
-(define/contract (load-compiled-program G mem sp vals)
-  (-> tinyA-global-store? tinyA-memory? tinyA-stack-pointer? (listof tinyA-value?)
-      (or/c #f tinyA:state?)
-      )
-  (do (<- decl (tinyA:proc-name->declaration (string "main") G))
-      (<- mem+ (tinyA:push-objs (- sp (length vals)) vs mem))
-      (<- sp+  (- sp (tinyA:frame-size F)))
-      (tinyA:initial-state #:global-store G
-                           #:pc           (declaration->pc decl)
-                           #:sp           sp+
-                           #:memory       mem+)
-      ))
 
-(define/contract (load P pc0 sp0 vals)
+(define/contract (tinyA:load P pc0 sp0 vals)
   (-> tinyC-prog? tinyA-program-counter? tinyA-stack-pointer? 
-      (listof tinyA-value?)
+      (listof tinyA-val?)
       (or/c #f tinyA:state?))
   (let-values ([(G mem) (tinyC->tinyA-program P pc0)])
-    (load-compiled-program G mem sp0 vals)))
+    (tinyA:load-compiled-program G mem sp0 vals)))
+
+
+(define tinyA:run
+  (λ (#:fuel [fuel 100]
+      #:program-counter [pc 100] 
+      #:stack-pointer   [sp 100] ; constraint: sp <= pc?
+      prog    ; A racket list of declarations
+      inputs  ; A racket list of inputs to main
+      )
+    (tinyA:eval-statement fuel
+                          (tinyA:load (list->seec prog)
+                                      pc
+                                      sp
+                                      inputs))))
+
+  
