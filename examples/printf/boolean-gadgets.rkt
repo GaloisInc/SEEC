@@ -56,7 +56,7 @@
         ))
 
     (cond
-      [(havoc!) (new-symbolic-string n)]
+      [(havoc!) (new-symbolic-string* n)]
       [else     (printf-lang (,(symbolic-fmt-type)
                               (,(fresh-nat) ,(symbolic-width))))]
       ))
