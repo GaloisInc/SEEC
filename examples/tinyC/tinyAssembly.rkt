@@ -1,5 +1,5 @@
 #lang seec
-(require racket/contract)
+(require seec/private/util)
 (require "monad.rkt")
 (require (file "tinyC.rkt"))
 (require (only-in racket/base
@@ -27,17 +27,24 @@
          tinyA-declaration?
          tinyA-trace?
 
+         display-state
+         (rename-out [tinyC:display-memory display-memory])
+
          ; For functions that could potentially overlap with tinyC, add a
          ; "tinyA:" prefix
          (prefix-out tinyA: (combine-out
             store-mem
             declaration->pc
+            declaration->frame
             (struct-out state)
             load-compiled-program
             eval-statement
+            frame-size
             ))
          )
 
+; Can turn off contracts for definitions defined in this module
+(use-contracts-globally #t)
 
 (define-grammar tinyA #:extends syntax
 
@@ -128,7 +135,8 @@
 ;;;;;;;;;;;;;;;;;;;;;
 
 
-(define (display-state st)
+(define/contract (display-state st)
+  (-> state? any/c)
   (printf "== PC: ~a~n" (state-pc st))
   (printf "== SP: ~a~n" (state-sp st))
   (printf "== Trace: ~a~n" (state-trace st))
@@ -209,7 +217,8 @@
     [(tinyA (_:proc-name stmt:statement)) stmt]
     [_ #f]))
 
-(define (state->instruction st)
+(define/contract (state->instruction st)
+  (-> state? (or/c #f tinyA-statement?))
   (pc->instruction (state-pc st) (state-memory st)))
 
 
@@ -368,7 +377,8 @@
 ; does a lookup to find the corresponding frame in the global store, and we
 ; don't want to have to replicate that lookup every time we encounter a variable
 ; in the expression. Same for eval-lval vs eval-lval-F.
-(define (eval-expr e st)
+(define/contract (eval-expr e st)
+  (-> syntax-expr? state? (or/c #f tinyA-val?))
   (do (<- F (state->frame st))
       (eval-expr-F e (state-sp st) F (state-memory st))))
 (define/contract (eval-exprs es st)
@@ -384,7 +394,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define/contract (eval-statement-1 g st)
-  (-> tinyA-global-store? state? state?)
+  (-> tinyA-global-store? state? (or/c #f state?))
+
+  (debug-display "(eval-statement-1 ~a)" (state->instruction st))
 
   (match (state->instruction st)
     [(tinyA SKIP)
@@ -486,16 +498,3 @@
                      #:sp           sp+
                      #:memory       mem+)
       ))
-
-; Load a high-level program into memory at init-pc, initialize the stack at
-; init-sp, and invoke main with arguments vs
-#;(define/contract (load prog init-pc init-sp vs)
-  (-> tinyC:tinyC-program? tinyA-program-counter? tinyA-stack-pointer?
-      (listof tinyA-val?)
-      program?)
-  ())
-  
-
-#;(define run
-  (λ #:fuel [fuel #f]
-     ))

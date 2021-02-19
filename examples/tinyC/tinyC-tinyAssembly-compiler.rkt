@@ -1,5 +1,5 @@
 #lang seec
-(require racket/contract)
+(require seec/private/util)
 (require "monad.rkt")
 (require (file "tinyC.rkt"))
 (require (file "tinyAssembly.rkt"))
@@ -115,6 +115,7 @@
 (define/contract (tinyC->tinyA-declaration decl pc)
   (-> tinyC-declaration? tinyA-program-counter?
       (values tinyA-declaration?
+              tinyA-program-counter?
               tinyA-memory?))
 
   (let* ([F (declaration->frame decl)]
@@ -129,7 +130,7 @@
                        (tinyA:store-insn pc+ (tinyA HALT)   p mem+)
                        (tinyA:store-insn pc+ (tinyA RETURN) p mem+))]
                  )
-      (values (tinyA (,p ,pc++ ,F)) mem++)
+      (values (tinyA (,p ,pc ,F)) pc++ mem++)
       ))))
 
 ; Compile a high-level program by compiling each procedure in turn and
@@ -142,8 +143,8 @@
     [(tinyC nil)
      (values (tinyA nil) (tinyA nil))]
     [(tinyC (cons decl:declaration P+:prog))
-     (let*-values ([(decl+ mem) (tinyC->tinyA-declaration decl pc)]
-                   [(G+    mem+)   (tinyC->tinyA-program P+ (tinyA:declaration->pc decl+))]
+     (let*-values ([(decl+ pc+ mem) (tinyC->tinyA-declaration decl pc)]
+                   [(G+    mem+)    (tinyC->tinyA-program P+ pc+)]
                    )
        (values (tinyA (cons ,decl+ ,G+))
                (seec-append mem mem+))

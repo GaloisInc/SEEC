@@ -21,8 +21,10 @@
          debug-display
          debug?
          parameterize
+         define/debug
 
          define/contract
+         define/contract/debug
          use-contracts-globally
          (all-from-out racket/contract) ; Since we didn't import define/contract, no overlap
          )
@@ -99,27 +101,6 @@
 (define-syntax (define/debug stx)
   (syntax-case stx ()
 
-    ; Add contracts. If we had parameterized contracts, we can merge these cases with the ones below
-    [(_ (name args ...) #:contract contract-expr body ...)
-     (let* ([name-as-string (syntax->string #'name)])
-       #`(define/contract (name args ...)
-           contract-expr
-           (debug-display "~a" (list #,name-as-string args ...))
-           body
-           ...
-           )
-       )]
-    [(_ #:suffix (name args ...) #:contract contract-expr body-expr)
-     (let* ([name-as-string (syntax->string #'name)])
-       #`(define/contract (name args ...)
-           contract-expr
-           (debug-display "~a" (list #,name-as-string args ...))
-           (define tmp body-expr)
-           (debug-display "result of ~a: ~a" #,name-as-string tmp)
-           tmp
-           )
-       )]
-
     ; No contracts. Must come after #:contract because otherwise parsing would be incorrect
     [(_ (name args ...) body ...)
      (let* ([name-as-string (syntax->string #'name)])
@@ -142,6 +123,30 @@
        )]
 
 
+    ))
+
+; Both contracts and debugging
+(define-syntax (define/contract/debug stx)
+  (syntax-case stx ()
+    [(_ (name args ...) contract-expr body ...)
+     (let* ([name-as-string (syntax->string #'name)])
+       #`(define/contract (name args ...)
+           contract-expr
+           (debug-display "~a" (list #,name-as-string args ...))
+           body
+           ...
+           )
+       )]
+    [(_ #:suffix (name args ...) contract-expr body-expr)
+     (let* ([name-as-string (syntax->string #'name)])
+       #`(define/contract (name args ...)
+           contract-expr
+           (debug-display "~a" (list #,name-as-string args ...))
+           (define tmp body-expr)
+           (debug-display "result of ~a: ~a" #,name-as-string tmp)
+           tmp
+           )
+       )]
     ))
 
 ;;;;;;;;;
@@ -167,8 +172,8 @@
   (parameterize ([debug? #t])
     (foobar+ 3 5))
 
-  (define/debug #:suffix (foobar+contract x y)
-    #:contract (-> any/c any/c integer?)
+  (define/contract/debug #:suffix (foobar+contract x y)
+    (-> any/c any/c integer?)
     10)
   (parameterize ([debug? #t])
     (foobar+contract 3 5))

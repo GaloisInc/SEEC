@@ -1,9 +1,13 @@
 #lang seec
+
+(require seec/private/util)
 (require "tinyC.rkt")
 
-(require racket/contract)
-
-(provide factorial)
+(provide factorial
+         assign-output-example
+         assign-output-decl
+         simple-call-example
+         )
 
 (module+ test (require rackunit
                        rackunit/text-ui
@@ -18,15 +22,31 @@
     (tinyC (,name ,(list->seec params) ,(list->seec locals) ,(list->seec statements))))
 
 
-;;;;;;;;;;;;;;;;;;
-; Simple program ;
-;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;
+; Simple programs ;
+;;;;;;;;;;;;;;;;;;;
 
-(define main-example (make-declaration (string "main")
+(define assign-output-decl (make-declaration (string "main")
                                          (list (tinyC ("x0" int)))
                                          (list (tinyC ("x1" (* int))))
-                                         (list (tinyC (ASSIGN "x1" (& "x0"))))))
-(define g-example (seec-singleton main-example))
+                                         (list (tinyC (ASSIGN "x1" (& "x0")))
+                                               (tinyC (OUTPUT "x1"))
+                                               )))
+(define assign-output-example (list assign-output-decl))
+
+
+;;
+
+(define simple-call-example
+  (list (make-declaration (string "main")
+                          (list (tinyC ("x" int)))
+                          (list )
+                          (list (tinyC (CALL "foo" (cons "x" nil)))))
+        (make-declaration (string "foo")
+                          (list (tinyC ("y" int)))
+                          (list )
+                          (list (tinyC (OUTPUT "y"))))
+        ))
 
 
 ;;;;;;;;;;;;;
@@ -120,7 +140,8 @@
                               (list->seec (list #f #f #f)))
                 )
     ))
-  (run-tests seec-utils-tests)
+  (parameterize ([debug? #t])
+    (run-tests seec-utils-tests))
 
 
   (define mem-example (list->seec (list (tinyC (100 0))
@@ -302,7 +323,7 @@
             ))
 
         (test-case "alloc-frame"
-          (let* ([st+  (tinyC:alloc-frame main-example (list 1) state-example)]
+          (let* ([st+  (tinyC:alloc-frame assign-output-decl (list 1) state-example)]
                  [ctx+ (tinyC:state->context st+)]
                  [F+   (tinyC:context->top-frame ctx+)]
                  [m+   (tinyC:context->memory ctx+)]
@@ -323,7 +344,7 @@
      (test-suite "eval-statement-1"
         (test-suite "ASSIGN"
           ; x0 ↦ (100,0)
-          (let ([st+ (tinyC:eval-statement-1 g-example
+          (let ([st+ (tinyC:eval-statement-1 (list->seec assign-output-example)
                         (tinyC:update-state state-example
                                             #:statement (tinyC (ASSIGN "x0" -1))
                                                            ))])
@@ -340,7 +361,7 @@
             ))
 
         (test-suite "OUTPUT"
-           (let ([st+ (tinyC:eval-statement-1 g-example
+           (let ([st+ (tinyC:eval-statement-1 (list->seec assign-output-example)
                         (tinyC:update-state state-example
                                             #:statement (tinyC (OUTPUT "x0"))
                                             ))])
@@ -350,7 +371,7 @@
              ))
 
         (test-suite "CALL"
-           (let ([st+ (tinyC:eval-statement-1 g-example
+           (let ([st+ (tinyC:eval-statement-1 (list->seec assign-output-example)
                          (tinyC:update-state state-example
                                              #:statement (tinyC (CALL "main"
                                                                       (cons 3 nil)))
@@ -362,7 +383,7 @@
              ))
 
         (test-suite "RETURN"
-           (let ([st+ (tinyC:eval-statement-1 g-example
+           (let ([st+ (tinyC:eval-statement-1 (list->seec assign-output-example)
                          (tinyC:update-state state-example
                                              #:statement (tinyC RETURN))
                          )])
@@ -376,7 +397,7 @@
              ))
 
         (test-suite "SEQ-SKIP"
-           (let ([st+ (tinyC:eval-statement-1 g-example
+           (let ([st+ (tinyC:eval-statement-1 (list->seec assign-output-example)
                          (tinyC:update-state state-example
                                              #:statement (tinyC (SEQ SKIP RETURN))
                                              ))])
@@ -386,10 +407,10 @@
 
         (test-suite "SEQ"
            (let* ([stmt0 (tinyC (ASSIGN "x1" "x0"))]
-                  [st0   (tinyC:eval-statement-1 g-example
+                  [st0   (tinyC:eval-statement-1 (list->seec assign-output-example)
                             (tinyC:update-state state-example
                                                 #:statement stmt0))]
-                  [st+   (tinyC:eval-statement-1 g-example
+                  [st+   (tinyC:eval-statement-1 (list->seec assign-output-example)
                             (tinyC:update-state state-example
                                                 #:statement (tinyC (SEQ ,stmt0 RETURN))))]
                   )
