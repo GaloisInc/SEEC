@@ -1,6 +1,6 @@
 #lang seec
 (require seec/private/util)
-(require "monad.rkt")
+(require seec/private/monad)
 (require (file "tinyC.rkt"))
 (require (only-in racket/base
                   build-list
@@ -169,12 +169,12 @@
          (lookup-mem l m+))]
     ))
 
-; If l↦v occurs in mem for a value v, return v, otherwise return #f
+; If l↦v occurs in mem for a value v, return v, otherwise return *fail*
 (define/contract (loc->val l mem)
-  (-> tinyA-loc? tinyA-memory? (or/c #f tinyA-val?))
+  (-> tinyA-loc? tinyA-memory? (failure/c tinyA-val?))
   (match (lookup-mem l mem)
     [(tinyA v:val) v]
-    [_ #f]))
+    [_ *fail*]))
 
 
 ;;;;;;;;;;;;;;;
@@ -199,9 +199,9 @@
 
 ; Lookup the declaration associated with the procedure name in the global store
 (define/contract (proc-name->declaration p g)
-  (-> syntax-proc-name? tinyA-global-store? (or/c #f tinyA-declaration?))
+  (-> syntax-proc-name? tinyA-global-store? (failure/c tinyA-declaration?))
   (match g
-    [(tinyA nil) #f]
+    [(tinyA nil) *fail*]
     [(tinyA (cons d:declaration g+:global-store))
      (if (equal? (declaration->proc-name d) p)
          d
@@ -210,37 +210,37 @@
 
 
 ; Fetch the instruction at the current PC. If the PC does not point to an
-; instruction in memory, return #f
+; instruction in memory, return *fail*
 (define/contract (pc->instruction pc mem)
-  (-> tinyA-program-counter? tinyA-memory? (or/c #f tinyA-statement?))
+  (-> tinyA-program-counter? tinyA-memory? (failure/c tinyA-statement?))
   (match (lookup-mem pc mem)
     [(tinyA (_:proc-name stmt:statement)) stmt]
-    [_ #f]))
+    [_ *fail*]))
 
 (define/contract (state->instruction st)
-  (-> state? (or/c #f tinyA-statement?))
+  (-> state? (failure/c tinyA-statement?))
   (pc->instruction (state-pc st) (state-memory st)))
 
 
 ; Fetch the procedure name that encompasses the current PC. If the PC does not
-; point to an instruction in memory, return #f
+; point to an instruction in memory, return *fail*
 (define/contract (pc->proc-name pc mem)
-  (-> tinyA-program-counter? tinyA-memory? (or/c #f syntax-proc-name?))
+  (-> tinyA-program-counter? tinyA-memory? (failure/c syntax-proc-name?))
   (match (lookup-mem pc mem)
     [(tinyA (p:proc-name _:statement)) p]
-    [_ #f]))
+    [_ *fail*]))
 
 
 ; Look up the stack frame layout of the procedure that includes the currently
 ; executing statement. If the PC does not point to an instruction in memory,
-; return #f
+; return *fail*
 (define/contract (pc->frame pc mem g)
-  (-> tinyA-program-counter? tinyA-memory? tinyA-global-store? (or/c #f tinyA-frame?))
+  (-> tinyA-program-counter? tinyA-memory? tinyA-global-store? (failure/c tinyA-frame?))
   (do (<- p (pc->proc-name pc mem))
       (<- d (proc-name->declaration p g))
       (declaration->frame d)))
 (define/contract (state->frame st)
-  (-> state? (or/c #f tinyA-frame?))
+  (-> state? (failure/c tinyA-frame?))
   (pc->frame (state-pc st) (state-memory st) (state-global-store st)))
 
 
@@ -324,9 +324,9 @@
 ; Compute the address of the variable 'x' from the stack frame layout and the
 ; current stack pointer
 (define/contract (lookup-var x sp F)
-  (-> syntax-var? tinyA-stack-pointer? tinyA-frame? (or/c #f tinyA-loc?))
+  (-> syntax-var? tinyA-stack-pointer? tinyA-frame? (failure/c tinyA-loc?))
   (match F
-    [(tinyA nil) #f]
+    [(tinyA nil) *fail*]
     [(tinyA (cons (y:var o:offset)             F+:frame))
      (if (equal? x y)
          (+ sp o)
@@ -339,7 +339,7 @@
 
 (define/contract (eval-lval-F lv sp F mem)
   (-> syntax-lval? tinyA-stack-pointer? tinyA-frame? tinyA-memory?
-      (or/c #f tinyA-val?))
+      (failure/c tinyA-val?))
   (match lv
     [(tinyA x:var)
      (lookup-var x sp F)]
@@ -349,14 +349,14 @@
     ))
 ; Produce the value associated with the lvalue
 (define/contract (eval-lval lv st)
-  (-> syntax-lval? state? (or/c #f tinyA-val?))
+  (-> syntax-lval? state? (failure/c tinyA-val?))
   (do (<- F (state->frame st))
       (eval-lval-F lv (state-sp st) F (state-memory st))))
 
 
 (define/contract (eval-expr-F e sp F mem)
   (-> syntax-expr? tinyA-stack-pointer? tinyA-frame? tinyA-memory?
-      (or/c #f tinyA-val?))
+      (failure/c tinyA-val?))
   (match e
     [(tinyA n:integer) n]
     [(tinyA null)      0]
@@ -378,23 +378,24 @@
 ; don't want to have to replicate that lookup every time we encounter a variable
 ; in the expression. Same for eval-lval vs eval-lval-F.
 (define/contract (eval-expr e st)
-  (-> syntax-expr? state? (or/c #f tinyA-val?))
+  (-> syntax-expr? state? (failure/c tinyA-val?))
   (do (<- F (state->frame st))
       (eval-expr-F e (state-sp st) F (state-memory st))))
 (define/contract (eval-exprs es st)
-  (-> (listof syntax-expr?) state? (or/c #f (listof tinyA-val?)))
+  (-> (listof syntax-expr?) state? (failure/c (listof tinyA-val?)))
   (let* ([vs-maybe (map (λ (e) (eval-expr e st))
                         es)])
-    (if (andmap (λ (x) x) vs-maybe)
+    (if (any-failure? vs-maybe)
+        *fail*
         vs-maybe
-        #f)))
+        )))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Evaluation of statements ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define/contract (eval-statement-1 g st)
-  (-> tinyA-global-store? state? (or/c #f state?))
+  (-> tinyA-global-store? state? (failure/c state?))
 
   (debug-display "(eval-statement-1 ~a)" (state->instruction st))
 
@@ -423,7 +424,7 @@
                        #:memory (store-mem l v (state-memory st))
                        ))]
 
-    [(tinyA HALT) #f] ; cannot take a step
+    [(tinyA HALT) *fail*] ; cannot take a step
 
     [(tinyA (CALL p:proc-name es:list<expr>))
          ; Evaluate the arguments
@@ -469,13 +470,13 @@
 
 ; Take some number of states bounded by the amount of fuel given
 (define/contract (eval-statement fuel st)
-  (-> (or/c #f integer?) state? (or/c #f state?))
+  (-> (failure/c integer?) state? (failure/c state?))
   (cond
     [(equal? (state->instruction st)
              (tinyA HALT))
      st] ; Evaluation has normalized before fuel ran out
 
-    [(<= fuel 0) st] ; Fuel ran out. Return #f here instead?
+    [(<= fuel 0) st] ; Fuel ran out. Return *fail* here instead?
 
     [else 
      (do (<- st+ (eval-statement-1 (state-global-store st) st))
@@ -488,7 +489,7 @@
 ; invoke 'main' with arguments 'v ...'
 (define/contract (load-compiled-program G mem sp vals)
   (-> tinyA-global-store? tinyA-memory? tinyA-stack-pointer? (listof tinyA-val?)
-      (or/c #f state?)
+      (failure/c state?)
       )
   (do (<- decl (proc-name->declaration (string "main") G))
       (<- mem+ (push-objs (- sp (length vals)) vals mem))

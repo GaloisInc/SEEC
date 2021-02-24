@@ -1,6 +1,6 @@
 #lang seec
 (require seec/private/util)
-(require "monad.rkt")
+(require seec/private/monad)
 (require (file "tinyC.rkt"))
 (require (file "tinyAssembly.rkt"))
 (require (only-in racket/base
@@ -154,7 +154,7 @@
 (define/contract (tinyA:load P pc0 sp0 vals)
   (-> tinyC-prog? tinyA-program-counter? tinyA-stack-pointer? 
       (listof tinyA-val?)
-      (or/c #f tinyA:state?))
+      (failure/c tinyA:state?))
   (let-values ([(G mem) (tinyC->tinyA-program P pc0)])
     (tinyA:load-compiled-program G mem sp0 vals)))
 

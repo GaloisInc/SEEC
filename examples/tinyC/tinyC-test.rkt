@@ -1,6 +1,7 @@
 #lang seec
 
 (require seec/private/util)
+(require seec/private/monad)
 (require "tinyC.rkt")
 
 (provide factorial
@@ -125,9 +126,9 @@
                 (check-equal? (seec-ith 0 (list->seec (list 100 101 102)))
                               100)
                 (check-equal? (seec-ith 3 (list->seec (list 100 101 102)))
-                              #f)
+                              *fail*)
                 (check-equal? (seec-ith -1 (list->seec (list 100 101 102)))
-                              #f)
+                              *fail*)
                 )
 
     (test-suite "seec-set-ith"
@@ -159,7 +160,7 @@
                 (check-equal? (tinyC:lookup-mem (tinyC (102 0)) mem-example)
                               2)
                 (check-equal? (tinyC:lookup-mem (tinyC (102 2)) mem-example)
-                              #f)
+                              *fail*)
                 )
 
        (test-suite "update-object-at-offset"
@@ -175,7 +176,7 @@
                                                    )))
                    ; l doesn't occur in m
                    (check-equal? (tinyC:store-mem (lid->loc 104) 20 mem-example)
-                                 #f)
+                                 *fail*)
                    )
        ))
   (run-tests mem-tests)
@@ -209,7 +210,7 @@
                    (check-equal? (tinyC:eval-binop (tinyC +)
                                                    42
                                                    (tinyC (100 0)))
-                                 #f)
+                                 *fail*)
                    )
        (test-suite
         "eval-expr"
@@ -299,7 +300,7 @@
            (check-equal? (tinyC:lookup-mem
                            l
                            (tinyC:context->memory (tinyC:state->context state-example)))
-                         #f)
+                         *fail*)
            (check-lookup-context? (tinyC:state->context st+)
                                   l
                                   40)
@@ -335,7 +336,7 @@
             (check-equal? (tinyC:eval-expr (tinyC "x0") F+ m+)
                           1)
             (check-equal? (tinyC:eval-expr (tinyC "x1") F+ m+)
-                          #f) ; Should evaluate to undef
+                          *fail*) ; Should evaluate to undef
 
             ))
         )

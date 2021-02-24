@@ -1,6 +1,6 @@
 #lang seec
 (require seec/private/util)
-(require "monad.rkt")
+(require seec/private/monad)
 (require (only-in racket/base
                   build-list
                   raise-argument-error
@@ -450,14 +450,14 @@
 ;; SEEC Utilities ;;
 ;;;;;;;;;;;;;;;;;;;;
 
-; Return `#f` value if not (0 <= i < length l), otherwise return the
+; Return `*fail*` value if not (0 <= i < length l), otherwise return the
 ; element at location i in the seec-list l
 (define (seec-ith i l)
   (let ([l-list (seec->list l)])
     (cond
       [(< -1 i (length l-list))
        (list-ref l-list i)]
-      [else #f]
+      [else *fail*]
       )))
 (define (seec-set-ith i v l)
 ;  #:contract (-> integer? bonsai? seec-list? seec-list?)
@@ -479,12 +479,12 @@
 ;; Memory utilities ;;
 ;;;;;;;;;;;;;;;;;;;;;;
 
-; Return the object associated with the ident in memory. Returns `#f` if the
+; Return the object associated with the ident in memory. Returns `*fail*` if the
 ; ident does not occur in memory.
 (define (lookup-mem-mapping x m)
-  (-> tinyC-loc-ident? tinyC-memory? (or/c #f tinyC-object?))
+  (-> tinyC-loc-ident? tinyC-memory? (failure/c tinyC-object?))
     (match m
-      [(tinyC nil) #f] ; Should this be undef or not actually defined?
+      [(tinyC nil) *fail*] ; Should this be undef or not actually defined?
       [(tinyC (cons (y:loc-ident obj:object) m+:memory))
        (if (equal? x y)
            obj
@@ -494,7 +494,7 @@
 ; Dereference a location by looking up the label in the memory
 ; and indexing the object at the appropriate offset
 (define/contract (lookup-mem l m)
-  (-> tinyC-loc? tinyC-memory? (or/c #f tinyC-object?))
+  (-> tinyC-loc? tinyC-memory? (failure/c tinyC-object?))
 
   (match l
     [(tinyC (x:loc-ident o:offset))
@@ -503,8 +503,8 @@
        [(tinyC obj:object)       ; either val or undef
                                 (if (equal? o 0)
                                     obj
-                                    #f)]
-       [_                       #f]
+                                    *fail*)]
+       [_                       *fail*]
        )]
     ))
 
@@ -512,10 +512,10 @@
 ; Update the offset into the object with the value v
 ;
 ; If obj is a value or undefined, the offset must be 0, or else the function
-; will return #f. If obj is an array, o must be in the scope of the array, or
+; will return *fail*. If obj is an array, o must be in the scope of the array, or
 ; else the function will return false
 (define/contract (update-object-at-offset obj o v)
-  (-> tinyC-object? integer? tinyC-val? (or/c #f tinyC-object?))
+  (-> tinyC-object? integer? tinyC-val? (failure/c tinyC-object?))
   (match obj
     ; if the object is an array, update the array at that index
     [(tinyC arr:list<object>)
@@ -524,19 +524,19 @@
     [(tinyC _:object)
      (if (equal? o 0)
          v
-         #f)]
+         *fail*)]
     ))
 
 ; Update the value in memory at the specified location
-; If (lookup-mem l m) is #f, store-mem is #f
+; If (lookup-mem l m) is *fail*, store-mem is *fail*
 (define/contract (store-mem l v m)
-  (-> tinyC-loc? tinyC-val? tinyC-memory? (or/c #f tinyC-memory?))
+  (-> tinyC-loc? tinyC-val? tinyC-memory? (failure/c tinyC-memory?))
 
   (match l
     [(tinyC (x:loc-ident o:offset))
 
      (match m
-       [(tinyC nil) #f]
+       [(tinyC nil) *fail*]
        [(tinyC (cons (y:loc-ident obj:object) m+:memory))
         (cond
           [(= x y)
@@ -565,7 +565,7 @@
 
 ; Given a location and a value, update the memory in the input context
 (define/contract (set-lval l v ctx)
-  (-> tinyC-val? tinyC-val? tinyC-context? (or/c #f tinyC-context?))
+  (-> tinyC-val? tinyC-val? tinyC-context? (failure/c tinyC-context?))
   (cond
     [(tinyC-loc? l)
      (match ctx
@@ -574,7 +574,7 @@
             (tinyC (,S ,m+))
           )])]
 
-    [else #f]))
+    [else *fail*]))
     
 
 ; Unitialized values are represented by 'undef' values
@@ -588,9 +588,9 @@
 
 ; Look up a variable in a frame.
 (define/contract (lookup-var x F)
-  (-> syntax-var? tinyC-frame? (or/c #f tinyC-loc?))
+  (-> syntax-var? tinyC-frame? (failure/c tinyC-loc?))
   (match F
-    [(tinyC nil) #f]
+    [(tinyC nil) *fail*]
     [(tinyC (cons (y:var l:loc) F+:frame))
      (if (equal? x y)
          l
@@ -612,14 +612,14 @@
 ; Pointer arithmetic is possible for + and - if the first value is a pointer
 ; Equality comparison is allowed for any types
 (define/contract (eval-binop op v1 v2)
-  (-> syntax-binop? tinyC-val? tinyC-val? (or/c #f tinyC-val?))
+  (-> syntax-binop? tinyC-val? tinyC-val? (failure/c tinyC-val?))
   (cond
 
     [(equal? op (syntax =))
      (if (equal? v1 v2) 1 0)]
 
     [(not (integer? v2))
-     #f] ; Cannot call eval-binop when second argument is not an integer
+     *fail*] ; Cannot call eval-binop when second argument is not an integer
                            
     [(and (not (integer? v1))
           (integer? v2))
@@ -628,7 +628,7 @@
         (tinyC (,x ,(+ o v2)))]
        [(cons (syntax -) (tinyC (x:loc-ident o:offset)))
         (tinyC (,x ,(- o v2)))]
-       [_ #f] ; Can only perform +/- pointer arithmetic
+       [_ *fail*] ; Can only perform +/- pointer arithmetic
        )]
     [(and (integer? v1)
           (integer? v2))
@@ -641,7 +641,7 @@
 
 ; Evalue an l-value
 (define/contract (eval-lval lv F m)
-  (-> syntax-lval? tinyC-frame? tinyC-memory? (or/c #f tinyC-val?))
+  (-> syntax-lval? tinyC-frame? tinyC-memory? (failure/c tinyC-val?))
   (match lv
     [(tinyC x:var) (lookup-var x F)]
     [(tinyC (* lv+:lval))
@@ -651,20 +651,20 @@
        [(tinyC l:loc)
         (match (lookup-mem l m)
           ; lookup-mem could produce any object (including undef or an array
-          ; object), in which case return #f
+          ; object), in which case return *fail*
           [(tinyC v:val) v]
-          [_ #f]
+          [_ *fail*]
           )]
-       [_ #f]
+       [_ *fail*]
        )]
     ))
 
 ; Evaluate an expression given a frame and memory
 (define/contract (eval-expr e F m)
-  (-> syntax-expr? tinyC-frame? tinyC-memory? (or/c #f tinyC-val?))
+  (-> syntax-expr? tinyC-frame? tinyC-memory? (failure/c tinyC-val?))
   (match e
     [(tinyC n:integer) n]
-    [(tinyC null)      #f] ; Should this return 0 or something else instead?
+    [(tinyC null)      *fail*] ; Should this return 0 or something else instead?
                           ; Allow possibiility of returning undef?
     [(tinyC (* e+:expr))
      (match (eval-expr e+ F m)
@@ -672,7 +672,7 @@
         (match (lookup-mem l m)
           [(tinyC v:val) v]
           )]
-       [_ #f]
+       [_ *fail*]
        )]
 
     [(tinyC x:var)
@@ -680,9 +680,9 @@
        [(tinyC l:loc)
         (match (lookup-mem l m)
           [(tinyC v:val) v]
-          [_ #f]
+          [_ *fail*]
           )]
-       [_ #f])]
+       [_ *fail*])]
 
     [(tinyC (& lv:lval)) ; Is this right?
      (eval-lval lv F m)
@@ -698,13 +698,13 @@
 
 ; Evaluate a list of expressions to produce a list of values
 (define/contract (eval-exprs args ctx)
-  (-> (listof syntax-expr?) tinyC-context? (or/c #f (listof tinyC-val?)))
+  (-> (listof syntax-expr?) tinyC-context? (failure/c (listof tinyC-val?)))
   (let* ([F (context->top-frame ctx)]
          [m (context->memory ctx)]
          [ms-maybe (map (λ (e) (eval-expr e F m)) args)])
     (if (andmap (λ (x) x) ms-maybe)
         ms-maybe
-        #f)))
+        *fail*)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -714,11 +714,11 @@
 
 
 
-; Remove a location from memory. Will return #f if x does not occur in m
+; Remove a location from memory. Will return *fail* if x does not occur in m
 (define/contract (drop-loc-ident x m)
-  (-> tinyC-loc-ident? tinyC-memory? (or/c #f tinyC-memory?))
+  (-> tinyC-loc-ident? tinyC-memory? (failure/c tinyC-memory?))
   (match m
-    [(tinyC nil) #f]
+    [(tinyC nil) *fail*]
     [(tinyC (cons (y:loc-ident obj:object) m+:memory))
      (if (equal? x y)
          m+
@@ -728,9 +728,9 @@
     ))
 
 ; Free all the locations allocated in F.
-; If any of those locations do not occur in m, return #f
+; If any of those locations do not occur in m, return *fail*
 (define/contract (pop-stack F m)
-  (-> tinyC-frame? tinyC-memory? (or/c #f tinyC-memory?))
+  (-> tinyC-frame? tinyC-memory? (failure/c tinyC-memory?))
   (match F
     [(tinyC nil) m]
     [(tinyC (cons (_:var (x:loc-ident _:object)) F+:frame))
@@ -741,9 +741,9 @@
 
 ; Return the declaration associated with the name p in g
 (define/contract (lookup-in-global-store g p)
-  (-> tinyC-global-store? syntax-proc-name? (or/c #f tinyC-declaration?))
+  (-> tinyC-global-store? syntax-proc-name? (failure/c tinyC-declaration?))
   (match g
-    [(tinyC nil) #f]
+    [(tinyC nil) *fail*]
     [(tinyC (cons decl:declaration g+:global-store))
      (if (equal? (declaration->name decl) p)
          decl
@@ -773,7 +773,7 @@
 
 ; Allocate a fresh location identifier and bind it to the object obj in memory
 (define/contract (alloc obj st)
-  (-> tinyC-object? state? (or/c #f (cons/c tinyC-loc-ident? state?)))
+  (-> tinyC-object? state? (failure/c (cons/c tinyC-loc-ident? state?)))
   (match (fresh-var st)
     [(cons lid st+)
      (let* ([ctx (state->context st+)]
@@ -782,7 +782,7 @@
             [ctx+ (update-context-memory ctx m+)]
             )
        (cons lid (update-state st+ #:context ctx+)))]
-     [_ #f]
+     [_ *fail*]
      ))
 
 ; Take as input an object of type ty and allocate a memory location l↦obj in
@@ -792,7 +792,7 @@
   (-> syntax-type?
       tinyC-object?
       state?
-      (or/c #f (cons/c tinyC-loc? state?)))
+      (failure/c (cons/c tinyC-loc? state?)))
   (match ty
     [(tinyC simple-type)
      (do (<- l-st (alloc obj st))
@@ -820,7 +820,7 @@
 (define/contract (alloc-declarations decls st)
   (-> (listof (list/c syntax-var? syntax-type? tinyC-object?))
       state?
-      (or/c #f (cons/c tinyC-frame? state?)))
+      (failure/c (cons/c tinyC-frame? state?)))
 
   (cond
     [(empty? decls) (cons seec-empty st)]
@@ -843,7 +843,7 @@
   (-> (listof tinyC-param-decl?)
       (listof tinyC-val?)
       state?
-      (or/c #f (cons/c tinyC-frame? state?)))
+      (failure/c (cons/c tinyC-frame? state?)))
 
   ; Check that the values have appropriate type and zip together the
   ; declarations and values to provide to alloc-declarations
@@ -876,7 +876,7 @@
 ; Allocate a frame and update the memory associated with a particular function
 ; declaration
 (define/contract (alloc-frame decl vs st)
-  (-> tinyC-declaration? (listof tinyC-val?) state? (or/c #f state?))
+  (-> tinyC-declaration? (listof tinyC-val?) state? (failure/c state?))
 
   (let* ([p            (declaration->name decl)]
          [param-decls  (seec->list (declaration->parameters decl))]
@@ -904,13 +904,13 @@
 
 ; Take a single step
 (define/contract (eval-statement-1 g st)
-  (-> tinyC-global-store? state? (or/c #f state?))
+  (-> tinyC-global-store? state? (failure/c state?))
   #;(printf "(eval-statement-1 ~a)~n" (state->statement st))
 
   (match (state->statement st)
 
     [(tinyC SKIP) ; SKIP cannot take a step
-     #f]
+     *fail*]
 
     [(tinyC (ASSIGN lv:lval e:expr))
      (let* ([ctx (state->context st)]
@@ -971,7 +971,7 @@
         (update-state st #:statement t)]
        [(tinyC 0)
         (update-state st #:statement f)]
-       [_ #f]
+       [_ *fail*]
        ))]
 
     [(tinyC (WHILE b:expr w:statement))
@@ -983,7 +983,7 @@
         (update-state st  #:statement (tinyC (SEQ ,w (WHILE ,b ,w))))]
        [(tinyC 0)
         (update-state st  #:statement (tinyC SKIP))]
-       [_ #f]
+       [_ *fail*]
        ))]
 
     ; Sequencing
@@ -1002,20 +1002,19 @@
 
 
 (define/contract (decrement-fuel fuel)
-  (-> (or/c #f integer?) (or/c #f integer?))
-  (if fuel
-      (- fuel 1)
-      #f))
+  (-> (failure/c integer?) (failure/c integer?))
+  (do current-fuel <- fuel
+      (- fuel 1)))
 
 ;; Take some number of steps bounded by the amount of fuel given
 (define/contract (eval-statement fuel g st)
-  (-> (or/c #f integer?) tinyC-global-store? state? (or/c #f state?))
+  (-> (failure/c integer?) tinyC-global-store? state? (failure/c state?))
   (cond
     [(equal? (state->statement st)
              (tinyC SKIP))
      st] ; Evaluation has normalized before fuel ran out
 
-    [(<= fuel 0) st] ; Fuel ran out. Return #f here instead?
+    [(<= fuel 0) st] ; Fuel ran out. Return *fail* here instead?
 
     [else
      (do (<- st+ (eval-statement-1 g st))
