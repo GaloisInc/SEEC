@@ -172,4 +172,35 @@
                                       sp
                                       inputs))))
 
+
+; All values in the target are integers, while values in the source are either
+; integers or locations. Any source location is related to any target value,
+; while integer source values are only related to the same target value
+(define (val-relation v-src v-target)
+  (match v-src
+    [(tinyC v:integer) (equal? v v-target)]
+    [(tinyC l:loc)     #t]
+    ))
+(define (trace-relation t-src t-target)
+  (andmap val-relation (seec->list t-src) (seec->list t-target)))
+
+(define-compiler tinyC-compiler
+  #:source tinyC-lang
+  #:target tinyA-lang
+  ; Behaviors of both languages are traces of values, but
+  ; tinyC traces can contain memory locations, which could
+  ; relate to any integer in the target.
+  #:behavior-relation trace-relation
+  ; Contexts in the source is an argument list, which should not contain memory
+  ; locations. Contexts in the target are argument lists that contain only
+  ; integer values, along with a stack pointer
+  #:context-relation (λ (ctx-src ctx-target)
+                       (match ctx-target
+                         [(tinyA (sp:stack-pointer tr:trace))
+                          (trace-relation ctx-src tr)]))
+  ; Expressions in the source are global stores, while in the target they are
+  ; global stores and memory together
+  #:compile (λ (g-src) (let-values ([(g-target mem) (tinyC->tinyA-program g-src 100)])
+                         (tinyA (,g-target ,mem))))
+  )
   

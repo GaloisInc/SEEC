@@ -20,6 +20,7 @@
          syntax-proc-name?
 
          tinyC
+         tinyC-lang
          tinyC-prog?
          tinyC-declaration?
          tinyC-param-decl?
@@ -1020,13 +1021,38 @@
      (do (<- st+ (eval-statement-1 g st))
          (eval-statement (decrement-fuel fuel) g st+))]
     ))
+
+
+
+(define run+
+  (λ (#:fuel [fuel 100]
+      prog    ; A seec list of declarations (aka global store)
+      inputs  ; A seec list of inputs to main
+      )
+    (eval-statement fuel
+                    prog
+                    (update-state (init-state (tinyC ((nil nil) nil)))
+                                  #:statement (tinyC (CALL "main" ,inputs))
+                                  ))))
+
 (define run
   (λ (#:fuel [fuel 100]
       prog    ; A racket list of declarations
       inputs  ; A racket list of inputs to main
       )
-    (eval-statement fuel
-                    (list->seec prog)
-                    (update-state (init-state (tinyC ((nil nil) nil)))
-                                  #:statement (tinyC (CALL "main" ,(list->seec inputs)))
-                                  ))))
+    (run+ #:fuel fuel
+          (list->seec prog)
+          (list->seec inputs))))
+
+
+(define-language tinyC-lang
+  #:grammar tinyC
+  #:expression global-store #:size 5
+  #:context trace #:size 3 ; The trace acts like an argument list. Should we add
+                           ; a constraint that these should contain only
+                           ; integers, not locations?
+  #:link (λ (args prog) (cons args prog))
+  ; During evaluation, just produce the trace
+  #:evaluate (λ (p) (do st <- (run+ #:fuel 150 (cdr p) (car p))
+                        (state-trace st)))
+  )

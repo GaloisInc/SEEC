@@ -436,6 +436,18 @@
 
     (check-equal? (tinyC:state->trace run-loop)
                   (seec-singleton 20))
+
+
+    ; Redo run-fac using language features
+    (check-equal? ((language-evaluate tinyC-lang)
+                   ((language-link tinyC-lang) (seec-singleton 3)
+                                               (list->seec factorial)))
+                  (seec-singleton 6))
+
+    (check-equal? ((language-evaluate tinyC-lang)
+                   ((language-link tinyC-lang) seec-empty
+                                               (seec-singleton loop)))
+                  (seec-singleton 20))
     )
   (evaluation-tests)
   )

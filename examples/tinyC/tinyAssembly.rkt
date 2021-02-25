@@ -12,6 +12,9 @@
 (require rosette/lib/value-browser) ; debugging
 
 (provide tinyA
+         tinyA+
+         tinyA-lang
+
          tinyA-statement?
          tinyA-val?
          tinyA-loc?
@@ -26,6 +29,8 @@
          tinyA-global-store?
          tinyA-declaration?
          tinyA-trace?
+         tinyA+-expr?
+         tinyA+-ctx?
 
          display-state
          (rename-out [tinyC:display-memory display-memory])
@@ -499,3 +504,26 @@
                      #:sp           sp+
                      #:memory       mem+)
       ))
+
+
+(define-grammar tinyA+ #:extends tinyA
+  (expr ::= (global-store memory)) ; the memory fragment associated with a compiled program
+  (ctx  ::= (stack-pointer list<val>))
+  )
+
+
+(define-language tinyA-lang
+  #:grammar tinyA+
+  #:expression expr #:size 5
+  #:context ctx #:size 3 ; The trace acts as as the argument list
+  ; A whole program is a (failure/c state?)
+  #:link (λ (ctx expr)
+           (match (cons expr ctx)
+             [(cons (tinyA (g:global-store m:memory))
+                    (tinyA (sp:stack-pointer vals:trace)))
+              (load-compiled-program g m sp (seec->list vals))]
+             ))
+  #:evaluate (λ (p) (do st <- p
+                        st+ <- (eval-statement 100 st)
+                        (state-trace st+)))
+  )
