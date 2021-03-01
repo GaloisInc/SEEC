@@ -69,6 +69,7 @@
             alloc-frame
             
             (struct-out state)
+            display-state
             init-state
             update-state
             state->context
@@ -85,11 +86,12 @@
             eval-exprs
             eval-statement-1
             run
+            run+
             ))
          )
 
 
-(use-contracts-globally #t)
+(use-contracts-globally #f)
 
 (define-grammar syntax
 
@@ -218,8 +220,12 @@
 
 (struct state (statement context trace fresh-var)
   #:transparent)
-(define state->context state-context)
-(define state->statement state-statement)
+(define/contract state->context 
+  (-> state? tinyC-context?)
+  state-context)
+(define/contract state->statement
+  (-> state? tinyC-statement?)
+  state-statement)
 (define state->trace state-trace)
 (define/contract (fresh-var st)
   (-> state? (cons/c integer? state?))
@@ -327,14 +333,14 @@
 
 
 (define (display-state st)
-  (display-context (state->context st))
-
-  (printf "==Next statement== ~a~n" (state->statement st)) 
-
-  (printf "==Trace== ~a~n" (state->trace st))
-
-  (printf "==Fresh Var== ~a~n~n" (state-fresh-var st))
-  )
+  (cond
+    [(failure? st) (displayln st)]
+    [else
+     (display-context (state->context st))
+     (printf "==Next statement== ~a~n" (state->statement st)) 
+     (printf "==Trace== ~a~n" (state->trace st))
+     (printf "==Fresh Var== ~a~n~n" (state-fresh-var st))
+     ]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -699,14 +705,17 @@
 
 ; Evaluate a list of expressions to produce a list of values
 (define/contract (eval-exprs args ctx)
-  (-> (listof syntax-expr?) tinyC-context? (failure/c (listof tinyC-val?)))
+  ; Note: for some reason, using the contract (listof any/c) on symbolic values
+  ; is different than list; listof produces (assert: both branches infeasible)
+  ;
+  ; TODO: lift listof to symbolic stuff?
+  (-> list? #;(listof syntax-expr?) tinyC-context? (failure/c (listof tinyC-val?)))
   (let* ([F (context->top-frame ctx)]
          [m (context->memory ctx)]
          [ms-maybe (map (λ (e) (eval-expr e F m)) args)])
-    (if (andmap (λ (x) x) ms-maybe)
-        ms-maybe
-        *fail*)))
-
+    (if (any-failure? ms-maybe)
+        *fail*
+        ms-maybe)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Cleanup and stack management ;;
@@ -906,7 +915,7 @@
 ; Take a single step
 (define/contract (eval-statement-1 g st)
   (-> tinyC-global-store? state? (failure/c state?))
-  #;(printf "(eval-statement-1 ~a)~n" (state->statement st))
+  (debug-display "(eval-statement-1 ~a)~n" (state->statement st))
 
   (match (state->statement st)
 
@@ -941,9 +950,13 @@
     ; Invoke the procedure, allocating memory for p's local variables and
     ; pushing the current stack frame and remaining instructions onto the stack
      (do (<- decl (lookup-in-global-store g p))
+         (debug-display "Got decl: ~a" decl)
          (<- body (declaration->body decl))
+         (debug-display "Got body: ~a" body)
          (<- vs   (eval-exprs (seec->list args) (state->context st)))
+         (debug-display "Got vs: ~a" vs)
          (<- st+  (alloc-frame decl vs st))
+         (debug-display "Got frame")
          (update-state st+
                        #:statement (tinyC (SEQ ,body RETURN))
                        )
@@ -1056,3 +1069,9 @@
   #:evaluate (λ (p) (do st <- (run+ #:fuel 150 (cdr p) (car p))
                         (state-trace st)))
   )
+
+; find-gadget(behav): ∃ e, ∀ ctx, behavior(ctx[e]) = behav
+;
+; ∃ ctx ∀ e, e = simple-call-example -> behavior(ctx[e]) = behav
+;
+; Perhaps just switch context and expressions
