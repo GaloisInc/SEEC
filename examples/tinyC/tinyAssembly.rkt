@@ -49,7 +49,7 @@
          )
 
 ; Can turn off contracts for definitions defined in this module
-(use-contracts-globally #t)
+(use-contracts-globally #f)
 
 (define-grammar tinyA #:extends syntax
 
@@ -175,7 +175,7 @@
     ))
 
 ; If l↦v occurs in mem for a value v, return v, otherwise return *fail*
-(define/contract (loc->val l mem)
+(define/contract/debug (loc->val l mem)
   (-> tinyA-loc? tinyA-memory? (failure/c tinyA-val?))
   (match (lookup-mem l mem)
     [(tinyA v:val) v]
@@ -270,6 +270,34 @@
 ; Invariant: if 'mem' is sorted by key, then '(push-objs l vs mem)' should also be sorted by key.
 ;
 ; Note: the sorting aspect might be less than ideal for symbolic analysis
+(define/contract (push-objs-sorted l objs mem)
+  (-> tinyA-loc? (listof tinyA-object?) tinyA-memory? tinyA-memory?)
+  (cond
+    [(empty? objs) mem]
+    [else
+     (let ([obj   (first objs)]
+           [objs+ (rest  objs)])
+       (match mem
+         [(tinyA nil) (seec-cons (tinyA (,l ,obj))
+                                (push-objs-sorted (+ l 1) objs+ mem))]
+
+         [(tinyA (cons (l+:loc obj+:object) mem+:memory))
+          (cond
+            ; Replace l↦obj+ with l↦obj
+            [(= l l+) (seec-cons (tinyA (,l ,obj))
+                                 (push-objs-sorted (+ 1 l) obj+ mem+))]
+            ; Add l↦obj to beginning of the list and recurse with original mem,
+            ; including l+↦obj+
+            [(< l l+) (seec-cons (tinyA (,l ,obj))
+                                 (push-objs-sorted (+ 1 l) objs+ mem))]
+            ; Add l↦objs to mem+
+            [else     (seec-cons (tinyA (,l+ ,obj+))
+                                 (push-objs-sorted l objs mem+))]
+          )]
+       ))]
+    ))
+
+; Unsorted simpler version, possibly better for symbolic analysis
 (define/contract (push-objs l objs mem)
   (-> tinyA-loc? (listof tinyA-object?) tinyA-memory? tinyA-memory?)
   (cond
@@ -279,23 +307,29 @@
            [objs+ (rest  objs)])
        (match mem
          [(tinyA nil) (seec-cons (tinyA (,l ,obj))
-                                (push-objs (+ l 1) objs+ mem))]
+                                (push-objs (+ 1 l) objs+ mem))]
 
          [(tinyA (cons (l+:loc obj+:object) mem+:memory))
           (cond
             ; Replace l↦obj+ with l↦obj
-            [(= l l+) (seec-cons (tinyA (,l ,obj))
-                                 (push-objs (+ 1 l) obj+ mem+))]
+            [(equal? l l+) (seec-cons (tinyA (,l ,obj))
+                                      (push-objs (+ 1 l) obj+ mem+))]
             ; Add l↦obj to beginning of the list and recurse with original mem,
             ; including l+↦obj+
-            [(< l l+) (seec-cons (tinyA (,l ,obj))
-                                 (push-objs (+ 1 l) objs+ mem))]
+            ;
+            ; NOTE: only do this if l+ has no symbolic variables
+            #;[(and (not (symbolic? l+))
+                  (< l l+))
+             (seec-cons (tinyA (,l ,obj))
+                        (push-objs (+ 1 l) objs+ mem))]
+
             ; Add l↦objs to mem+
             [else     (seec-cons (tinyA (,l+ ,obj+))
                                  (push-objs l objs mem+))]
           )]
        ))]
     ))
+
 
 ; Update the value at memory location 'l', returning the updated memory. If 'l'
 ; does not already occur in m, insert it.
@@ -388,7 +422,14 @@
       (eval-expr-F e (state-sp st) F (state-memory st))))
 (define/contract (eval-exprs es st)
   (-> (listof syntax-expr?) state? (failure/c (listof tinyA-val?)))
-  (let* ([vs-maybe (map (λ (e) (eval-expr e st))
+
+  (cond
+    [(empty? es) (list)]
+    [else (do v <- (eval-expr (first es) st)
+              vs <- (eval-exprs (rest es) st)
+              (cons v vs))]
+    )
+  #;(let* ([vs-maybe (map (λ (e) (eval-expr e st))
                         es)])
     (if (any-failure? vs-maybe)
         *fail*
@@ -399,12 +440,18 @@
 ;; Evaluation of statements ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+; The true value represents a HALT
 (define/contract (eval-statement-1 g st)
-  (-> tinyA-global-store? state? (failure/c state?))
+  (-> tinyA-global-store? state? (failure/c (or/c #t state?)))
 
-  (debug-display "(eval-statement-1 ~a)" (state->instruction st))
+  (for/all ([insn (state->instruction st)])
 
-  (match (state->instruction st)
+  (debug-display "(eval-statement-1 ~a)" insn)
+
+  (match insn
+
+    [(tinyA HALT) #t]
+
     [(tinyA SKIP)
      (update-state st #:increment-pc #t)]
 
@@ -432,6 +479,9 @@
     [(tinyA HALT) *fail*] ; cannot take a step
 
     [(tinyA (CALL p:proc-name es:list<expr>))
+     (debug-display "CALL ~a ~a" p es)
+     #;(render-value/window p)
+
          ; Evaluate the arguments
      (do (<- vs (eval-exprs (seec->list es) st))
          ; lookup the target procedure's address and layout
@@ -458,6 +508,7 @@
                          #:memory m2)))]
 
     [(tinyA RETURN)
+     (debug-display "RETURN")
          ; Get the current frame layout
      (do (<- F1 (state->frame st))
          ; Locate the return address on the stack by adding the frame size to
@@ -471,12 +522,22 @@
                        #:pc pc2
                        #:sp sp2))]
 
-    ))
+    )))
 
 ; Take some number of states bounded by the amount of fuel given
 (define/contract (eval-statement fuel st)
   (-> (failure/c integer?) state? (failure/c state?))
-  (cond
+  (do st+ <- (eval-statement-1 (state-global-store st) st)
+      (cond
+        [(equal? st+ #t) ; This means the instruction halted with HALT
+         st]
+        [(<= fuel 0)
+         st] ; Fuel ran out. Return *fail* here instead?
+        [else
+         (eval-statement (decrement-fuel fuel) st+)]
+        ))
+
+  #;(cond
     [(equal? (state->instruction st)
              (tinyA HALT))
      st] ; Evaluation has normalized before fuel ran out
@@ -507,8 +568,8 @@
 
 
 (define-grammar tinyA+ #:extends tinyA
-  (expr ::= (global-store memory)) ; the memory fragment associated with a compiled program
-  (ctx  ::= (stack-pointer list<val>))
+  (expr ::= (global-store stack-pointer memory)) ; the memory fragment associated with a compiled program
+  (ctx  ::= list<val>)
   )
 
 
@@ -518,10 +579,9 @@
   #:context ctx #:size 3 ; The trace acts as as the argument list
   ; A whole program is a (failure/c state?)
   #:link (λ (ctx expr)
-           (match (cons expr ctx)
-             [(cons (tinyA (g:global-store m:memory))
-                    (tinyA (sp:stack-pointer vals:trace)))
-              (load-compiled-program g m sp (seec->list vals))]
+           (match expr
+             [(tinyA (g:global-store sp:stack-pointer m:memory))
+              (load-compiled-program g m sp (seec->list ctx))]
              ))
   #:evaluate (λ (p) (do st <- p
                         st+ <- (eval-statement 100 st)

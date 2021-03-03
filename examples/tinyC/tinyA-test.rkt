@@ -46,11 +46,11 @@
 
   ; simple-call-example but using language-evaluate
   (let-values ([(G mem) (tinyC->tinyA-program (list->seec simple-call-example)
-                                              100
+                                              init-pc
                                               )])
     (let ([p ((language-link tinyA-lang)
-              (tinyA+ (100 (cons -5 nil)))
-              (tinyA+ (,G ,mem))
+              (tinyA+ (cons -5 nil))
+              (tinyA+ (,G ,init-sp ,mem))
               )])
       (check-equal? ((language-evaluate tinyA-lang) p)
                     (seec-singleton -5))
@@ -60,7 +60,7 @@
   ; Testing the compiler
   (let* ([target-call-example ((compiler-compile tinyC-compiler) (list->seec simple-call-example))])
     (check-equal? (match target-call-example
-                    [(tinyA (g:global-store m:memory)) #t]
+                    [(tinyA (g:global-store sp:stack-pointer m:memory)) #t]
                     [_ #f])
                   #t))
 

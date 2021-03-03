@@ -70,6 +70,9 @@
      (let*-values ([(pc1 mem1) (tinyC->tinyA-statement s1 p init-pc mem)])
        (tinyC->tinyA-statement s2 p pc1 mem1))]
 
+    ; SKIP statements can be discarded??
+    [(tinyC SKIP) (values init-pc mem)]
+
     ; Remaining statements do not require compilation
     [_
      (let* ([new-pc (+ 1 init-pc)]
@@ -159,10 +162,14 @@
     (tinyA:load-compiled-program G mem sp0 vals)))
 
 
+ ; constraint: sp <= pc?
+(define init-pc 100)
+(define init-sp 100)
+
 (define tinyA:run
   (λ (#:fuel [fuel 100]
-      #:program-counter [pc 100] 
-      #:stack-pointer   [sp 100] ; constraint: sp <= pc?
+      #:program-counter [pc init-pc] 
+      #:stack-pointer   [sp init-sp]
       prog    ; A racket list of declarations
       inputs  ; A racket list of inputs to main
       )
@@ -192,15 +199,13 @@
   ; relate to any integer in the target.
   #:behavior-relation trace-relation
   ; Contexts in the source is an argument list, which should not contain memory
-  ; locations. Contexts in the target are argument lists that contain only
-  ; integer values, along with a stack pointer
+  ; locations. Contexts in the target are also argument lists that contain only
+  ; integer values
   #:context-relation (λ (ctx-src ctx-target)
-                       (match ctx-target
-                         [(tinyA (sp:stack-pointer tr:trace))
-                          (trace-relation ctx-src tr)]))
+                       (trace-relation ctx-src ctx-target))
   ; Expressions in the source are global stores, while in the target they are
-  ; global stores and memory together
-  #:compile (λ (g-src) (let-values ([(g-target mem) (tinyC->tinyA-program g-src 100)])
-                         (tinyA (,g-target ,mem))))
+  ; global stores, stack pointer, and memory together
+  #:compile (λ (g-src) (let-values ([(g-target mem) (tinyC->tinyA-program g-src init-pc)])
+                         (tinyA (,g-target ,init-sp ,mem))))
   )
   
