@@ -81,6 +81,7 @@
          symbol->enum
          register-enum
          andmap-indexed
+         symbolic?
          )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -489,6 +490,9 @@
     (if a
         (cdr a)
         #f)))
+
+(define (symbolic? s)
+  (not (empty? (symbolics s))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;

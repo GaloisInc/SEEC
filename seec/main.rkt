@@ -64,4 +64,6 @@
          make-tree!
          havoc!
 
+         symbolic?
+
          (all-from-out "private/framework.rkt"))

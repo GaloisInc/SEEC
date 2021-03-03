@@ -13,6 +13,7 @@
          find-weird-component
          find-weird-behavior
          find-gadget
+         find-ctx-gadget
          find-related-gadgets
          display-related-gadgets
          (struct-out solution)
@@ -856,9 +857,6 @@
 
 
 
-; `es` is a list of pairs of expressions and contexts
-(define (expr-in-expr-list? e es)
-  (ormap (λ (e-ctx) (equal? e (car e-ctx))) es))
 
 ; TODO: make sure the assertion state is not changing from this...
 (define synthesize-fresh-context
@@ -891,7 +889,52 @@
       )))
 
 
-(define/contract find-gadget
+; `es` is a list of pairs of expressions and contexts
+(define (expr-in-expr-list? e es)
+  (ormap (λ (e-ctx) (equal? e (car e-ctx))) es))
+
+; Synthesize multiple different concrete witnesses---pairs of expressions and contexts
+(define synthesize*-expr-ctx
+  (λ (#:count        [num          1]     ; integer
+      #:witness-list [witness-list (list)] ; list of concrete witnesses
+      #:witness-shape    shape ; A symbolic expression which will be concretized
+                               ; from a solution, and which will be recorded in
+                               ; the concrete witness list
+      #:in-witness-list? in-witness-list? ; function that takes in a witness
+                                          ; list and produces a symbolic
+                                          ; expression recording whether a
+                                          ; symbolic witness is in the list.
+                                          ; Note that this may not just be list
+                                          ; inclusion, e.g. if we only want to
+                                          ; check that an expression (or
+                                          ; context) occurs in the list, and
+                                          ; don't care about the corresponding
+                                          ; context (or expression)
+      #:forall       forall-vars ; expression with some symbolic vars
+      #:assume       constraints ; boolean
+      #:guarantee    goal        ; boolean
+      )
+    (cond
+      [(<= num 0) witness-list]
+      [else (let* ([sol (synthesize #:forall forall-vars
+                                    #:assume (assert (and constraints
+                                                          (not (in-witness-list? witness-list))))
+                                    #:guarantee (assert goal)
+                                    )])
+              (if (unsat? sol)
+                  #f
+                  ; Otherwise, concretize context and recurse
+                  (let ([e-ctx-concrete (concretize shape sol)])
+                    (synthesize*-expr-ctx #:count        (- num 1)
+                                          #:witness-list (cons e-ctx-concrete witness-list)
+                                          #:witness-shape shape
+                                          #:in-witness-list? in-witness-list?
+                                          #:forall       forall-vars
+                                          #:assume       constraints
+                                          #:guarantee    goal))))]
+      )))
+
+(define/contract find-expr-gadget
   (->* (language?
         (-> any/c any/c boolean?))
        (
@@ -970,35 +1013,24 @@
         ([p ((language-link lang) ctx e)]
          [b ((language-evaluate lang) p)]
          )
-      ; 1. Define a recursive loop to generate `num` pairs of expressions (and corresponding contexts)
-      (letrec ([loop (λ (num witness-list)
-                       (if (<= num 0)
-                           witness-list
-                           (let* ([sol (synthesize
-                                        #:forall (cons vars vars-extra)
-                                        #:assume (assert (and (valid-program p)
-                                                              (ctx-constraint ctx)
-                                                              (e-constraint e)
-                                                              (not (expr-in-expr-list? e witness-list))
-                                                              ))
-                                        #:guarantee (assert (if debug
-                                                                (not (spec p b))
-                                                                (spec p b))))
-                                       ])
-                             (if (unsat? sol)
-                                 #f
-                                 ; need to concretize context
-                                 (let* ([e-ctx-concrete (concretize (cons e ctx) sol)])
-                                   (loop (- num 1)
-                                         (cons e-ctx-concrete witness-list)))
-                                   ))))])
+      ; 1. Generate `num` pairs of expressions and corresponding contexts
+      (let ([exprs (synthesize*-expr-ctx #:count   count
+                                         #:witness-shape    (cons e ctx)
+                                         #:in-witness-list? (curry expr-in-expr-list? e)
+                                         #:forall  (cons vars vars-extra)
+                                         #:assume  (and (valid-program p)
+                                                        (ctx-constraint ctx)
+                                                        (e-constraint e))
+                                         #:guarantee (if debug
+                                                         (not (spec p b))
+                                                         (spec p b))
+                                         )])
+        (clear-asserts!)
         ; 2. If the `fresh` flag is true, for each generated expression,
         ; synthesize a new context satisfying the relevant constraints
-        (let* ([exprs (loop count (list ))]) ; exprs is a list of expression-context pairs
-          (clear-asserts!)
-          (cond
-            [(equal? exprs #f) #f]
-            [else (map (λ (e-ctx-concrete)
+        (cond
+          [(equal? exprs #f) #f]
+          [else (map (λ (e-ctx-concrete)
                  (let* ([e-concrete  (car e-ctx-concrete)]
                         [ctx-witness (if fresh
                                          (synthesize-fresh-context lang
@@ -1017,7 +1049,64 @@
                                      p-witness
                                      b-witness)))
                exprs)])
-          )))))
+          ))))
+
+
+(define find-gadget find-expr-gadget)
+
+(define find-ctx-gadget
+  (λ (lang
+      spec
+      #:valid              [valid-program (λ (p) #t)]
+      #:expr-bound         [bound-e #f]
+      #:expr               e ; Unlike find-expr-gadget, the user must provide a
+                             ; concrete (or semi-concrete) expression
+      #:expr-constraint    [e-constraint (λ (x) #t)]
+      #:context-bound      [bound-c #f]
+      #:context            [ctx (make-symbolic-var (language-context lang) bound-c)]
+      #:context-constraint [ctx-constraint (λ (x) #t)]
+      ; No need for a fresh witness
+      #:debug              [debug #f]
+      #:forall             [vars (list )] ; Unlike find-expr-gadget, on
+                                          ; find-ctx-gadget does not by default
+                                          ; quantify over either the symbolic
+                                          ; context or symbolic expression
+      #:count              [count 1]
+      )
+    (let* ([p ((language-link lang) ctx e)]
+           [b ((language-evaluate lang) p)]
+           [exprs (synthesize*-expr-ctx #:count count
+                                        #:witness-shape (cons e ctx)
+                                        #:in-witness-list? (λ (e-ctx-list)
+                                                             (ormap (λ (e-ctx) (equal? ctx (cdr e-ctx)))
+                                                                    e-ctx-list))
+                                        #:forall vars
+                                        #:assume (and (valid-program p)
+                                                      (ctx-constraint ctx)
+                                                      (e-constraint e))
+                                        #:guarantee (if debug
+                                                        (not (spec p b))
+                                                        (spec p b))
+                                        )]
+           ; Define a function from expr-ctx pairs to language-witness's
+           ; What if expr has any free/universally quantified variables?
+           [shape->witness (λ (e-ctx-concrete)
+                             (let* ([e-concrete (car e-ctx-concrete)]
+                                    [ctx-concrete (cdr e-ctx-concrete)]
+                                    [p-witness ((language-link lang) ctx-concrete e-concrete)]
+                                    [b-witness ((language-evaluate lang) p-witness)]
+                                    )
+                               (language-witness e-concrete
+                                                 ctx-concrete
+                                                 p-witness
+                                                 b-witness)))]
+           )
+      (clear-asserts!)
+      (cond
+          [(equal? exprs #f) #f]
+          [else (map shape->witness exprs)]
+          ))))
+
 
 
 ; DEBUGGING find-gadget:
@@ -1148,11 +1237,12 @@
     [(equal? vars (list )) (out (format "All gadgets synthesized~n"))]
     [else
      (let* ([lang-vars (first vars)])
+       (out "Synthesized a gadget")
        (out (format
-          "Expression ~a~n is a gadget for the provided specification, as witnessed by behavior ~a~n in context ~a~n"
-          (language-witness-expression lang-vars)
-          (language-witness-behavior lang-vars)
-          (language-witness-context lang-vars)))
+             "Expression: ~a~nContext: ~a~nBehavior: ~a~n"
+             (language-witness-expression lang-vars)
+             (language-witness-context lang-vars)
+             (language-witness-behavior lang-vars)))
        (display-gadget (rest vars) out)
      )]
     ))
