@@ -19,7 +19,7 @@
   (pointer ::= (natural natural) null)
   (nnvalue ::= integer)
   (value ::= nnvalue pointer)
-  (payload ::= list<value> empty)
+  (payload ::= list<value>)
   (buf ::= list<value>)
   (heap ::= list<payload>)
   (state ::= (buf heap))
@@ -47,7 +47,7 @@
 (define (no-freelist-free h hl)
   (match hl
     [(no-freelist (p:natural o:natural))
-     (replace h p (no-freelist empty))]))
+     (replace h p (no-freelist nil))]))
 
 (define (no-freelist-alloc h)
   (let* ([l (length h)]
@@ -212,8 +212,6 @@
 
 (define (print-nf-payload p)
   (match p
-    [(no-freelist empty)
-     "empty"]
     [(no-freelist vs:list<value>)
      (print-list print-nf-value vs)]))
 
@@ -254,8 +252,10 @@
 ; TESTING no-freelist
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define nf (no-freelist-init 4))
-(define nf++ (no-freelist-action aa1 (no-freelist-action aa0 nf)))
-(define nf+4* (no-freelist-action af1 (no-freelist-action af0 nf++)))
+(define nf+ (no-freelist-action aa0 nf))
+(define nf++ (no-freelist-action aa1 nf+))
+(define nf+3* (no-freelist-action af0 nf++))
+(define nf+4* (no-freelist-action af1 nf+3*))
 
 
 (define nf+3 (no-freelist-action as nf++))
@@ -399,8 +399,8 @@
 ;; no-freelist.value -> heap-model.value
 (define (compile-nf-value v)
   (match v
-    [(no-freelist (l:natural o:natural)) ; heap loc: l * (word size) + o + 1
-     (heap-model ,(+ (* l 4) (+ o 1)))]   ; NOTE: if we wanted variable size chunks, we would need the heap here and keep the size of empty chunks
+    [(no-freelist (l:natural o:natural)) ; heap loc: l * (word size) + o + 2
+     (heap-model ,(+ (* l 4) (+ o 2)))]   ; NOTE: if we wanted variable size chunks, we would need the heap here and keep the size of empty chunks
     [(no-freelist any) ; anything else is same in both model
      v]))
 
@@ -417,12 +417,12 @@
 ;; add the payload in from of the heap
 (define (compile-nf-payload v)
   (match v
-    [(no-freelist empty)
-     (repeat (heap-model null) 4)]
+    [(no-freelist nil)
+     (heap-model (cons 0 (cons 2 (cons null (cons null nil)))))]
     [(no-freelist l:list<value>)
      (let* ([v1 (compile-nf-value (head l))]
             [v2 (compile-nf-value (head (tail l)))])
-       (heap-model (cons 2 (cons ,v1 (cons ,v2 (cons 1 nil))))))]))
+       (heap-model (cons 1 (cons 2 (cons ,v1 (cons ,v2 nil))))))]))
 
 
 ;; no-freelist.heap -> heap-model.heap)
@@ -443,6 +443,36 @@
      (let* ([b+ (compile-nf-buf b)]
             [h+ (compile-nf-heap h)])
        (heap-model (,b+ ,h+ null)))]))
+
+
+
+(define (make-wild n)
+  (if (equal? n 0)
+      (heap-model nil)
+      (let* ([size (- (* n 4) 2)]
+             [payload (repeat (heap-model 0) size)])
+        (heap-model (cons 0 (cons ,size ,payload))))))
+
+; n is the size (in block) of the resulting heap.
+;; natural -> no-freelist.heap -> heap-model.heap)
+(define (compile-nf-heap-wild n h)
+  (if (< n 0) #f
+  (match h
+      [(no-freelist nil)
+       (make-wild n)]
+      [(no-freelist (cons v:payload h+:heap))
+       (let* ([v+ (compile-nf-payload v)]
+              [hp (compile-nf-heap (- n 1) h+)])
+         (append v+ hp))])))
+
+;;  natural -> no-freelist.state -> heap-model.state
+(define (compile-nf-state-wild n s)
+  (match s
+    [(no-freelist (b:buf h:heap))
+     (let* ([b+ (compile-nf-buf b)]
+            [h+ (compile-nf-heap-wild n h)])
+       (heap-model (,b+ ,h+ null)))]))
+
 
 ;; compare nnvalues out of shadow-heap.value and heap-model.value
 ;; returns #:default (#t) if nf-v is a non-null pointer
@@ -797,9 +827,9 @@
 ; TESTING freelist
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define f (freelist (cons 1 nil)))
-(define f+ (freelist (cons 5 ,f)))
-(define f++ (freelist (cons 9 ,f+)))
+(define f (freelist (cons 2 nil)))
+(define f+ (freelist (cons 6 ,f)))
+(define f++ (freelist (cons 10 ,f+)))
 
 (define df (cons (init-state 4 2) (init-freelist)))
 

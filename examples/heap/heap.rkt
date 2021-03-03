@@ -1,16 +1,24 @@
 #lang seec
 (set-bitwidth 4)
+(require seec/private/util)
+(require seec/private/monad)
 (require racket/format)
+(require (only-in racket/base
+                  build-list
+                  raise-argument-error
+                  raise-arguments-error))
 ;(require racket/contract)
 (provide (all-defined-out))
 
 
+(use-contracts-globally #t)
 
 ;
 ; Heap allocator model 
 ; Inspired by ARCHEAP
-;
-;
+; blocks have the form | In use? | size | payload ... |
+; blocks in the freelist have the form | 0 | size | fw | bw | ... | 
+; state is initialize with wilderness (in use? = 0, not in the freelist) and freelist = null
 
 (define-grammar heap-model
   (pointer ::= natural null)
@@ -41,20 +49,6 @@
                (get buf-loc))
   (total-interaction ::= ; perform interaction, then get nth value from buffer
                      (interaction observation))
-  #;(bug ::= ; the hope is that we do not have to use this, and instead can characterize the bugs synthesized 
-       overflow
-       write-after-free
-       off-by-one-overflow
-       off-by-one-null-overflow
-       double-free
-       arbitrary-free )
-  #;(r-bugged-interaction ::= ; this is a list of interaction that allows a repeated occurence of a bug
-                        (action r-bugged-interaction)
-                        (repeat r-bugged-interaction)
-                        nop)
-  #;(bugged-interaction ::= ; list of action with exactly one bug (?should I make this at most one bug?)
-                      (action bugged-interaction)
-                      (bug r-bugged-interaction))
  )
 
 ; What do we need to keep track of:
@@ -169,9 +163,17 @@
       (heap-model (,(head hp) ,(write (tail hp) (- i 1) v)))))
 
 ; init a state with buf size b-i and heap size (in cells) h-i
-; integer -> integer -> state*
+; heap has a wilderness (unused block not in free list) of size (h-i*4)-2
+
+; natural -> natural -> state*
 (define (init-state b-i h-i)
-  (heap-model (,(repeat (heap-model 0) b-i) ,(repeat (heap-model null) (* h-i 4)) null)))
+  (if (< h-i 1)
+      false
+      (let* ([payload (repeat (heap-model 0) (- (* h-i 4) 2))]           
+             [hp (heap-model (cons ,(- (* h-i 4) 2) ,payload))]
+             [hp+ (heap-model (cons 0 ,hp))])
+        
+      (heap-model (,(repeat (heap-model 0) b-i) ,hp+ null)))))
 
 
 ; pointer* -> boolean
@@ -213,16 +215,17 @@
 (define (interpret-alloc-no-free h)
   (define (interpret-alloc-no-free+ h i)
     ;(displayln (format "In alloc-no-free at ~a" i))
-    (let ([val (nth h i)])
-          (if (is-null? val)
-              ; allocate block at i
-              (let* ([h+ (replace h i (heap-model 2))]
-                     [h++ (replace h+ (+ i 1) (heap-model 0))]
-                     [h+++ (replace h++ (+ i 2) (heap-model 0))]
-                     [h+4 (replace h+++ (+ i 3) (heap-model 1))])
+    (let ([in-use (nth h i)]
+          [size (nth h (+ i 1))])
+      (if (equal? in-use (heap-model 0))
+          ; found the wilderness, copy its size (at i+1), then allocate a new block pushing back the wilderness
+            (let* ([h+ (replace h i (heap-model 1))]
+                   [h++ (replace h+ (+ i 1) (heap-model 2))]
+                   [h+++ (if (> size 4) (replace h++ (+ i 4) (heap-model 0)) h++)]
+                   [h+4 (if (> size 4) (replace h+++ (+ i 5) (- size 4)) h+++)])
                 ;(displayln (format "allocated at ~a a block of size ~a" i 2))
-                (cons (heap-model ,(+ i 1)) h+4))
-              (interpret-alloc-no-free+ h (+ i val 2)))))
+              (cons (heap-model ,(+ i 2)) h+4))
+          (interpret-alloc-no-free+ h (+ i size 2)))))
   (interpret-alloc-no-free+ h 0))
 
 ; reallocate the block at the head of the free-list
@@ -233,7 +236,7 @@
          [size (nth h (- n 1))]) ; get the size of this block
        (match size
          [(heap-model sz:natural)
-          (let* ([h+ (replace h (+ n sz) (heap-model 1))])            
+          (let* ([h+ (replace h (- n 2) (heap-model 1))])            
             (match newf
               [(heap-model nf:natural)
                (let* ([h++ (replace h+ (+ nf 1) (heap-model null))])
@@ -256,7 +259,7 @@
        (match size
          [(heap-model sz:natural)
           ;(displayln (format "size ~a" sz))
-          (let* ([h+ (replace h (+ n sz) (heap-model 0))]
+          (let* ([h+ (replace h (- n 2) (heap-model 0))]
                  [h++ (replace h+ n f)]
                  [h+++ (replace h++ (+ n 1) (heap-model null))])
             (match f ; update the whole fp head to point to new head
@@ -417,6 +420,43 @@
             [i-hl+ (translate-interaction-hl i+ s+)])
        (heap-model ,(append i-hl i-hl+)))]))
 
+;;;
+; Operations on pointers
+;;;
+
+; on aligned pointers
+(define (fwd-pointer p)
+  (match p      
+    [(heap-model null)
+     #f]
+    [(heap-model l:natural)
+     p]))
+
+; on aligned pointers
+(define (bwd-pointer p)
+  (match p      
+    [(heap-model null)
+     #t]
+    [(heap-model l:natural)
+     (heap-model ,(+ l 1))]))
+
+; on all pointers 
+(define (in-use-pointer p)
+  (match p      
+    [(heap-model null)
+     #t]
+    [(heap-model l:natural)
+     (heap-model ,(modulo l 4))]))
+
+; on all pointers 
+(define (size-pointer p)
+  (match p      
+    [(heap-model null)
+     #t]
+    [(heap-model l:natural)
+     (heap-model ,(+ (modulo l 4) 1))]))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Validity predicate for heap-model
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -433,6 +473,7 @@
      ; TODO: I think < is not properly lifted to seec-rosette
      (not (< (seec-length h) l))]))
 
+
 ; pointer -> boolean
 ; true if p%4 = 1 
 (define (fwd-pointer-alligned p)
@@ -440,7 +481,7 @@
     [(heap-model null)
      #t]
     [(heap-model l:natural)
-     (equal? 1 (remainder l 4))]))
+     (equal? 2 (remainder l 4))]))
 
 ; heap -> pointer -> boolean
 ; p is the head of a freelist in h
@@ -454,7 +495,7 @@
           [(heap-model l:natural)
            (let* ([forward-p (nth h l)]
                   [backward-p (nth h (+ l 1))]
-                  [check-v (nth h (+ l 2))])
+                  [check-v (nth h (- l 2))])
              (if (and (equal? check-v (heap-model 0)) ; validation bit (size of pred) is properly set
                       (fwd-pointer-alligned forward-p) ; fwd is pointing alligned 
                       (equal? backward-p prev-p)) ; backward pointer is properly set
@@ -480,14 +521,16 @@
   (match h
     [(heap-model nil)
      #t]
-    [(heap-model (cons v:value h+:heap))
-     (match v
-       [(heap-model null) ; skip
-        (valid-heap-block-size h+)]
-       [(heap-model s:natural)
-        (valid-heap-block-size (skip (+ s 1) h+))]
-       [(heap-model any) ; negative integer
-        #f])]))
+    [(heap-model (cons in-use:natural h+:heap))
+     (match h+
+       [(heap-model (cons size:natural h++:heap))
+        (if (< in-use 2) ; s should be 0 or 1
+            (valid-heap-block-size (skip size h++))
+            #f)]
+       [(heap-model any)
+        #f])]
+    [(heap-model any)
+     #f]))
 
 (define (valid-state fuel s)
   (match s
@@ -695,9 +738,10 @@
 (define af0 (heap-model (free 0)))
 (define af1 (heap-model (free 1)))
 
-
-(define d++ (interpret-action aa1 (interpret-action aa0 d)))
-(define d+4* (interpret-action af1 (interpret-action af0 d++)))
+(define d+ (interpret-action aa0 d))
+(define d++ (interpret-action aa1 d+))
+(define d+3* (interpret-action af0 d++))
+(define d+4* (interpret-action af1 d+3*))
 
 
 (define d+3 (interpret-action as d++))
@@ -716,13 +760,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; SYMBOLIC TESTING heap-model
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-#|
+
 (define b0* (heap-model buf 4))
 (define h0* (heap-model heap 9))
 (define fp0* (heap-model pointer 1))
 (define s0* (heap-model (,b0* ,h0* ,fp0*)))
 ;(valid-freelist-state 3 s0*)
-(valid-state 3 s0*) |#
+;(valid-state 3 s0*) 
 
 
 (define (d-test0)
@@ -757,7 +801,7 @@
     (define fp1* (heap-model pointer 1))
     (define s1* (heap-model (,b1* ,h1* ,fp1*)))
     (assert (valid-state 3 s1*))
-    (define sol (solve (assert (equal? 2 (freelist-length 3 s1*)))))
+    (define sol (solve (assert (equal? 0 (freelist-length 3 s1*)))))
     (define s1 (concretize s1* sol))
     (clear-asserts!)
     (displayln "State:")
@@ -772,7 +816,7 @@
     (define fp3* (heap-model pointer 1))
     (define s3* (heap-model (,b3* ,h3* ,fp3*)))
     
-    (assert (valid-state 3 s3*))
+   (assert (valid-state 3 s3*))
     (define sol (solve (assert (equal? d+4* s3*))))
     (define s3 (concretize s3* sol))
     (clear-asserts!)
