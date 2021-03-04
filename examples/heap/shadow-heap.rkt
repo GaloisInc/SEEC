@@ -269,7 +269,7 @@
 (define h0* (no-freelist buf 5))
 
 ; trying to synthesize a no-freelist.state which is the same as a concrete state
-; works
+; works in 2.9s
 (define (nf-test0)
   (begin
 ;    (define b0* (no-freelist buf 4))
@@ -292,7 +292,8 @@
 
 
 ; Trying to synthesize a state which is shallowly equal to a concrete heap-model.state
-; works 
+; works in 3s
+; Note that this could be trivially solved by having s1*'s heap be all pointers
 (define (nf-test1)
   (begin
 ;    (define b0* (no-freelist buf 4))
@@ -311,7 +312,8 @@
     (displayln (deep-nf-state-eq s1 d+5))))
 
 ; Trying to synthesize a heap-model.state which is shallowly equal to a concrete no-freelist.state
-; works
+; works in 5.1s
+; 
 (define (nf-test1+)
   (begin
     (define s1* (heap-model state 7))
@@ -326,8 +328,10 @@
     (displayln "State:")
     (display-state s1)
     (displayln "Ref:")
-    (display-nf-state concr)               
+    (display-nf-state concr)
+    (displayln "Shallow eq:")
     (shallow-nf-state-eq concr s1)
+    (displayln "Deep eq:")
     (deep-nf-state-eq concr s1)))
 
 
@@ -462,7 +466,7 @@
        (make-wild n)]
       [(no-freelist (cons v:payload h+:heap))
        (let* ([v+ (compile-nf-payload v)]
-              [hp (compile-nf-heap (- n 1) h+)])
+              [hp (compile-nf-heap-wild (- n 1) h+)])
          (append v+ hp))])))
 
 ;;  natural -> no-freelist.state -> heap-model.state
@@ -576,20 +580,28 @@
 
 ; no-freelist.heap-loc: (l o)
 ; heap-model.heap-loc: n
-(define (deep-nf-pointer-eq+ fuel nf-h h l o n)
+(define deep-nf-pointer-eq+
+  (lambda (fuel nf-h h l o n
+                #:debug [d #f])
+    ;(displayln "deep-nf-pointer-eq+")
   (if (equal? fuel 0)
       #t
       (let* ([nf-pl (nth nf-h l)]
              [nf-v (nth nf-pl o)]
              [v (nth h n)])
-        (deep-nf-val-eq (- fuel 1) nf-h h nf-v v))))
+        (if (and nf-pl nf-v v)
+            (deep-nf-val-eq (- fuel 1) nf-h h nf-v v #:debug d)
+            #f)))))
 
-(define (deep-nf-pointer-eq fuel nf-h h nf-p p)
+(define deep-nf-pointer-eq
+  (lambda (fuel nf-h h nf-p p
+                #:debug [d #f])
+    ;(displayln "deep-nf-pointer-eq")
   (match nf-p
     [(no-freelist (l:natural o:natural))
      (match p
        [(heap-model n:natural)
-        (deep-nf-pointer-eq+ fuel nf-h h l o n)]
+        (deep-nf-pointer-eq+ fuel nf-h h l o n #:debug d)]
        [(heap-model any)
         #f])]
     [(no-freelist null)
@@ -597,12 +609,15 @@
        [(heap-model null)
         #t]
        [(heap-model any)
-        #f])]))
+        #f])])))
 
 
 
 ;; compare nnvalues out of shadow-heap.value and heap-model.value
-(define (deep-nf-val-eq fuel nf-h h nf-v v)
+(define deep-nf-val-eq
+  (lambda (fuel nf-h h nf-v v
+                #:debug [d #f])
+    ;(displayln "deep-nf-val-eq")
   (match nf-v
     [(no-freelist nf-i:integer)
      (match v
@@ -613,12 +628,15 @@
     [(no-freelist nf-p:pointer)
      (match v
        [(heap-model p:pointer)
-        (deep-nf-pointer-eq fuel nf-h h nf-p p)])]))
+        (deep-nf-pointer-eq fuel nf-h h nf-p p #:debug d)])])))
 
 
 ;; deep (compare all value) buffer equality
 ;;; indexed by heaps
-(define (deep-nf-buf-eq nf-h h nf-b b)
+(define deep-nf-buf-eq
+  (lambda (nf-h h nf-b b
+                #:debug [d #f])
+    ;(displayln "deep-nf-buf-eq")
   (match nf-b
     [(no-freelist nil)
        (match b
@@ -630,18 +648,21 @@
        (match b
          [(heap-model (cons v:value b+:buf))
           (and               
-           (deep-nf-val-eq max-fuel nf-h h nf-v v)
-           (deep-nf-buf-eq nf-h h nf-b+ b+))]
+           (deep-nf-val-eq max-fuel nf-h h nf-v v #:debug d)
+           (deep-nf-buf-eq nf-h h nf-b+ b+ #:debug d))]
          [(heap-model any)
-          #f])]))
+          #f])])))
 
 ;; deep (buffer only) equality
-(define (deep-nf-state-eq nf-s s)
+(define deep-nf-state-eq
+  (lambda (nf-s s
+                #:debug [d #f])
+    ;(displayln "deep-nf-state-eq")
   (match nf-s
     [(no-freelist (nf-b:buf nf-h:heap))
      (match s
        [(heap-model (b:buf h:heap any))
-        (deep-nf-buf-eq nf-h h nf-b b)])]))
+        (deep-nf-buf-eq nf-h h nf-b b #:debug d)])])))
 
 ;; Testing synthesis with the no-freelist to heap-model compiler
 ; Make a schema for a heap-model.state with buf = 4 and state of size 8

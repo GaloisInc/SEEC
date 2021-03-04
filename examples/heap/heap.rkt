@@ -78,15 +78,15 @@
 
 (define (head s)
   (match s
-    [(heap-model nil) (assert #f)]
     [(heap-model (cons x:any any))
-     x]))
+     x]
+    [(heap-model any)  #f]))
 
 (define (tail s)
     (match s
-    [(heap-model nil) (assert #f)]
     [(heap-model (cons any tl:any))
-     tl]))
+     tl]
+    [(heap-model any)  #f]))
 
 (define (skip n l)
   (if (equal? n 0)
@@ -100,12 +100,15 @@
     [(heap-model (cons hd:any tl:any))
      (heap-model (cons ,hd ,(append tl s2)))]))
 
-
+; false if out of bound
 (define (nth s i)
-;  (-> any/c natural-number/c any/c)
+  ;  (-> any/c natural-number/c any/c)
   (if (equal? i 0)
-     (head s)
-     (nth (tail s) (- i 1))))
+      (head s)
+      (let* ([tls (tail s)])
+             (if tls
+                 (nth (tail s) (- i 1))
+                 #f))))
 
 ; add v at the end of list s
 (define (snoc s v)
