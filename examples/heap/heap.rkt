@@ -86,7 +86,7 @@
     (match s
     [(heap-model (cons any tl:any))
      tl]
-    [(heap-model any)  #f]))
+    [(heap-model any) #f]))
 
 (define (skip n l)
   (if (equal? n 0)
@@ -107,7 +107,7 @@
       (head s)
       (let* ([tls (tail s)])
              (if tls
-                 (nth (tail s) (- i 1))
+                 (nth tls (- i 1))
                  #f))))
 
 ; add v at the end of list s
@@ -185,7 +185,7 @@
     [(heap-model null)
      #t]
     [(heap-model n:integer)
-                 #f]))
+     #f]))
 
 (define (pointer-addr p)
   (match p
@@ -439,7 +439,7 @@
 (define (bwd-pointer p)
   (match p      
     [(heap-model null)
-     #t]
+     #f]
     [(heap-model l:natural)
      (heap-model ,(+ l 1))]))
 
@@ -491,7 +491,7 @@
 (define (valid-freelist fuel h p)
   (define (valid-freelist+ fuel h p prev-p)
     (if (<= fuel 0)
-        #f
+        #t
         (match p      
           [(heap-model null)
            #t]
@@ -499,7 +499,10 @@
            (let* ([forward-p (nth h l)]
                   [backward-p (nth h (+ l 1))]
                   [check-v (nth h (- l 2))])
-             (if (and (equal? check-v (heap-model 0)) ; validation bit (size of pred) is properly set
+             (if (and forward-p
+                      backward-p
+                      check-v
+                      (equal? check-v (heap-model 0)) ; validation bit (size of pred) is properly set
                       (fwd-pointer-alligned forward-p) ; fwd is pointing alligned 
                       (equal? backward-p prev-p)) ; backward pointer is properly set
                        
@@ -558,7 +561,9 @@
            0]
           [(heap-model l:natural)
            (let* ([forward-p (nth h l)])
-             (+ (freelist-length+ (- fuel 1) h forward-p) 1))])))
+             (if forward-p
+                 (+ (freelist-length+ (- fuel 1) h forward-p) 1)
+                 #f))])))
     (match s
       [(heap-model (b:buf h:heap p:pointer))
        (freelist-length+ fuel h p)
@@ -771,7 +776,7 @@
 ;(valid-freelist-state 3 s0*)
 ;(valid-state 3 s0*) 
 
-
+; Create a symbolic state that has (o s) != 5) and find some interaction that makes (o s+) = 5
 (define (d-test0)
   (begin
     (define b0* (heap-model buf 4))
@@ -831,6 +836,7 @@
 ; try to make the state a concrete state
 ; works with d+4* [find two bugs before safe-interaction]
 ; doesn't terminate? with d+3/d+5
+;
 (define (d-test2)
   (begin
     (define s2* d+4*)

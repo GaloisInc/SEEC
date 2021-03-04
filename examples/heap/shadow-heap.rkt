@@ -553,7 +553,11 @@
     [(no-freelist (nf-b:buf nf-h:heap))
      (match s
        [(heap-model (b:buf h:heap any))
-        (deep-nf-val-eq 10 nf-h h (nth nf-b 0) (nth b 0))])]))
+        (let ([nfb-z (nth nf-b 0)]
+              [b-z (nth b 0)])
+          (if (and nfb-z b-z)
+              (deep-nf-val-eq 10 nf-h h nfb-z b-z)
+              #f))])]))
 
 
 ;; compare the value in buf zero w
@@ -562,7 +566,11 @@
     [(no-freelist (nf-b:buf any))
      (match s
        [(heap-model (b:buf any any))
-        (shallow-nf-val-eq (nth nf-b 0) (nth b 0) #:default #f)])]))
+        (let ([nfb-z (nth nf-b 0)]
+              [b-z (nth b 0)])
+          (if (and nfb-z b-z)
+              (shallow-nf-val-eq nfb-z b-z #:default #f)
+              #f))])]))
 
 
 (define-compiler nf-to-heap-compiler
@@ -765,7 +773,9 @@
      (match a
        [(heap-model (free bl:buf-loc))
         (let* ([p (nth b bl)])
-          (freelist (free ,p)))]
+          (if p 
+              (freelist (free ,p))
+                        #f))]
        [(heap-model (alloc bl:buf-loc n:natural))
          (freelist alloc)]
        [_ #f])]))
@@ -807,7 +817,7 @@
 ; COMPILING heap-model to freelist
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; heap-model.state -> freelist.state
+; heap-model.state -> (freelist.state + #f)
 (define (compile-heap-to-freelist s)
   (define (compile-into-freelist h p )
     (match p
@@ -816,7 +826,10 @@
       [(heap-model n:natural)
        (let* ([new-p (nth h n)]
               [rest (compile-into-freelist h new-p)])
-         (freelist (cons ,n ,rest)))]))
+         (if (and new-p
+                  rest)
+             (freelist (cons ,n ,rest))
+             #f))]))
   (match s
     [(heap-model (any h:heap p:pointer))
                  (compile-into-freelist h p)]))
@@ -872,11 +885,11 @@
   (length fs))
 
 
-; This is not working
+; works!
 (define (f-test0)
   (begin
     (define f0* (freelist state 4))
-    (define sol (solve (assert (equal? (freelist-size f0*) 1))))
+    (define sol (solve (assert (equal? (freelist-size f0*) 2))))
     (if sol
         (begin
           (define f0 (concretize f0* sol))
@@ -923,6 +936,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; synthesize the shadow freelist of a concrete heap-model.state
+; works (34 seconds)
 (define (df-test0)
   (begin
     (define concr d+4*)
@@ -938,6 +952,7 @@
 
 
 ; synthesize a heap-model.state that is shadowed by given concrete freelist
+; 
 (define (df-test0+)
   (begin
     (define concr f)
