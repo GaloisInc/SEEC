@@ -108,9 +108,10 @@
                   ))
 
 
-    (define run-loop (tinyC:run #:fuel 200
-                                (list loop)
-                                (list )))
+    (define run-loop
+      (parameterize ([max-fuel 200])
+        (tinyC:run (list loop)
+                   (list ))))
 
 ;;;;;;;;;;;;;;;;;
 ; Running tests ;
@@ -444,10 +445,11 @@
                                                (list->seec factorial)))
                   (seec-singleton 6))
 
-    (check-equal? ((language-evaluate tinyC-lang)
-                   ((language-link tinyC-lang) seec-empty
-                                               (seec-singleton loop)))
-                  (seec-singleton 20))
+    (parameterize ([max-fuel 150])
+      (check-equal? ((language-evaluate tinyC-lang)
+                     ((language-link tinyC-lang) seec-empty
+                                                 (seec-singleton loop)))
+                    (seec-singleton 20)))
     )
   (evaluation-tests)
   )

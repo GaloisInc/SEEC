@@ -535,19 +535,7 @@
          st] ; Fuel ran out. Return *fail* here instead?
         [else
          (eval-statement (decrement-fuel fuel) st+)]
-        ))
-
-  #;(cond
-    [(equal? (state->instruction st)
-             (tinyA HALT))
-     st] ; Evaluation has normalized before fuel ran out
-
-    [(<= fuel 0) st] ; Fuel ran out. Return *fail* here instead?
-
-    [else 
-     (do (<- st+ (eval-statement-1 (state-global-store st) st))
-         (eval-statement (decrement-fuel fuel) st+))]
-    ))
+        )))
 
 
 
@@ -584,6 +572,6 @@
               (load-compiled-program g m sp (seec->list ctx))]
              ))
   #:evaluate (λ (p) (do st <- p
-                        st+ <- (eval-statement 100 st)
+                        st+ <- (eval-statement (max-fuel) st)
                         (state-trace st+)))
   )

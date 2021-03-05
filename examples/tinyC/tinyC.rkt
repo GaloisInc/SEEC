@@ -3,6 +3,7 @@
 (require seec/private/monad)
 (require (only-in racket/base
                   build-list
+                  make-parameter
                   raise-argument-error
                   raise-arguments-error))
 (require (only-in racket/string ; foramtting
@@ -47,6 +48,8 @@
          binop->racket
          decrement-fuel
          lid->loc
+
+         max-fuel
 
          ; For functions that could potentially overlap with e.g. tinyAssembly,
          ; add a distinguishing prefix
@@ -1036,25 +1039,23 @@
     ))
 
 
+(define max-fuel (make-parameter 100))
 
 (define run+
-  (λ (#:fuel [fuel 100]
-      prog    ; A seec list of declarations (aka global store)
+  (λ (prog    ; A seec list of declarations (aka global store)
       inputs  ; A seec list of inputs to main
       )
-    (eval-statement fuel
+    (eval-statement (max-fuel)
                     prog
                     (update-state (init-state (tinyC ((nil nil) nil)))
                                   #:statement (tinyC (CALL "main" ,inputs))
                                   ))))
 
 (define run
-  (λ (#:fuel [fuel 100]
-      prog    ; A racket list of declarations
+  (λ (prog    ; A racket list of declarations
       inputs  ; A racket list of inputs to main
       )
-    (run+ #:fuel fuel
-          (list->seec prog)
+    (run+ (list->seec prog)
           (list->seec inputs))))
 
 
@@ -1066,7 +1067,7 @@
                            ; integers, not locations?
   #:link (λ (args prog) (cons args prog))
   ; During evaluation, just produce the trace
-  #:evaluate (λ (p) (do st <- (run+ #:fuel 150 (cdr p) (car p))
+  #:evaluate (λ (p) (do st <- (run+ (cdr p) (car p))
                         (state-trace st)))
   )
 

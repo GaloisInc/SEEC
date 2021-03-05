@@ -36,7 +36,9 @@
 (define-symbolic* val1 integer?)
 (define-symbolic* val2 integer?)
 (define-symbolic* val3 integer?)
-(define symbolic-args (list->seec (list val1))) ; We know how long the arg list is supposed to be, after all
+; With argument list of length >1, does not terminate
+
+
 #;(let-values ([(g mem) (tinyC->tinyA-program (list->seec simple-call-example)
                                             100)])
   (render-value/window mem)) ; At this stage: totally concrete
@@ -48,6 +50,9 @@
   (render-value/window (tinyA:state-memory compiled-prog))
   (displayln "done"))
                        
+#;(define symbolic-args (list->seec (list val1)))
+#;(define symbolic-args (tinyA trace 3))
+(define symbolic-args (list->seec (list val2 val3)))
 
 (parameterize ([debug? #t])
   (let ([g (find-ctx-gadget tinyA-lang
