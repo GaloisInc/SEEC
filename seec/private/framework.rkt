@@ -57,7 +57,8 @@
                               raise-arguments-error
                               )
                     racket/generator))
-         "bonsai3.rkt")
+         "bonsai3.rkt"
+         "solver-aided.rkt")
 #|
 
  This file provides structures to reason abstractly about weird machines.

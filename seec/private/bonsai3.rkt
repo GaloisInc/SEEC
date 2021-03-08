@@ -17,7 +17,8 @@
 (require rackunit/text-ui)
 
 (require "string.rkt"
-         "match.rkt")
+         "match.rkt"
+         "solver-aided.rkt")
 
 (provide bonsai?
          (except-out (struct-out bonsai-null) bonsai-null)
