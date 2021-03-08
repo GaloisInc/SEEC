@@ -4,12 +4,13 @@
          "private/match.rkt"
          "private/language.rkt"
          "private/string.rkt"
-         "private/framework.rkt")
+         "private/framework.rkt"
+         "private/solver-aided.rkt")
 
-(provide (except-out (all-from-out rosette/safe)
-                     current-bitwidth
-                     )
-         
+(require (only-in racket parameterize))
+
+(provide (all-from-out rosette/safe)        
+         (all-from-out "private/solver-aided.rkt")       
          (all-from-out "private/string.rkt")
 
          seec->racket
@@ -65,5 +66,6 @@
          havoc!
 
          symbolic?
+         (all-from-out "private/framework.rkt")
 
-         (all-from-out "private/framework.rkt"))
+         parameterize)
