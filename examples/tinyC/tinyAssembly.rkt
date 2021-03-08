@@ -175,7 +175,7 @@
     ))
 
 ; If l↦v occurs in mem for a value v, return v, otherwise return *fail*
-(define/contract/debug (loc->val l mem)
+(define/contract (loc->val l mem)
   (-> tinyA-loc? tinyA-memory? (failure/c tinyA-val?))
   (match (lookup-mem l mem)
     [(tinyA v:val) v]
@@ -441,10 +441,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; The true value represents a HALT
-(define/contract (eval-statement-1 g st)
-  (-> tinyA-global-store? state? (failure/c (or/c #t state?)))
-
-  (for/all ([insn (state->instruction st)])
+(define/contract (eval-statement-1 insn st)
+  (-> tinyA-statement? state? (failure/c (or/c #t state?)))
 
   (debug-display "(eval-statement-1 ~a)" insn)
 
@@ -479,13 +477,12 @@
     [(tinyA HALT) *fail*] ; cannot take a step
 
     [(tinyA (CALL p:proc-name es:list<expr>))
-     (debug-display "CALL ~a ~a" p es)
      #;(render-value/window p)
 
          ; Evaluate the arguments
      (do (<- vs (eval-exprs (seec->list es) st))
          ; lookup the target procedure's address and layout
-         (<- d2 (proc-name->declaration p g))
+         (<- d2 (proc-name->declaration p (state-global-store st)))
          (let* ([sp1 (state-sp st)]
                 [pc1 (state-pc st)]
                 [m1  (state-memory st)]
@@ -522,20 +519,32 @@
                        #:pc pc2
                        #:sp sp2))]
 
-    )))
+    ))
+
+(define (CALL? insn)
+  (match insn
+    [(tinyA (CALL any any)) #t]
+    [_ #f]))
 
 ; Take some number of states bounded by the amount of fuel given
 (define/contract (eval-statement fuel st)
-  (-> (failure/c integer?) state? (failure/c state?))
-  (do st+ <- (eval-statement-1 (state-global-store st) st)
+  (-> (or/c #f integer?) state? (failure/c state?))
+  (debug-display "(eval-statement ~a)" fuel)
+
+  (for/all ([insn (state->instruction st)])
+  (do insn+ <- insn
+      st+ <- (eval-statement-1 insn+ st)
+      ; only decrement fuel on function calls
+      new-fuel <- (if (CALL? insn+) (decrement-fuel fuel)
+                      fuel)
       (cond
         [(equal? st+ #t) ; This means the instruction halted with HALT
          st]
         [(<= fuel 0)
-         st] ; Fuel ran out. Return *fail* here instead?
+         *fail*] ; Fuel ran out. Return st here instead?
         [else
-         (eval-statement (decrement-fuel fuel) st+)]
-        )))
+         (eval-statement new-fuel st+)]
+        ))))
 
 
 

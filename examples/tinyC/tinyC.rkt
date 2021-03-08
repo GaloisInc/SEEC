@@ -223,9 +223,9 @@
 
 (struct state (statement context trace fresh-var)
   #:transparent)
-(define/contract state->context 
+(define/contract (state->context st)
   (-> state? tinyC-context?)
-  state-context)
+  (state-context st))
 (define/contract state->statement
   (-> state? tinyC-statement?)
   state-statement)
@@ -916,11 +916,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Take a single step
-(define/contract (eval-statement-1 g st)
-  (-> tinyC-global-store? state? (failure/c state?))
-  (debug-display "(eval-statement-1 ~a)~n" (state->statement st))
+(define/contract (eval-statement-1 g stmt st)
+  (-> tinyC-global-store? tinyC-statement? state? (failure/c state?))
 
-  (match (state->statement st)
+  (for/all ([stmt stmt])
+  (debug-display "(eval-statement-1 ~a)~n" stmt)
+  (match stmt
 
     [(tinyC SKIP) ; SKIP cannot take a step
      *fail*]
@@ -953,13 +954,9 @@
     ; Invoke the procedure, allocating memory for p's local variables and
     ; pushing the current stack frame and remaining instructions onto the stack
      (do (<- decl (lookup-in-global-store g p))
-         (debug-display "Got decl: ~a" decl)
          (<- body (declaration->body decl))
-         (debug-display "Got body: ~a" body)
          (<- vs   (eval-exprs (seec->list args) (state->context st)))
-         (debug-display "Got vs: ~a" vs)
          (<- st+  (alloc-frame decl vs st))
-         (debug-display "Got frame")
          (update-state st+
                        #:statement (tinyC (SEQ ,body RETURN))
                        )
@@ -1009,34 +1006,42 @@
 
     [(tinyC (SEQ stmt1:statement stmt2:statement))
      (do (<- st1 (update-state st #:statement stmt1))
-         (<- st1+ (eval-statement-1 g st1))
+         (<- st1+ (eval-statement-1 g stmt1 st1))
          (update-state st1+ #:trace (state->trace st1+)
                             #:statement (tinyC (SEQ ,(state->statement st1+) ,stmt2))
                             ))]
 
 
-    ))
+    )))
 
 
 (define/contract (decrement-fuel fuel)
-  (-> (failure/c integer?) (failure/c integer?))
-  (do current-fuel <- fuel
-      (- fuel 1)))
+  (-> (or/c #f integer?) (or/c #f integer?))
+  (if fuel
+      (- fuel 1)
+      #f))
+
+(define (CALL? insn)
+  (match insn
+    [(tinyC (CALL any any)) #t]
+    [_ #f]))
+
 
 ;; Take some number of steps bounded by the amount of fuel given
 (define/contract (eval-statement fuel g st)
-  (-> (failure/c integer?) tinyC-global-store? state? (failure/c state?))
+  (-> (or/c integer? #f) tinyC-global-store? state? (failure/c state?))
+  (for/all ([stmt (state->statement st)])
+  (debug-display "=====================")
+  (debug-display "(eval-statement ~a ~a)" fuel stmt)
   (cond
-    [(equal? (state->statement st)
-             (tinyC SKIP))
+    [(equal? stmt (tinyC SKIP))
      st] ; Evaluation has normalized before fuel ran out
 
     [(<= fuel 0) st] ; Fuel ran out. Return *fail* here instead?
 
-    [else
-     (do (<- st+ (eval-statement-1 g st))
-         (eval-statement (decrement-fuel fuel) g st+))]
-    ))
+    [else (do (<- st+ (eval-statement-1 g stmt st))
+              (eval-statement (decrement-fuel fuel) g st+))]
+    )))
 
 
 (define max-fuel (make-parameter 100))

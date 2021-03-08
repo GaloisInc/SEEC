@@ -346,7 +346,9 @@
      (test-suite "eval-statement-1"
         (test-suite "ASSIGN"
           ; x0 ↦ (100,0)
-          (let ([st+ (tinyC:eval-statement-1 (list->seec assign-output-example)
+          (let ([st+ (tinyC:eval-statement-1
+                        (list->seec assign-output-example)
+                        (tinyC (ASSIGN "x0" -1))
                         (tinyC:update-state state-example
                                             #:statement (tinyC (ASSIGN "x0" -1))
                                                            ))])
@@ -364,6 +366,7 @@
 
         (test-suite "OUTPUT"
            (let ([st+ (tinyC:eval-statement-1 (list->seec assign-output-example)
+                                              (tinyC (OUTPUT "x0"))
                         (tinyC:update-state state-example
                                             #:statement (tinyC (OUTPUT "x0"))
                                             ))])
@@ -374,6 +377,7 @@
 
         (test-suite "CALL"
            (let ([st+ (tinyC:eval-statement-1 (list->seec assign-output-example)
+                                              (tinyC (CALL "main" (cons 3 nil)))
                          (tinyC:update-state state-example
                                              #:statement (tinyC (CALL "main"
                                                                       (cons 3 nil)))
@@ -386,6 +390,7 @@
 
         (test-suite "RETURN"
            (let ([st+ (tinyC:eval-statement-1 (list->seec assign-output-example)
+                                              (tinyC RETURN)
                          (tinyC:update-state state-example
                                              #:statement (tinyC RETURN))
                          )])
@@ -400,6 +405,7 @@
 
         (test-suite "SEQ-SKIP"
            (let ([st+ (tinyC:eval-statement-1 (list->seec assign-output-example)
+                                              (tinyC (SEQ SKIP RETURN))
                          (tinyC:update-state state-example
                                              #:statement (tinyC (SEQ SKIP RETURN))
                                              ))])
@@ -410,9 +416,11 @@
         (test-suite "SEQ"
            (let* ([stmt0 (tinyC (ASSIGN "x1" "x0"))]
                   [st0   (tinyC:eval-statement-1 (list->seec assign-output-example)
+                                                 stmt0
                             (tinyC:update-state state-example
                                                 #:statement stmt0))]
                   [st+   (tinyC:eval-statement-1 (list->seec assign-output-example)
+                                                 (tinyC (SEQ ,stmt0 RETURN))
                             (tinyC:update-state state-example
                                                 #:statement (tinyC (SEQ ,stmt0 RETURN))))]
                   )
@@ -445,7 +453,7 @@
                                                (list->seec factorial)))
                   (seec-singleton 6))
 
-    (parameterize ([max-fuel 150])
+    (parameterize ([max-fuel 140])
       (check-equal? ((language-evaluate tinyC-lang)
                      ((language-link tinyC-lang) seec-empty
                                                  (seec-singleton loop)))
