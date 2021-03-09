@@ -8,6 +8,7 @@
          assign-output-example
          assign-output-decl
          simple-call-example
+         password-checker
          )
 
 (module+ test (require rackunit
@@ -111,7 +112,57 @@
     (define run-loop
       (parameterize ([max-fuel 200])
         (tinyC:run (list loop)
+                   (list )
                    (list ))))
+
+;;;;;;;;;
+; INPUT ;
+;;;;;;;;;
+
+#|
+void main() {
+  int password=42;
+  int* input-buffer;
+  bool auth = false;
+
+  INPUT(input-buffer);
+  if (*input-buffer = *password) {
+    auth = true;
+  }
+  guarded_fun(auth);
+}
+
+void guarded_fun(int auth) {
+  OUTPUT(auth);
+  ... other stuff
+}
+|#
+(define password-checker-main
+  (make-declaration (string "main")
+                    (list) ; No input to main
+                    (list (tinyC ("auth" int))
+                          (tinyC ("password" int))
+                          (tinyC ("candidate" int))
+                          )
+                    (list (tinyC (ASSIGN "auth" 0))
+                          (tinyC (ASSIGN "password" 42))
+                          (tinyC (INPUT (& "candidate")))
+                          (tinyC (IF (= "candidate" "password")
+                                     (ASSIGN "auth" 1)
+                                     SKIP))
+                          (tinyC (CALL "guarded-fun"
+                                       (cons "auth" nil)))
+                          )))
+(define password-checker-body
+  (make-declaration (string "guarded-fun")
+                    (list (tinyC ("auth" int)))
+                    (list )
+                    (list (tinyC (OUTPUT "auth"))) ; ...
+                    ))
+(define password-checker (list password-checker-main
+                               password-checker-body))
+
+
 
 ;;;;;;;;;;;;;;;;;
 ; Running tests ;
@@ -439,25 +490,51 @@
   (define (evaluation-tests)
 
     (define run-fac (tinyC:run factorial
-                               (list 3)))
+                               (list 3)
+                               (list )))
     (check-equal? (tinyC:state->trace run-fac)
                   (seec-singleton 6))
 
     (check-equal? (tinyC:state->trace run-loop)
                   (seec-singleton 20))
 
+    (define (run-password-checker guess)
+      (tinyC:run password-checker
+                 (list)
+                 (list (seec-singleton guess))))
+
+    (check-equal? (tinyC:state->trace (run-password-checker 42))
+                  (seec-singleton 1))
+    (check-equal? (tinyC:state->trace (run-password-checker 0))
+                  (seec-singleton 0))
+
+    (define/contract (run-password-checker-multiple guesses)
+      (-> (listof integer?) any/c)
+      (tinyC:run password-checker
+                 (list)
+                 (list (list->seec guesses))))
+
+    ; In tinyC, only the first element matters
+    (check-equal? (tinyC:state->trace (run-password-checker-multiple (list 42 32 1)))
+                  (seec-singleton 1))
+    (check-equal? (tinyC:state->trace (run-password-checker-multiple (list 33 25 0)))
+                  (seec-singleton 0))
+
 
     ; Redo run-fac using language features
     (check-equal? ((language-evaluate tinyC-lang)
-                   ((language-link tinyC-lang) (seec-singleton 3)
+                   ((language-link tinyC-lang) (tinyC ((cons 3 nil)
+                                                       nil))
                                                (list->seec factorial)))
                   (seec-singleton 6))
 
     (parameterize ([max-fuel 140])
       (check-equal? ((language-evaluate tinyC-lang)
-                     ((language-link tinyC-lang) seec-empty
+                     ((language-link tinyC-lang) (tinyC (nil nil))
                                                  (seec-singleton loop)))
                     (seec-singleton 20)))
+
+
     )
   (evaluation-tests)
   )

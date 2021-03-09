@@ -158,6 +158,9 @@
       (WHILE expr statement)
       ; Outputs the value of 'ex' to the output log
       (OUTPUT expr)
+      ; Given a pointer to a buffer allocated in memory, accept input from the
+      ; environment and write to the buffer.
+      (INPUT expr)
       ; Evaluates the sequence of statements 'st ...'
       (SEQ statement statement)
       ; A no-op
@@ -205,6 +208,12 @@
   ; An output trace 't' is a sequence of values
   (trace        ::= list<val>)
 
+  ; The environment is a tuple consisting of both (1) a list of values with
+  ; which to call 'main'; and (2) a list of lists of values to be passed one at
+  ; a time to calls to 'INPUT'
+  (intlist      ::= list<integer>)
+  (env          ::= (intlist list<intlist>))
+
   )
 
 (define/contract (list->statement l)
@@ -221,7 +230,10 @@
 ;; States ;;
 ;;;;;;;;;;;;
 
-(struct state (statement context trace fresh-var)
+; The input-buffer is a list of vallists that are fed to calls to INPUT. This is
+; a simple interaction model that cannot react dynamically to the program
+; execution.
+(struct state (statement context input-buffer trace fresh-var)
   #:transparent)
 (define/contract (state->context st)
   (-> state? tinyC-context?)
@@ -235,6 +247,7 @@
   (let* ([x (state-fresh-var st)]
          [st+ (state (state-statement st)
                      (state-context st)
+                     (state-input-buffer st)
                      (state-trace st)
                      (+ 1 x))])
     (cons x st+)))
@@ -259,12 +272,13 @@
       #:statement  [stmt (if stmts
                              (list->statement stmts)
                              (tinyC SKIP))]
-      #:memory     [m  #f] ; This option only works if ctx is not supplied
-      #:context    [ctx (if m
-                            (update-context-memory (state->context st) m)
-                            (state->context st))]
+      #:memory       [m  #f] ; This option only works if ctx is not supplied
+      #:input-buffer [buf (state-input-buffer st)]
+      #:context      [ctx (if m
+                              (update-context-memory (state->context st) m)
+                              (state->context st))]
       )
-    (state stmt ctx tr (state-fresh-var st))
+    (state stmt ctx buf tr (state-fresh-var st))
     ))
 
 (define (max-loc ctx)
@@ -281,6 +295,7 @@
 (define (init-state ctx)
   (state (tinyC SKIP)
          ctx
+         (list)
          seec-empty
          (+ 1 (max-loc ctx))))
 
@@ -947,6 +962,24 @@
                           #:statement (tinyC SKIP))
        )]
 
+    [(tinyC (INPUT e:expr))
+     (let* ([ctx (state->context st)]
+            [F (ctx->top-frame ctx)]
+            [m (ctx->mem ctx)]
+            [input (state-input-buffer st)]
+            )
+       (cond
+         [(and (list? input)
+               (not (empty? input)))
+          (do (<- v (eval-expr e F m))
+              (<- ctx+ (set-lval v (car input) ctx))
+              (update-state st
+                            #:statement (tinyC SKIP)
+                            #:context ctx+
+                            #:input-buffer (cdr input)
+                            ))]
+            [else *fail*]
+            ))]
 
     ;; Procedure calls ;;
 
@@ -1049,30 +1082,38 @@
 (define run+
   (λ (prog    ; A seec list of declarations (aka global store)
       inputs  ; A seec list of inputs to main
+      buf     ; A racket list of seec lists to pass to INPUT
       )
     (eval-statement (max-fuel)
                     prog
                     (update-state (init-state (tinyC ((nil nil) nil)))
                                   #:statement (tinyC (CALL "main" ,inputs))
+                                  #:input-buffer buf
                                   ))))
 
 (define run
   (λ (prog    ; A racket list of declarations
       inputs  ; A racket list of inputs to main
+      buf     ; A racket list of seec lists to pass to INPUT
       )
     (run+ (list->seec prog)
-          (list->seec inputs))))
+          (list->seec inputs)
+          buf)))
 
 
 (define-language tinyC-lang
   #:grammar tinyC
   #:expression global-store #:size 5
-  #:context trace #:size 3 ; The trace acts like an argument list. Should we add
-                           ; a constraint that these should contain only
-                           ; integers, not locations?
-  #:link (λ (args prog) (cons args prog))
+  #:context env #:size 4 ; The trace acts like an argument list. Should we add
+                         ; a constraint that these should contain only
+                         ; integers, not locations?
+  #:link (λ (env prog) #;(cons args prog)
+            (match env
+              [(tinyC (args:intlist buf:list<intlist>))
+               (list prog args (seec->list buf))]))
+
   ; During evaluation, just produce the trace
-  #:evaluate (λ (p) (do st <- (run+ (cdr p) (car p))
+  #:evaluate (λ (p) (do st <- (run+ (first p) (second p) (third p))
                         (state-trace st)))
   )
 
