@@ -1,4 +1,4 @@
-#lang seec
+ #lang seec
 (set-bitwidth 4)
 (require seec/private/util)
 (require seec/private/monad)
@@ -12,6 +12,12 @@
 
 
 (use-contracts-globally #t)
+
+(define (ofail f)
+  (if (failure? f)
+          (assert #f)
+          f))
+
 
 ;
 ; Heap allocator model 
@@ -80,18 +86,25 @@
   (match s
     [(heap-model (cons x:any any))
      x]
-    [(heap-model any)  #f]))
+    [_  (assert #f)
+        ;*fail*
+        ]))
 
 (define (tail s)
     (match s
     [(heap-model (cons any tl:any))
-     tl]
-    [(heap-model any) #f]))
+     tl]    
+    [_ (assert #f)
+       ;*fail*
+       ]))
+
+
 
 (define (skip n l)
   (if (equal? n 0)
       l
-      (skip (- n 1) (tail l))))
+      (do tl <- (tail l)
+          (skip (- n 1) tl))))
     
 
 (define (append s1 s2)
@@ -100,15 +113,18 @@
     [(heap-model (cons hd:any tl:any))
      (heap-model (cons ,hd ,(append tl s2)))]))
 
-; false if out of bound
+; fails if out of bound
 (define (nth s i)
   ;  (-> any/c natural-number/c any/c)
   (if (equal? i 0)
       (head s)
-      (let* ([tls (tail s)])
-             (if tls
-                 (nth tls (- i 1))
-                 #f))))
+      (do ts <- (tail s)
+          (nth ts (- i 1)))))
+
+(define (opt-nth s i)
+  (if (< i (length s))
+      (nth s i)
+      *fail*))
 
 ; add v at the end of list s
 (define (snoc s v)
@@ -124,9 +140,13 @@
 (define (replace l i v)
   (match i
     [(heap-model 0)
-     (heap-model (cons ,v ,(tail l)))]
+     (do tl <- (tail l)
+         (heap-model (cons ,v ,tl)))]
     [(heap-model i:natural)
-     (heap-model (cons ,(head l) ,(replace (tail l) (- i 1) v)))]))
+     (do hl <- (head l)
+         tl <- (tail l)
+         rl <- (replace tl (- i 1) v)
+         (heap-model (cons ,hl ,rl)))]))
 
 ; remove the first occurence of v from the list
 (define (remove-one-elem l v)
@@ -174,8 +194,7 @@
       false
       (let* ([payload (repeat (heap-model 0) (- (* h-i 4) 2))]           
              [hp (heap-model (cons ,(- (* h-i 4) 2) ,payload))]
-             [hp+ (heap-model (cons 0 ,hp))])
-        
+             [hp+ (heap-model (cons 0 ,hp))])        
       (heap-model (,(repeat (heap-model 0) b-i) ,hp+ null)))))
 
 
@@ -218,14 +237,14 @@
 (define (interpret-alloc-no-free h)
   (define (interpret-alloc-no-free+ h i)
     ;(displayln (format "In alloc-no-free at ~a" i))
-    (let ([in-use (nth h i)]
-          [size (nth h (+ i 1))])
+    (do in-use <- (nth h i)
+        size <- (nth h (+ i 1))
       (if (equal? in-use (heap-model 0))
           ; found the wilderness, copy its size (at i+1), then allocate a new block pushing back the wilderness
-            (let* ([h+ (replace h i (heap-model 1))]
-                   [h++ (replace h+ (+ i 1) (heap-model 2))]
-                   [h+++ (if (> size 4) (replace h++ (+ i 4) (heap-model 0)) h++)]
-                   [h+4 (if (> size 4) (replace h+++ (+ i 5) (- size 4)) h+++)])
+            (do h+ <- (replace h i (heap-model 1))
+                h++ <- (replace h+ (+ i 1) (heap-model 2))
+                h+++ <- (if (> size 4) (replace h++ (+ i 4) (heap-model 0)) h++)
+                h+4 <- (if (> size 4) (replace h+++ (+ i 5) (- size 4)) h+++)
                 ;(displayln (format "allocated at ~a a block of size ~a" i 2))
               (cons (heap-model ,(+ i 2)) h+4))
           (interpret-alloc-no-free+ h (+ i size 2)))))
@@ -235,14 +254,14 @@
 ; heap* -> natural -> (pointer* x heap*)
 ; returns new free pointer X new heap
 (define (interpret-alloc-free h n)
-  (let* ([newf (nth h n)] ; get the tail of the free-list
-         [size (nth h (- n 1))]) ; get the size of this block
+  (do newf <- (nth h n) ; get the tail of the free-list
+      size <- (nth h (- n 1)) ; get the size of this block
        (match size
          [(heap-model sz:natural)
-          (let* ([h+ (replace h (- n 2) (heap-model 1))])            
+          (do h+ <- (replace h (- n 2) (heap-model 1))
             (match newf
               [(heap-model nf:natural)
-               (let* ([h++ (replace h+ (+ nf 1) (heap-model null))])
+               (do h++ <- (replace h+ (+ nf 1) (heap-model null))
                  (cons newf h++))]
                [(heap-model null)
                 (cons newf h+)]))])))
@@ -258,19 +277,19 @@
   (match p
     [(heap-model n:natural)
      ;(displayln (format "In free, pointer ~a" n))
-     (let* ([size (nth h (- n 1))])
+     (do size <- (nth h (- n 1))
        (match size
          [(heap-model sz:natural)
           ;(displayln (format "size ~a" sz))
-          (let* ([h+ (replace h (- n 2) (heap-model 0))]
-                 [h++ (replace h+ n f)]
-                 [h+++ (replace h++ (+ n 1) (heap-model null))])
-            (match f ; update the whole fp head to point to new head
-              [(heap-model null)
+          (do h+ <- (replace h (- n 2) (heap-model 0))
+              h++ <- (replace h+ n f)
+              h+++ <- (replace h++ (+ n 1) (heap-model null))
+              (match f ; update the whole fp head to point to new head
+                [(heap-model null)
                h+++]
-              [(heap-model nf:natural)
-               (let* ([h+4 (replace h+++ (+ nf 1) p)])
-                 h+4)]))]
+                [(heap-model nf:natural)
+                 (do h+4 <- (replace h+++ (+ nf 1) p)
+                     h+4)]))]
          [_
           ;(displayln "trying to free a block which wasn't allocated")
           ;(cons f h)
@@ -286,36 +305,36 @@
      ;(displayln "matched heap")
      (match a
        [(heap-model (free bl:buf-loc))
-        (let* ([p (nth b bl)]
-               [b+ (replace b bl (heap-model null))]
-               [h+ (interpret-free h f p)])
+        (do p <- (ofail (nth b bl))
+            b+ <- (ofail (replace b bl (heap-model null)))
+            h+ <- (ofail (interpret-free h f p))
           (heap-model (,b+ ,h+ ,p)))]
        [(heap-model (alloc bl:buf-loc n:natural))
         (match f
           [(heap-model n:natural)
-           (let* ([ph+ (interpret-alloc-free h n)]
-                  [b+ (replace b bl f)])
-             (heap-model (,b+ ,(cdr ph+) ,(car ph+))))]
+           (do ph+ <- (ofail (interpret-alloc-free h n))
+               b+ <- (ofail (replace b bl f))
+               (heap-model (,b+ ,(cdr ph+) ,(car ph+))))]
           [(heap-model null)
-           (let* ([ph+ (interpret-alloc-no-free h)]
-                  [b+ (replace b bl (car ph+))])
-             (heap-model (,b+ ,(cdr ph+) ,f)))])]
+           (do ph+ <- (ofail (interpret-alloc-no-free h))
+               b+  <- (ofail (replace b bl (car ph+)))
+               (heap-model (,b+ ,(cdr ph+) ,f)))])]
        [(heap-model (set bl:buf-loc val:nnvalue))
-        (let* ([b+ (replace b bl val)])
+        (do b+ <- (ofail (replace b bl val))
           (heap-model (,b+ ,h ,f)))]
        [(heap-model (read bhl:buf-loc bl:buf-loc))
         ;(displayln "action read")
-        (let* ([hl (nth b bhl)] ; get the pointer
-               [loc (heap-loc-addr hl)] ; compute the address
-               [val (nth h loc)] ; get the value at the location
-               [b+ (replace b bl val)]) ; place the value in the buffer
-               (heap-model (,b+ ,h ,f)))]
+        (do hl <- (ofail (nth b bhl)) ; get the pointer
+            loc <- (ofail (heap-loc-addr hl)) ; compute the address
+            val <- (ofail (nth h loc)) ; get the value at the location
+            b+ <- (ofail (replace b bl val)) ; place the value in the buffer
+             (heap-model (,b+ ,h ,f)))]
        [(heap-model (write bl:buf-loc bhl:buf-loc))
         ;(displayln "action write")
-        (let* ([val (nth b bl)] ; get the value from the buffer
-               [hl (nth b bhl)] ; get the pointer from the buffer
-               [loc (heap-loc-addr hl)] ; compute the address in the heap
-               [h+ (write h loc val)]) ; overwrite the location in the heap with the value
+        (do val <- (ofail (nth b bl)) ; get the value from the buffer
+            hl <- (ofail (nth b bhl)) ; get the pointer from the buffer
+            loc <- (ofail (heap-loc-addr hl)) ; compute the address in the heap
+            h+ <- (ofail (write h loc val)) ; overwrite the location in the heap with the value
           (heap-model (,b ,h+ ,f)))])]))
 
 ; apply a sequence of action on a state
@@ -337,7 +356,7 @@
 (define (interpret-total-interaction ig s)
   (match ig
     [(heap-model (i:interaction o:observation))
-     (let ([s+ (interpret-interaction i s)])
+     (do s+ <- (interpret-interaction i s)
        (interpret-observation o s+))]))
 
 
@@ -363,25 +382,25 @@
        [(heap-model (alloc bl:buf-loc n:natural))
         (match f
           [(heap-model n:natural)
-           (let* ([ph+ (interpret-alloc-free h n)]
-                  [b+ (replace b bl f)])
-             (heap-model (,b+ ,(cdr ph+) ,(car ph+))))]
+           (do ph+ <- (interpret-alloc-free h n)
+               b+ <- (replace b bl f)
+               (heap-model (,b+ ,(cdr ph+) ,(car ph+))))]
           [(heap-model null)
-           (let* ([ph+ (interpret-alloc-no-free h)]
-                  [b+ (replace b bl (car ph+))])
+           (do ph+ <- (interpret-alloc-no-free h)
+               b+ <- (replace b bl (car ph+))
              (heap-model (,b+ ,(cdr ph+) ,f)))])]
        [(heap-model (set bl:buf-loc val:nnvalue))
-        (let* ([b+ (replace b bl val)])
+        (do b+ <- (replace b bl val)
           (heap-model (,b+ ,h ,f)))]
        [(heap-model (read hl:heap-loc bl:buf-loc))
-        (let* ([loc (heap-loc-addr hl)] ; compute the address
-               [val (nth h loc)] ; get the value at the location
-               [b+ (replace b bl val)]) ; place the value in the buffer
-               (heap-model (,b+ ,h ,f)))]
+        (do loc <- (heap-loc-addr hl) ; compute the address
+            val <- (nth h loc) ; get the value at the location
+            b+ <- (replace b bl val) ; place the value in the buffer
+            (heap-model (,b+ ,h ,f)))]
        [(heap-model (write bl:buf-loc hl:heap-loc))
-        (let* ([val (nth b bl)] ; get the value from the buffer
-               [loc (heap-loc-addr hl)] ; compute the address in the heap
-               [h+ (write h loc val)]) ; overwrite the location in the heap with the value
+        (do val <- (nth b bl) ; get the value from the buffer
+            loc <- (heap-loc-addr hl) ; compute the address in the heap
+            h+ <- (write h loc val) ; overwrite the location in the heap with the value
           (heap-model (,b ,h+ ,f)))])]))
 
 
@@ -399,14 +418,14 @@
     [(heap-model (b:buf h:heap f:pointer))
      (match a
        [(heap-model (free bl:buf-loc))
-        (let* ([p (nth b bl)])
-          (heap-model (cons (free ,p) (cons (set ,bl null) nil))))]
-        [(heap-model (read bhl:buf-loc bl:buf-loc))
-         (let* ([hl (nth b bhl)]) ; get the pointer
-                (heap-model (cons (read ,hl ,bl) nil)))]
+        (do p <- (nth b bl)
+            (heap-model (cons (free ,p) (cons (set ,bl null) nil))))]
+       [(heap-model (read bhl:buf-loc bl:buf-loc))
+        (do hl <- (nth b bhl) ; get the pointer
+            (heap-model (cons (read ,hl ,bl) nil)))]
        [(heap-model (write bl:buf-loc bhl:buf-loc))
-        (let* ([hl (nth b bhl)])
-          (heap-model (cons (write ,bl ,hl) nil)))]
+        (do hl <- (nth b bhl)
+            (heap-model (cons (write ,bl ,hl) nil)))]
        [(heap-model any) ; set, alloc
         (heap-model (cons ,a nil))]
        )]))
@@ -418,9 +437,9 @@
     [(heap-model nil)
      (heap-model nil)]
     [(heap-model (cons a:action i+:interaction))
-     (let* ([i-hl (translate-action-hl a s)]
-            [s+ (interpret-action a s)]
-            [i-hl+ (translate-interaction-hl i+ s+)])
+     (do i-hl <- (translate-action-hl a s)
+         s+ <- (interpret-action a s)
+         i-hl+ <- (translate-interaction-hl i+ s+)
        (heap-model ,(append i-hl i-hl+)))]))
 
 ;;;
@@ -496,20 +515,16 @@
           [(heap-model null)
            #t]
           [(heap-model l:natural)
-           (let* ([forward-p (nth h l)]
-                  [backward-p (nth h (+ l 1))]
-                  [check-v (nth h (- l 2))])
-             (if (and forward-p
-                      backward-p
-                      check-v
-                      (equal? check-v (heap-model 0)) ; validation bit (size of pred) is properly set
+           (do forward-p <- (nth h l)
+               backward-p <- (nth h (+ l 1))
+               check-v <- (nth h (- l 2))
+             (if (and (equal? check-v (heap-model 0)) ; validation bit (size of pred) is properly set
                       (fwd-pointer-alligned forward-p) ; fwd is pointing alligned 
-                      (equal? backward-p prev-p)) ; backward pointer is properly set
-                       
+                      (equal? backward-p prev-p)) ; backward pointer is properly set                       
                  (valid-freelist+ (- fuel 1) h forward-p p)
              (begin
-               #f)))])))
-  (valid-freelist+ fuel h p (heap-model null)))
+               *fail*)))])))
+  (not (failure? (valid-freelist+ fuel h p (heap-model null))))) ; capture failures 
 
 (define (valid-freelist-state fuel s)
   (match s
@@ -560,10 +575,8 @@
           [(heap-model null)
            0]
           [(heap-model l:natural)
-           (let* ([forward-p (nth h l)])
-             (if forward-p
-                 (+ (freelist-length+ (- fuel 1) h forward-p) 1)
-                 #f))])))
+           (do forward-p <- (nth h l)
+                 (+ (freelist-length+ (- fuel 1) h forward-p) 1))])))
     (match s
       [(heap-model (b:buf h:heap p:pointer))
        (freelist-length+ fuel h p)
@@ -714,10 +727,10 @@
        [(heap-model (read b1:buf-loc b2:buf-loc))
         #t]
        [(heap-model (write b1:buf-loc b2:buf-loc))
-        (let* ([p (nth b b2)])
-        (safe-write p s))]
+        (do p <- (nth b b2)
+            (safe-write p s))]
        [(heap-model (free bl:buf-loc))
-        (let* ([p (nth b bl)])
+        (do p <- (nth b bl)
             (safe-free p s))]
        [(heap-model (alloc b:buf-loc natural))
         #t])]))
@@ -763,6 +776,11 @@
 (define i-attack (heap-model (cons (set 0 2) (cons (set 1 3) (cons (write 0 1) nil)))))
 (define d+5* (interpret-interaction i-attack d+4*))
 
+(define a-d+4* (heap-model (write 0 2)))
+(define ad+4* (interpret-action a-d+4* d+4*))
+
+(define a-d+3 (heap-model (write 2 3)))
+(define ad+3 (interpret-action a-d+3 d+3))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -802,6 +820,8 @@
     (displayln beh0+)))
 
 ; create a heap with a free-list of length 2 (fails at the moment, only 0 works)
+; 3/8 - 57886ms for length = 1
+;       60868 for length 2
 (define (d-test1)
   (begin
     (define b1* (heap-model buf 4))
@@ -809,14 +829,107 @@
     (define fp1* (heap-model pointer 1))
     (define s1* (heap-model (,b1* ,h1* ,fp1*)))
     (assert (valid-state 3 s1*))
-    (define sol (solve (assert (equal? 0 (freelist-length 3 s1*)))))
+    (define sol (solve (assert (equal? 2 (freelist-length 3 s1*)))))
     (define s1 (concretize s1* sol))
     (clear-asserts!)
     (displayln "State:")
     (display-state s1)))
 
+;(time (d-test1))
 
 
+; try to make the state a concrete state
+; works with d+4* [find two bugs before safe-interaction]
+; doesn't terminate? with d+3/d+5
+; 3/9 33s for d+4*, 15s for d+3
+(define (d-test2)
+  (begin
+    (define s2* d+3)
+    (define i2* (heap-model interaction 4))
+    (define s2+* (interpret-interaction i2* s2*))
+;    (assert (heap-model-valid-interaction i2* s2*))
+;    (assert (heap-model-safe-interaction i2* s2*))
+    (define sol (solve (assert (not (valid-state 3 s2+*)))))
+    (if (unsat? sol)
+        (displayln "unsat")
+        (begin
+          (define s2 (concretize s2* sol))
+          (define i2 (concretize i2* sol))
+          (define s2+ (concretize s2+* sol))
+          (clear-asserts!)
+          (displayln "State:")
+          (display-state s2)
+          (displayln "Interaction:")
+          (displayln i2)
+          (displayln (heap-model-safe-interaction i2 s2))
+          (displayln (heap-model-valid-interaction i2 s2))
+          (displayln "State+:")
+          (display-state s2+)
+          (displayln (valid-state 3 s2+))))))
+
+;(time (d-test2))
+
+; d-test2 except with a symbolic state
+; 3/8 unsat in 41940 -- which shouldn't be the case
+; 3/9 couldn't finish...
+(define (d-test2+)
+  (begin
+    (define b3* (heap-model buf 5))
+    (define h3* (heap-model heap 9))
+    (define fp3* (heap-model pointer 1))
+    (define s2* (heap-model (,b3* ,h3* ,fp3*)))
+    (assert (valid-state 3 s2*))
+    (define i2* (heap-model interaction 4))
+    (define s2+* (interpret-interaction i2* s2*))
+;    (assert (heap-model-valid-interaction i2* s2*))
+;    (assert (heap-model-safe-interaction i2* s2*))
+    (define sol (solve (assert (not (valid-state 3 s2+*)))))
+    (if (unsat? sol)
+        (displayln "unsat")
+        (begin
+          (define s2 (concretize s2* sol))
+          (define i2 (concretize i2* sol))
+          (define s2+ (concretize s2+* sol))
+          (clear-asserts!)
+          (displayln "State:")
+          (display-state s2)
+          (displayln "Interaction:")
+          (displayln i2)
+          (displayln (heap-model-safe-interaction i2 s2))
+          (displayln (heap-model-valid-interaction i2 s2))
+          (displayln "State+:")
+          (display-state s2+)
+          (displayln (valid-state 3 s2+))))))
+
+;(time (d-test2+))
+
+
+; 3/9 works in 21 sec with d+4*
+;               14.s            d+3  
+(define (d-test2++)
+  (begin
+    (define concr d+4*)
+    (define a* (heap-model action 3))
+    (define s* (interpret-action a* concr))
+    (define sol (solve (assert (not (valid-state 3 s*)))))
+    (if (unsat? sol)
+        (displayln "UNSAT")
+        (begin 
+          (define s (concretize s* sol))
+          (define a (concretize a* sol))
+            (clear-asserts!)
+            (displayln "Action:")
+            (displayln a)
+            (displayln "State:")
+            (display-state s)))))
+
+;(time (d-test2++))      
+    
+
+; Find a symbolic state which is equal to d+4*
+; Useful to test valid-state on symbolic i
+; took 119351 with nth returning #f
+; 3/8 took 28009 with the failure monad
 (define (d-test3)
   (begin
     (define b3* (heap-model buf 5))
@@ -824,7 +937,7 @@
     (define fp3* (heap-model pointer 1))
     (define s3* (heap-model (,b3* ,h3* ,fp3*)))
     
-   (assert (valid-state 3 s3*))
+;   (assert (valid-state 3 s3*))
     (define sol (solve (assert (equal? d+4* s3*))))
     (define s3 (concretize s3* sol))
     (clear-asserts!)
@@ -833,32 +946,35 @@
 
 
 
-; try to make the state a concrete state
-; works with d+4* [find two bugs before safe-interaction]
-; doesn't terminate? with d+3/d+5
-;
-(define (d-test2)
+
+; Find a symbolic state which is work and doesn't work for valid-state
+; 3/8 works in 39 s
+(define (d-test4)
   (begin
-    (define s2* d+4*)
-    (define i2* (heap-model interaction 4))
-    (define s2+* (interpret-interaction i2* s2*))
-;    (assert (heap-model-valid-interaction i2* s2*))
-;    (assert (heap-model-safe-interaction i2* s2*))
-    (define sol (solve (assert (not (valid-state 3 s2+*)))))
-    (define s2 (concretize s2* sol))
-    (define i2 (concretize i2* sol))
-    (define s2+ (concretize s2+* sol))
+    (define b3* (heap-model buf 5))
+    (define h3* (heap-model heap 9))
+    (define fp3* (heap-model pointer 1))
+    (define s3* (heap-model (,b3* ,h3* ,fp3*)))
+    
+;   (assert (valid-state 3 s3*))
+    (define sol (solve (assert (valid-state 3 s3*))))
+    (define s3 (concretize s3* sol))
     (clear-asserts!)
     (displayln "State:")
-    (display-state s2)
-    (displayln "Interaction:")
-    (displayln i2)
-    (displayln (heap-model-safe-interaction i2 s2))
-    (displayln (heap-model-valid-interaction i2 s2))
-    (displayln "State+:")
-    (display-state s2+)
-    (displayln (valid-state 3 s2+))))
+    (display-state s3)))
 
-
-
+; 3/8 works in 54s
+(define (d-test4+)
+  (begin
+    (define b3* (heap-model buf 5))
+    (define h3* (heap-model heap 9))
+    (define fp3* (heap-model pointer 1))
+    (define s3* (heap-model (,b3* ,h3* ,fp3*)))
     
+;   (assert (valid-state 3 s3*))
+    (define sol (solve (assert (not (valid-state 3 s3*)))))
+    (define s3 (concretize s3* sol))
+    (clear-asserts!)
+    (displayln "State:")
+    (display-state s3)))
+

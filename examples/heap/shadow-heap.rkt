@@ -1,14 +1,16 @@
 #lang seec
 (set-bitwidth 4)
+
 (require racket/format)
+(require seec/private/util)
+(require seec/private/monad)
+
 ;(require racket/contract)
 (provide (all-defined-out))
 (require (file "heap.rkt"))
 ;
 ; Shadow-Heap models to work with heap-model from heap.rkt
 ;
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; NO-FREELIST
 ;;
@@ -141,7 +143,7 @@
      ; checks if l is smaller than the length of h
      (if (< (seec-length h) l)
          #f
-         (let ([v (nth h l)])          
+         (do v <- (nth h l)
            ; checks if o is smaller than the size of the l-th entry in h
            (match v
              [(no-freelist v:list<any>)
@@ -269,7 +271,7 @@
 (define h0* (no-freelist buf 5))
 
 ; trying to synthesize a no-freelist.state which is the same as a concrete state
-; works in 2.9s
+; works in 2.9s (now 18s????)
 (define (nf-test0)
   (begin
 ;    (define b0* (no-freelist buf 4))
@@ -292,7 +294,7 @@
 
 
 ; Trying to synthesize a state which is shallowly equal to a concrete heap-model.state
-; works in 3s
+; works in 3s (mar 5)
 ; Note that this could be trivially solved by having s1*'s heap be all pointers
 (define (nf-test1)
   (begin
@@ -307,12 +309,12 @@
     (displayln "State:")
     (display-nf-state s1)
     (displayln "Shallow eq:")
-    (displayln (shallow-nf-state-eq s1 d+5 #:debug #t))
+    (displayln (shallow-nf-state-eq s1 d+5))
     (displayln "Deep eq:")
-    (displayln (deep-nf-state-eq s1 d+5))))
+    (deep-nf-state-eq s1 d+5)))
 
 ; Trying to synthesize a heap-model.state which is shallowly equal to a concrete no-freelist.state
-; works in 5.1s
+; works in 5.1s (19s on mar 5)
 ; 
 (define (nf-test1+)
   (begin
@@ -330,13 +332,15 @@
     (displayln "Ref:")
     (display-nf-state concr)
     (displayln "Shallow eq:")
-    (shallow-nf-state-eq concr s1)
+    (parameterize ([debug? #f])      
+      (displayln (shallow-nf-state-eq concr s1)))
     (displayln "Deep eq:")
-    (deep-nf-state-eq concr s1)))
+    (parameterize ([debug? #f])      
+      (deep-nf-state-eq concr s1))))
 
 
 ;Trying to synthesize a state which is equivalent to a concrete heap-model.state
-; works
+; works in 100s (3/9) 
 (define (nf-test2)
   (begin
     (define s2* (no-freelist state 7))
@@ -350,7 +354,8 @@
     (displayln "State:")
     (display-nf-state s2)
     (displayln "Ref:")
-    (display-state concr)               
+    (display-state concr)
+    (displayln "Deep eq:")
     (deep-nf-state-eq s2 concr)))
 
 ;Trying to synthesize a heap-model.state which is equivalent to a concrete no-freelist.state
@@ -373,7 +378,7 @@
     (deep-nf-state-eq concr s2)))
 
 ; synthesize state, interaction and behavior to achieve a certain behavior (obs = 5)
-; works
+; works but slow!
 (define (nf-test3)
   (begin
     (define s3* (no-freelist state 6))
@@ -480,17 +485,8 @@
 
 ;; compare nnvalues out of shadow-heap.value and heap-model.value
 ;; returns #:default (#t) if nf-v is a non-null pointer
-(define shallow-nf-val-eq
-  #;(->* (any/c any/c)
-       (#:debug boolean?
-        #:default boolean?)
-       boolean?)
-  (lambda (nf-v
-           v
-           #:debug [d #f]
-           #:default [def #t])
+(define/debug #:suffix (shallow-nf-val-eq+ nf-v v def)  
     (begin
-      ;(displayln "in shallow-nf-val-eq")
       (match nf-v
         [(no-freelist nf-i:integer)
          (match v
@@ -505,17 +501,16 @@
            [(heap-model any)
             #f])]
         [(no-freelist any)
-         def]))))
-
+         def])))
+ 
+(define shallow-nf-val-eq
+  (lambda (nf-v
+           v
+           #:default [def #t])
+    (shallow-nf-val-eq+ nf-v v def)))
 
 ;; shallow (compare non-pointer value) buffer equality
-(define shallow-nf-buf-eq
-  #;(->* (any/c any/c)
-       (#:debug boolean?)
-       boolean?)
-  (lambda (nf-b
-           b
-           #:debug [d #f])
+(define/debug #:suffix (shallow-nf-buf-eq nf-b b)
     (begin
       (match nf-b
         [(no-freelist nil)
@@ -528,49 +523,40 @@
          (match b
            [(heap-model (cons v:value b+:buf))
             (and               
-             (shallow-nf-val-eq nf-v v #:debug d)
-             (shallow-nf-buf-eq nf-b+ b+ #:debug d))]
+             (shallow-nf-val-eq nf-v v)
+             (shallow-nf-buf-eq nf-b+ b+))]
            [(heap-model any)
-            #f])]))))
+            #f])])))
 
 ;; shallow (buffer only) equality
-(define shallow-nf-state-eq
-  #;(->* (any/c any/c)
-       (#:debug boolean?)
-       boolean?)
-  (lambda (nf-s s
-                #:debug [d #f])
+(define/debug #:suffix (shallow-nf-state-eq nf-s s)
     (begin
       (match nf-s
         [(no-freelist (nf-b:buf any))
          (match s
            [(heap-model (b:buf any any))
-            (shallow-nf-buf-eq nf-b b #:debug d)])]))))
+            (shallow-nf-buf-eq nf-b b)])])))
 
 ;; compare the value in buf zero w
-(define (buf-z-nf-deep-eq nf-s s)
+(define/debug #:suffix (buf-z-nf-deep-eq nf-s s)
   (match nf-s
     [(no-freelist (nf-b:buf nf-h:heap))
      (match s
        [(heap-model (b:buf h:heap any))
-        (let ([nfb-z (nth nf-b 0)]
-              [b-z (nth b 0)])
-          (if (and nfb-z b-z)
-              (deep-nf-val-eq 10 nf-h h nfb-z b-z)
-              #f))])]))
+        (do nfb-z <- (opt-nth nf-b 0)
+            b-z <- (opt-nth b 0)
+            (deep-nf-val-eq 10 nf-h h nfb-z b-z))])]))
 
 
 ;; compare the value in buf zero w
-(define (buf-z-nf-eq nf-s s)
+(define/debug #:suffix (buf-z-nf-eq nf-s s)
   (match nf-s
     [(no-freelist (nf-b:buf any))
      (match s
        [(heap-model (b:buf any any))
-        (let ([nfb-z (nth nf-b 0)]
-              [b-z (nth b 0)])
-          (if (and nfb-z b-z)
-              (shallow-nf-val-eq nfb-z b-z #:default #f)
-              #f))])]))
+        (do nfb-z <- (opt-nth nf-b 0)
+            b-z <- (opt-nth b 0)
+            (shallow-nf-val-eq nfb-z b-z #:default #f))])]))
 
 
 (define-compiler nf-to-heap-compiler
@@ -588,28 +574,25 @@
 
 ; no-freelist.heap-loc: (l o)
 ; heap-model.heap-loc: n
-(define deep-nf-pointer-eq+
-  (lambda (fuel nf-h h l o n
-                #:debug [d #f])
-    ;(displayln "deep-nf-pointer-eq+")
+; this may fail, but it is caught in eq
+(define/debug #:suffix (deep-nf-pointer-eq+ fuel nf-h h l o n)
   (if (equal? fuel 0)
       #t
-      (let* ([nf-pl (nth nf-h l)]
-             [nf-v (nth nf-pl o)]
-             [v (nth h n)])
-        (if (and nf-pl nf-v v)
-            (deep-nf-val-eq (- fuel 1) nf-h h nf-v v #:debug d)
-            #f)))))
+      (do nf-pl <- (opt-nth nf-h l)
+          nf-v <- (opt-nth nf-pl o)
+          v <- (opt-nth h n)
+          (deep-nf-val-eq (- fuel 1) nf-h h nf-v v))))
 
-(define deep-nf-pointer-eq
-  (lambda (fuel nf-h h nf-p p
-                #:debug [d #f])
-    ;(displayln "deep-nf-pointer-eq")
+(define/debug #:suffix (deep-nf-pointer-eq fuel nf-h h nf-p p)               
+;  (displayln "deep-nf-pointer-eq")
   (match nf-p
     [(no-freelist (l:natural o:natural))
      (match p
        [(heap-model n:natural)
-        (deep-nf-pointer-eq+ fuel nf-h h l o n #:debug d)]
+        (let ([r (deep-nf-pointer-eq+ fuel nf-h h l o n)])
+            (if (failure? r)
+                #f
+                r))]
        [(heap-model any)
         #f])]
     [(no-freelist null)
@@ -617,15 +600,12 @@
        [(heap-model null)
         #t]
        [(heap-model any)
-        #f])])))
+        #f])]))
 
 
 
 ;; compare nnvalues out of shadow-heap.value and heap-model.value
-(define deep-nf-val-eq
-  (lambda (fuel nf-h h nf-v v
-                #:debug [d #f])
-    ;(displayln "deep-nf-val-eq")
+(define/debug #:suffix (deep-nf-val-eq fuel nf-h h nf-v v)
   (match nf-v
     [(no-freelist nf-i:integer)
      (match v
@@ -636,15 +616,12 @@
     [(no-freelist nf-p:pointer)
      (match v
        [(heap-model p:pointer)
-        (deep-nf-pointer-eq fuel nf-h h nf-p p #:debug d)])])))
+        (deep-nf-pointer-eq fuel nf-h h nf-p p)])]))
 
 
 ;; deep (compare all value) buffer equality
 ;;; indexed by heaps
-(define deep-nf-buf-eq
-  (lambda (nf-h h nf-b b
-                #:debug [d #f])
-    ;(displayln "deep-nf-buf-eq")
+(define/debug #:suffix (deep-nf-buf-eq nf-h h nf-b b)
   (match nf-b
     [(no-freelist nil)
        (match b
@@ -656,21 +633,18 @@
        (match b
          [(heap-model (cons v:value b+:buf))
           (and               
-           (deep-nf-val-eq max-fuel nf-h h nf-v v #:debug d)
-           (deep-nf-buf-eq nf-h h nf-b+ b+ #:debug d))]
+           (deep-nf-val-eq max-fuel nf-h h nf-v v)
+           (deep-nf-buf-eq nf-h h nf-b+ b+))]
          [(heap-model any)
-          #f])])))
+          #f])]))
 
 ;; deep (buffer only) equality
-(define deep-nf-state-eq
-  (lambda (nf-s s
-                #:debug [d #f])
-    ;(displayln "deep-nf-state-eq")
+(define/debug #:suffix (deep-nf-state-eq nf-s s)
   (match nf-s
     [(no-freelist (nf-b:buf nf-h:heap))
      (match s
        [(heap-model (b:buf h:heap any))
-        (deep-nf-buf-eq nf-h h nf-b b #:debug d)])])))
+        (deep-nf-buf-eq nf-h h nf-b b)])]))
 
 ;; Testing synthesis with the no-freelist to heap-model compiler
 ; Make a schema for a heap-model.state with buf = 4 and state of size 8
@@ -951,7 +925,7 @@
     (displayln (freelist-state-shadow? concr f0))))
 
 
-; synthesize a heap-model.state that is shadowed by given concrete freelist
+; synthesize a heap-model.state given a concrete freelist
 ; 
 (define (df-test0+)
   (begin
