@@ -172,8 +172,8 @@
       #:program-counter [pc init-pc] 
       #:stack-pointer   [sp init-sp]
       prog    ; A racket list of declarations
-      buf     ; A racket list of seec lists to act as inputs to INPUT
       inputs  ; A racket list of inputs to main
+      buf     ; A racket list of seec lists to act as inputs to INPUT
       )
     (tinyA:eval-statement fuel
                           (tinyA:load (list->seec prog)

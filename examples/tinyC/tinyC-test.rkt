@@ -140,9 +140,11 @@ void guarded_fun(int auth) {
 (define password-checker-main
   (make-declaration (string "main")
                     (list) ; No input to main
-                    (list (tinyC ("auth" int))
+                    (list (tinyC ("candidate" int)) ; If 'candidate' is first in
+                                                    ; the list, we can overwrite
+                                                    ; the variables that come after.
                           (tinyC ("password" int))
-                          (tinyC ("candidate" int))
+                          (tinyC ("auth" int))
                           )
                     (list (tinyC (ASSIGN "auth" 0))
                           (tinyC (ASSIGN "password" 42))

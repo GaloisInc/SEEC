@@ -49,7 +49,7 @@
          )
 
 ; Can turn off contracts for definitions defined in this module
-(use-contracts-globally #f)
+(use-contracts-globally #t)
 
 (define-grammar tinyA #:extends syntax
 
@@ -313,7 +313,11 @@
     [else
      (let ([obj   (first objs)]
            [objs+ (rest  objs)])
-       (match mem
+       (seec-cons (tinyA (,l ,obj))
+                  (push-objs (+ 1 l) objs+ mem))
+       ; The sorted version below only works if the stack is in order, which is
+       ; not true currently based on the stack. Maybe that can be fixed.
+       #;(match mem
          [(tinyA nil) (seec-cons (tinyA (,l ,obj))
                                 (push-objs (+ 1 l) objs+ mem))]
 
@@ -321,7 +325,7 @@
           (cond
             ; Replace l↦obj+ with l↦obj
             [(equal? l l+) (seec-cons (tinyA (,l ,obj))
-                                      (push-objs (+ 1 l) obj+ mem+))]
+                                      (push-objs (+ 1 l) objs+ mem+))]
             ; Add l↦obj to beginning of the list and recurse with original mem,
             ; including l+↦obj+
             ;
@@ -473,8 +477,12 @@
        (cond
          [(and (list? input) (not (empty? input)))
           (do (<- l (eval-expr e st)) ; e should evaluate to a location
-              (push-objs l input (state-memory st))
-            )]
+              (<- m+ (push-objs l (seec->list (first input)) (state-memory st)))
+              (update-state st
+                            #:memory m+
+                            #:input-buffer (rest input)
+                            #:increment-pc #t
+                            ))]
          [else *fail*]
          ))]
 
@@ -549,6 +557,7 @@
   (debug-display "(eval-statement ~a)" fuel)
 
   (for/all ([insn (state->instruction st)])
+
   (do insn+ <- insn
       st+ <- (eval-statement-1 insn+ st)
       (cond
