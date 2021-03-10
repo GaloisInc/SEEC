@@ -7,6 +7,7 @@
 
 (require "bonsai3.rkt"
          "match.rkt"
+         "solver-aided.rkt"
          (only-in "string.rkt"
                   char
                   string
@@ -17,6 +18,7 @@
                   [string? racket/string?]
                   [char? racket/char?]
                   raise-argument-error
+                  parameterize
                   ))
 
 
@@ -684,9 +686,10 @@
     [(_ lang:id pat depth:expr)
      #`(let ([tree (make-tree! depth (grammar-max-width lang))])
          (assert
-          (match tree
-            [(lang pat) #t]
-            [_ #f]))
+          (parameterize ([check-unreachable #f])
+            (match tree
+              [(lang pat) #t]
+              [_ #f])))
          tree)]))
 
 (define-syntax (make-generator stx)
@@ -728,10 +731,12 @@
                     raise
                     exn:fail?
                     make-exn:fail
-                    current-continuation-marks))
+                    current-continuation-marks
+                    parameterize))
   (require (submod ".."))
   (require seec/private/match
-           seec/private/bonsai3)
+           seec/private/bonsai3
+           seec/private/solver-aided)
   (require (for-syntax syntax/parse))
 
 
@@ -770,7 +775,7 @@
     (syntax-parse stx
       [(_ val pat body)
        #'(check-not-exn
-          (thunk (unless (match val [pat body])
+          (thunk (unless (parameterize ([check-unreachable #f]) (match val [pat body]))
                    (raise (make-exn:fail "Failed match-check"
                                          (current-continuation-marks))))))]))
 

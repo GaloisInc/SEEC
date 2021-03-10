@@ -6,54 +6,81 @@
          "tinyC-tinyAssembly-compiler.rkt")
 (require rosette/lib/value-browser) ; debugging
 
-#;(define prog (list->seec simple-call-example))
-#;(define inputs (tinyC trace 3))
-#;(define inputs (seec-singleton 3))
-#;(parameterize ([debug? #t])
-  (tinyC:display-state (tinyC:run+ prog inputs)))
+(define (synthesize-arg-tinyC)
+  (let ([g (find-ctx-gadget tinyC-lang
+                            (λ (p tr) (equal? tr (seec-singleton 3)))
+                            #:expr (list->seec simple-call-example)
+                            #:context-bound 4
+                            )])
+    (display-gadget g displayln))
+  ; Should find (seec-singleton 3)
+  )
+#;(synthesize-arg-tinyC)
+(define (synthesize-args-factorial)
+  (parameterize ([debug? #t]
+                 [max-fuel 100])
+    (define-symbolic* val0 integer?)
+    (let* ([symbolic-args (list->seec (list val0))]
+           [g (find-ctx-gadget tinyC-lang
+                              (λ (p tr) (equal? tr (seec-singleton 6)))
+                              #:expr (list->seec factorial)
+;                              #:context-bound 2
+                              #:context symbolic-args
+;                              #:context (seec-singleton 3)
+                              )])
+      (display-gadget g displayln)))
+  ; Should find (seec-singleton 3)
+  )
+#;(synthesize-args-factorial) ; Currently does not finish symbolic execution, at
+                              ; least for a long time. TODO: optimize execution
+                              ; when running up against fuel
 
-#;(let ([g (find-gadget tinyC-lang
-                      (λ (p tr) (equal? tr (seec-singleton 3)))
-                      #:expr (list->seec simple-call-example)
-                      #:context-bound 4
-                      #:fresh-witness #f
-                      #:forall (list )
-                      )])
-  (display-gadget g displayln))
-; Should find (seec-singleton 3)
 
-#;(let ([g (find-ctx-gadget tinyC-lang
-                          (λ (p tr) (equal? tr (seec-singleton 3)))
-                          #:expr (list->seec simple-call-example)
-                          #:context-bound 4
-                          #:count 2
-                          )])
-  (display-gadget g displayln))
+(define (synthesize-arg-tinyA)
+  ; Try this computation with an arglist of a fixed length
+  #;(define symbolic-args (tinyA trace 3))
+  (define-symbolic* val1 integer?)
+  (define-symbolic* val2 integer?)
+  (define-symbolic* val3 integer?)
+  ; With argument list of length >1, does not terminate
 
+  #;(define symbolic-args (list->seec (list val1)))
+  (define symbolic-args (tinyA trace 3))
+  #;(define symbolic-args (list->seec (list val2 val3)))
 
-; Try this computation with an arglist of a fixed length
-#;(define symbolic-args (tinyA trace 3))
-(define-symbolic* val1 integer?)
-(define-symbolic* val2 integer?)
-(define-symbolic* val3 integer?)
-(define symbolic-args (list->seec (list val1))) ; We know how long the arg list is supposed to be, after all
-#;(let-values ([(g mem) (tinyC->tinyA-program (list->seec simple-call-example)
-                                            100)])
-  (render-value/window mem)) ; At this stage: totally concrete
-#;(parameterize ([debug? #t])
-  (define compiled-prog ((language-link tinyA-lang)
-                         symbolic-args
-                         ((compiler-compile tinyC-compiler) (list->seec simple-call-example))
-                         ))
-  (render-value/window (tinyA:state-memory compiled-prog))
-  (displayln "done"))
-                       
-
-(parameterize ([debug? #t])
-  (let ([g (find-ctx-gadget tinyA-lang
+  (parameterize ([debug? #t]
+                 [max-fuel 3] ; with a low enough fuel, can still synthesize
+                              ; args even with wrong # of arguments
+                 )
+    (let ([g (find-ctx-gadget tinyA-lang
                           (λ (p tr) (equal? tr (seec-singleton 3)))
                           #:expr ((compiler-compile tinyC-compiler) (list->seec simple-call-example))
                           #:context symbolic-args
                           #:context-bound 3
                           )])
-    (display-gadget g displayln)))
+      (display-gadget g displayln)))
+  )
+#;(synthesize-arg-tinyA)
+
+  
+(define (synthesize-weird-behavior-call)
+  (parameterize ([debug? #t]
+                 [max-fuel 4])
+    (let ([g (find-weird-computation tinyC-compiler
+                                     (list->seec simple-call-example)
+                                     #:target-context-bound 3
+                                     )])
+      (display-weird-behavior g displayln))))
+; Expected: No weird behavior found
+#;(synthesize-weird-behavior-call)
+
+(define (synthesize-weird-behavior-factorial)
+  (parameterize ([debug? #t]
+                 [max-fuel 3])
+    (let ([g (find-weird-computation tinyC-compiler
+                                     (list->seec factorial)
+                                     #:target-context-bound 3
+                                     )])
+      (display-weird-behavior g displayln))))
+#;(synthesize-weird-behavior-factorial)
+; Expected: no weird behavior found

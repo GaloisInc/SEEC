@@ -3,13 +3,14 @@
 (provide match
          match-let*
          define-match-expander
-         (for-syntax prop:match-expander)
-         )
+         (for-syntax prop:match-expander))
 
 (require (for-syntax racket/syntax
                      syntax/parse
                      syntax/id-table
                      (only-in racket/match/stxtime make-struct-type-property/accessor)))
+
+(require "solver-aided.rkt")
 
 (begin-for-syntax
   (define-values (prop:match-expander match-expander? match-expander-proc) 
@@ -177,4 +178,4 @@
                  (cond
                    [check body]
                    ...
-                   [else (assert #f "inexhaustive match")]))))))]))
+                   [else (unreachable "inexhaustive match")]))))))]))

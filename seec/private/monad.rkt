@@ -10,6 +10,7 @@
          failure/c
          failure?
          any-failure?
+         assert/failure
          failure-foldl
          )
 
@@ -21,6 +22,11 @@
 (define (failure/c contract?) (or/c failure? contract?))
 (define (bool-bind m k)
   (if (failure? m) m (k m)))
+
+(define (assert/failure cond)
+  (if cond
+      (void)
+      *fail*))
 
 ; The failure monad.
 ; There is no need to wrap a pure value in `pure` or `return`.

@@ -16,6 +16,7 @@
 (require (for-syntax (only-in racket/base
                               make-parameter
                               )))
+(require "solver-aided.rkt")
 
 (provide debug
          debug-display

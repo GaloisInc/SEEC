@@ -15,7 +15,7 @@
                   raise-arguments-error))
 (require (only-in racket/base
                   [log unsafe/log]))
-(require "match.rkt")
+(require "match.rkt" "solver-aided.rkt")
 (require (for-syntax syntax/parse))
 (require rosette/lib/value-browser)
 (require racket/contract)
