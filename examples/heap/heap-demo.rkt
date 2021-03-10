@@ -147,7 +147,7 @@
 
 (define (test-3)
   (begin
-    (define s2* d+3)
+    (define s2* d+4*)
     (define i2* (heap-model interaction 4))
     (define s2+* (interpret-interaction++ i2* s2*))
     (define sol (solve (assert (not (valid-state 3 s2+*)))))

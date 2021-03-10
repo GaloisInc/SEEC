@@ -930,6 +930,7 @@
 ; Useful to test valid-state on symbolic i
 ; took 119351 with nth returning #f
 ; 3/8 took 28009 with the failure monad
+; 3/10 with racket 7.5, took 65s
 (define (d-test3)
   (begin
     (define b3* (heap-model buf 5))
@@ -949,6 +950,7 @@
 
 ; Find a symbolic state which is work and doesn't work for valid-state
 ; 3/8 works in 39 s
+; 3/10 [with 7.5]  65s
 (define (d-test4)
   (begin
     (define b3* (heap-model buf 5))
@@ -961,7 +963,10 @@
     (define s3 (concretize s3* sol))
     (clear-asserts!)
     (displayln "State:")
-    (display-state s3)))
+    (display-state s3)
+    (display "Valid? ")
+    (displayln (valid-state 3 s3))
+    (display "done d-test4 ")))
 
 ; 3/8 works in 54s
 (define (d-test4+)

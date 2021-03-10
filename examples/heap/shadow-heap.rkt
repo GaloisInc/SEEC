@@ -271,7 +271,7 @@
 (define h0* (no-freelist buf 5))
 
 ; trying to synthesize a no-freelist.state which is the same as a concrete state
-; works in 2.9s (now 18s????)
+; works in 2.9s (now 18s????, 03/10 [7.5] 20s)
 (define (nf-test0)
   (begin
 ;    (define b0* (no-freelist buf 4))
@@ -289,12 +289,15 @@
     (display-nf-state s1)
     (displayln "Ref:")
     (display-nf-state concr)               
-    (equal? s1 concr)))
+    (display "Equal to concr? ")
+    (displayln (equal? s1 concr))
+    (display "Done nf-test0 ")
+    ))
 ;(nf-test0)
 
 
 ; Trying to synthesize a state which is shallowly equal to a concrete heap-model.state
-; works in 3s (mar 5)
+; works in 3s (mar 5), 19s on mar 10 [7.5]
 ; Note that this could be trivially solved by having s1*'s heap be all pointers
 (define (nf-test1)
   (begin
@@ -308,10 +311,12 @@
     (clear-asserts!)
     (displayln "State:")
     (display-nf-state s1)
-    (displayln "Shallow eq:")
+    (display "Shallow eq: ")
     (displayln (shallow-nf-state-eq s1 d+5))
-    (displayln "Deep eq:")
-    (deep-nf-state-eq s1 d+5)))
+    (display "Deep eq: ")
+    (displayln (deep-nf-state-eq s1 d+5))
+    (display "Done nf-test1 ")
+    ))
 
 ; Trying to synthesize a heap-model.state which is shallowly equal to a concrete no-freelist.state
 ; works in 5.1s (19s on mar 5)
@@ -327,20 +332,21 @@
     (define sol (solve (assert (shallow-nf-state-eq concr s1*))))
     (define s1 (concretize s1* sol))
     (clear-asserts!)
-    (displayln "State:")
+    (displayln "Synthesized State:")
     (display-state s1)
-    (displayln "Ref:")
+    (displayln "Concrete State:")
     (display-nf-state concr)
-    (displayln "Shallow eq:")
+    (display "Shallow eq: ")
     (parameterize ([debug? #f])      
       (displayln (shallow-nf-state-eq concr s1)))
-    (displayln "Deep eq:")
+    (display "Deep eq: ")
     (parameterize ([debug? #f])      
-      (deep-nf-state-eq concr s1))))
+      (displayln (deep-nf-state-eq concr s1)))
+    (display "Done nf-test1+")))
 
 
 ;Trying to synthesize a state which is equivalent to a concrete heap-model.state
-; works in 100s (3/9) 
+; works in 100s (3/9) 29s (3/10 on racket 7.5)
 (define (nf-test2)
   (begin
     (define s2* (no-freelist state 7))
@@ -355,11 +361,13 @@
     (display-nf-state s2)
     (displayln "Ref:")
     (display-state concr)
-    (displayln "Deep eq:")
-    (deep-nf-state-eq s2 concr)))
+    (display "Deep eq: ")
+    (displayln (deep-nf-state-eq s2 concr))
+    (display "Done nf-test2 ")
+    ))
 
 ;Trying to synthesize a heap-model.state which is equivalent to a concrete no-freelist.state
-; works
+; works in 18 s (3/10 on 7.5)
 (define (nf-test2+)
   (begin
     (define s2* (heap-model state 7))
@@ -373,12 +381,15 @@
     (clear-asserts!)
     (displayln "State:")
     (display-state s2)
-    (displayln "Ref:")
-    (display-nf-state concr)               
-    (deep-nf-state-eq concr s2)))
+    (displayln "Concrete:")
+    (display-nf-state concr)
+    (display "Deep eq: ")
+    (displayln (deep-nf-state-eq concr s2))
+    (display "Done nf-test2+")
+    ))
 
 ; synthesize state, interaction and behavior to achieve a certain behavior (obs = 5)
-; works but slow!
+; works in 32s (3/10 7.5)
 (define (nf-test3)
   (begin
     (define s3* (no-freelist state 6))
@@ -484,7 +495,7 @@
 
 
 ;; compare nnvalues out of shadow-heap.value and heap-model.value
-;; returns #:default (#t) if nf-v is a non-null pointer
+;; returns def if nf-v is a non-null pointer compared to an integer
 (define/debug #:suffix (shallow-nf-val-eq+ nf-v v def)  
     (begin
       (match nf-v
@@ -500,8 +511,12 @@
             #t]
            [(heap-model any)
             #f])]
-        [(no-freelist any)
-         def])))
+        [(no-freelist (l:natural o:natural))
+         (match v
+           [(heap-model null)
+            #f]
+           [(heap-model any)
+            def])])))
  
 (define shallow-nf-val-eq
   (lambda (nf-v
@@ -683,6 +698,7 @@
         (displayln "Unsat"))))
 
 ; define a small state and no-freelist state that have equivalent values in 0th slot
+; didn't terminate on 3/10
 (define (ex2-mini)
   (define b-mini (heap-model state 4))
   (define nf-mini (no-freelist state 4))
@@ -910,7 +926,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; synthesize the shadow freelist of a concrete heap-model.state
-; works (34 seconds)
+; works (34 seconds) 17s (3/10 on 7.5)
 (define (df-test0)
   (begin
     (define concr d+4*)
@@ -921,12 +937,14 @@
     (display-state concr)
     (displayln "Freelist:")
     (displayln f0)
-    (displayln "Shadows?:")
-    (displayln (freelist-state-shadow? concr f0))))
+    (display "Shadows?:")
+    (displayln (freelist-state-shadow? concr f0))
+    (display "Done df-test0 ")
+    ))
 
 
 ; synthesize a heap-model.state given a concrete freelist
-; 
+; works in 20s (3/10 on 7.5)
 (define (df-test0+)
   (begin
     (define concr f)
@@ -938,5 +956,7 @@
     (display-state d0)
     (displayln "Freelist:")
     (displayln concr)
-    (displayln "Shadows?:")
-    (displayln (freelist-state-shadow? d0 concr))))
+    (display "Shadows?:")
+    (displayln (freelist-state-shadow? d0 concr))
+    (display "Done df-test0+ ")
+    ))
