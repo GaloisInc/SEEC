@@ -154,12 +154,13 @@
        )]
     ))
 
-(define/contract (tinyA:load P pc0 sp0 vals)
+(define/contract (tinyA:load P pc0 sp0 buf vals)
   (-> tinyC-prog? tinyA-program-counter? tinyA-stack-pointer? 
+      (listof (curry seec-list-of? integer?))
       (listof tinyA-val?)
       (failure/c tinyA:state?))
   (let-values ([(G mem) (tinyC->tinyA-program P pc0)])
-    (tinyA:load-compiled-program G mem sp0 vals)))
+    (tinyA:load-compiled-program G mem sp0 buf vals)))
 
 
  ; constraint: sp <= pc?
@@ -171,12 +172,14 @@
       #:program-counter [pc init-pc] 
       #:stack-pointer   [sp init-sp]
       prog    ; A racket list of declarations
+      buf     ; A racket list of seec lists to act as inputs to INPUT
       inputs  ; A racket list of inputs to main
       )
     (tinyA:eval-statement fuel
                           (tinyA:load (list->seec prog)
                                       pc
                                       sp
+                                      buf
                                       inputs))))
 
 
@@ -202,10 +205,9 @@
   ; locations. Contexts in the target are also argument lists that contain only
   ; integer values
   #:context-relation (λ (ctx-src ctx-target)
-                       (trace-relation ctx-src ctx-target))
+                       (equal? ctx-src ctx-target))
   ; Expressions in the source are global stores, while in the target they are
   ; global stores, stack pointer, and memory together
   #:compile (λ (g-src) (let-values ([(g-target mem) (tinyC->tinyA-program g-src init-pc)])
                          (tinyA (,g-target ,init-sp ,mem))))
   )
-  

@@ -16,6 +16,7 @@
   ; Should find (seec-singleton 3)
   )
 #;(synthesize-arg-tinyC)
+
 (define (synthesize-args-factorial)
   (parameterize ([debug? #t]
                  [max-fuel 100])
@@ -44,31 +45,32 @@
   (define-symbolic* val3 integer?)
   ; With argument list of length >1, does not terminate
 
-  #;(define symbolic-args (list->seec (list val1)))
-  (define symbolic-args (tinyA trace 3))
+  (define symbolic-args (list->seec (list val1)))
+  #;(define symbolic-args (tinyA trace 3))
   #;(define symbolic-args (list->seec (list val2 val3)))
 
   (parameterize ([debug? #t]
-                 [max-fuel 3] ; with a low enough fuel, can still synthesize
+                 [max-fuel 10] ; with a low enough fuel, can still synthesize
                               ; args even with wrong # of arguments
                  )
     (let ([g (find-ctx-gadget tinyA-lang
                           (λ (p tr) (equal? tr (seec-singleton 3)))
                           #:expr ((compiler-compile tinyC-compiler) (list->seec simple-call-example))
-                          #:context symbolic-args
+                          #:context (tinyA (,symbolic-args nil))
                           #:context-bound 3
                           )])
       (display-gadget g displayln)))
   )
+; Expected: (seec-singleton 3)
 #;(synthesize-arg-tinyA)
 
   
 (define (synthesize-weird-behavior-call)
   (parameterize ([debug? #t]
-                 [max-fuel 4])
+                 [max-fuel 10])
     (let ([g (find-weird-computation tinyC-compiler
                                      (list->seec simple-call-example)
-                                     #:target-context-bound 3
+                                     #:target-context-bound 2
                                      )])
       (display-weird-behavior g displayln))))
 ; Expected: No weird behavior found
@@ -76,7 +78,7 @@
 
 (define (synthesize-weird-behavior-factorial)
   (parameterize ([debug? #t]
-                 [max-fuel 3])
+                 [max-fuel 4]) ; Should increase bound to allow feasibility
     (let ([g (find-weird-computation tinyC-compiler
                                      (list->seec factorial)
                                      #:target-context-bound 3

@@ -230,9 +230,9 @@
 ;; States ;;
 ;;;;;;;;;;;;
 
-; The input-buffer is a list of vallists that are fed to calls to INPUT. This is
-; a simple interaction model that cannot react dynamically to the program
-; execution.
+; The input-buffer is a (racket) list of 'intlist's that are fed to calls to
+; INPUT. This is a simple interaction model that cannot react dynamically to the
+; program execution.
 (struct state (statement context input-buffer trace fresh-var)
   #:transparent)
 (define/contract (state->context st)

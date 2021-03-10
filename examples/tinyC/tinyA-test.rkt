@@ -27,20 +27,26 @@
 
   ; Check evaluation
   (parameterize ([debug? #f])
-    (define g-result (tinyA:run assign-output-example (list 1)))
+    (define g-result (tinyA:run assign-output-example
+                                (list)
+                                (list 1)))
     #;(display-state g-result)
     (check-equal? (tinyA:state-trace g-result)
                   (list->seec (list 99))))
 
   (parameterize ([debug? #f])
-     (define call-example-output (tinyA:run simple-call-example (list -5)))
+     (define call-example-output (tinyA:run simple-call-example
+                                            (list)
+                                            (list -5)))
      #;(display-state call-example-output)
      (check-equal? (tinyA:state-trace call-example-output)
                    (list->seec (list -5))))
 
   (parameterize ([debug? #f])
-    (check-equal? (tinyA:state-trace (tinyA:run factorial
-                                                (list 3)))
+    (check-equal? (tinyA:state-trace (tinyA:run
+                                      factorial
+                                      (list)
+                                      (list 3)))
                   (seec-singleton 6)))
 
 
@@ -49,7 +55,8 @@
                                               init-pc
                                               )])
     (let ([p ((language-link tinyA-lang)
-              (tinyA+ (cons -5 nil))
+              (tinyA+ ((cons -5 nil)
+                       nil))
               (tinyA+ (,G ,init-sp ,mem))
               )])
       (check-equal? ((language-evaluate tinyA-lang) p)

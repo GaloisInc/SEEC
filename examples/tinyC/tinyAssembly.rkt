@@ -67,7 +67,10 @@
       (JMPZ expr loc)
       ; Outputs the value of 'ex' to the output log
       (OUTPUT expr)
-      ; A no-op
+      ; Given a pointer to a buffer in memory, accept input from the environment
+      ; and write to the buffer
+      (INPUT expr)
+      ;A no-op
       SKIP)
 
   ;;;;;;;;;;;;;
@@ -111,7 +114,10 @@
 ;; State ;;
 ;;;;;;;;;;;
 
-(struct state (global-store pc sp memory trace)
+; The input-buffer is a (racket) list of 'intlist's that are fed to calls to
+; INPUT. This is a simple interaction model that cannot react dynamically to the
+; program execution.
+(struct state (global-store pc sp memory input-buffer trace)
   #:transparent)
 
 (define update-state
@@ -119,21 +125,23 @@
          #:pc           [pc (if inc-pc
                                 (+ 1 (state-pc st))
                                 (state-pc st))]
-         #:sp         [sp (state-sp st)]
-         #:memory     [mem (state-memory st)]
-         #:cons-trace [v #f]
-         #:trace      [tr  (if v
-                               (seec-cons v (state-trace st))
-                               (state-trace st))]
+         #:sp           [sp (state-sp st)]
+         #:memory       [mem (state-memory st)]
+         #:cons-trace   [v #f]
+         #:input-buffer [buf (state-input-buffer st)]
+         #:trace        [tr  (if v
+                                 (seec-cons v (state-trace st))
+                                 (state-trace st))]
          )
-    (state (state-global-store st) pc sp mem tr)))
+    (state (state-global-store st) pc sp mem buf tr)))
 (define initial-state
   (λ (#:global-store G
       #:pc           pc
       #:sp           sp
       #:memory       mem
+      #:input-buffer [buf (list )]
       )
-    (state G pc sp mem seec-empty)))
+    (state G pc sp mem buf seec-empty)))
 
 ;;;;;;;;;;;;;;;;;;;;;
 ;; Pretty printing ;;
@@ -460,6 +468,16 @@
                        #:cons-trace v)
        )]
 
+    [(tinyA (INPUT e:expr))
+     (let ([input (state-input-buffer st)])
+       (cond
+         [(and (list? input) (not (empty? input)))
+          (do (<- l (eval-expr e st)) ; e should evaluate to a location
+              (push-objs l input (state-memory st))
+            )]
+         [else *fail*]
+         ))]
+
     [(tinyA (JMPZ e:expr l:loc))
      (match (eval-expr e st)
        [(tinyA 0) (update-state st #:pc l)]
@@ -505,7 +523,6 @@
                          #:memory m2)))]
 
     [(tinyA RETURN)
-     (debug-display "RETURN")
          ; Get the current frame layout
      (do (<- F1 (state->frame st))
          ; Locate the return address on the stack by adding the frame size to
@@ -534,24 +551,22 @@
   (for/all ([insn (state->instruction st)])
   (do insn+ <- insn
       st+ <- (eval-statement-1 insn+ st)
-      ; only decrement fuel on function calls
-      new-fuel <- (if (CALL? insn+) (decrement-fuel fuel)
-                      fuel)
       (cond
         [(equal? st+ #t) ; This means the instruction halted with HALT
          st]
         [(<= fuel 0)
          *fail*] ; Fuel ran out. Return st here instead?
         [else
-         (eval-statement new-fuel st+)]
+         (eval-statement (decrement-fuel fuel) st+)]
         ))))
 
 
 
 ; Given a memory with a compiled program, initialize the stack at 'i_s' and
-; invoke 'main' with arguments 'v ...'
-(define/contract (load-compiled-program G mem sp vals)
-  (-> tinyA-global-store? tinyA-memory? tinyA-stack-pointer? (listof tinyA-val?)
+; invoke 'main' with arguments 'v ...' and with an input buffer 'buf' (racket
+; list of tinyA-list<integer>)
+(define/contract (load-compiled-program G mem sp buf vals)
+  (-> tinyA-global-store? tinyA-memory? tinyA-stack-pointer? list? (listof tinyA-val?)
       (failure/c state?)
       )
   (do (<- decl (proc-name->declaration (string "main") G))
@@ -560,13 +575,17 @@
       (initial-state #:global-store G
                      #:pc           (declaration->pc decl)
                      #:sp           sp+
-                     #:memory       mem+)
+                     #:memory       mem+
+                     #:input-buffer buf)
       ))
 
 
 (define-grammar tinyA+ #:extends tinyA
   (expr ::= (global-store stack-pointer memory)) ; the memory fragment associated with a compiled program
-  (ctx  ::= list<val>)
+  (vallist ::= list<val>)
+  ; The context consists of (1) the arguments to be passed to 'main'; and (2) a
+  ; list of lists of values that provide input to the INPUT command
+  (ctx  ::= (vallist list<vallist>))
   )
 
 
@@ -576,9 +595,10 @@
   #:context ctx #:size 3 ; The trace acts as as the argument list
   ; A whole program is a (failure/c state?)
   #:link (λ (ctx expr)
-           (match expr
-             [(tinyA (g:global-store sp:stack-pointer m:memory))
-              (load-compiled-program g m sp (seec->list ctx))]
+           (match (cons ctx expr)
+             [(cons (tinyA+ (args:vallist input:list<vallist>))
+                    (tinyA (g:global-store sp:stack-pointer m:memory)))
+              (load-compiled-program g m sp (seec->list input) (seec->list args))]
              ))
   #:evaluate (λ (p) (do st <- p
                         st+ <- (eval-statement (max-fuel) st)
