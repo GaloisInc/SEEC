@@ -238,8 +238,10 @@
 ; if not, alloc a new block at i,
 ; o.w., see size in i, and continue with i' = i + size + 1
 ; return the pointer to new block X new heap
+
+#| OLD VERSION OF interpret-alloc-no-free WHICH DID NOT TERMINATE WITH SYMBOLIC i (due to modular arithmetic) 
 (define (interpret-alloc-no-free h)
-  (define (interpret-alloc-no-free+ fuel h i)
+  (define (interpret-alloc-no-free+ h i)
     ;(displayln (format "In alloc-no-free at ~a" i))
     (if (< fuel 1)
         (assert #f)
@@ -253,10 +255,10 @@
                     h+4 <- (if (> size 4) (replace h+++ (+ i 5) (- size 4)) h+++)
                     ;(displayln (format "allocated at ~a a block of size ~a" i 2))
                     (cons (+ i 2) h+4))
-                (interpret-alloc-no-free+ (- fuel 1) h (+ i size 2))))))
-  (interpret-alloc-no-free+ 10 h 0))
+                (interpret-alloc-no-free+ h (+ i size 2))))))
+  (interpret-alloc-no-free+ h 0)) |#
 
-(define/debug (interpret-alloc-no-free-rec h)
+(define/debug (interpret-alloc-no-free h)
   (match h
     [(heap-model (cons in-use:value h+1:heap))
      (match h+1
@@ -272,11 +274,11 @@
                         [(heap-model (cons p3:value h+5:heap))
                          (match h+5
                            [(heap-model (cons p4:value h+6:heap))
-                            (cons 2 (heap-model (cons 1 (cons 2 (cons 0 (cons 0 (cons 0 (cons ,(- size 4) ,h+6))))))))])])
-                      ; block is fully used
-                      (cons 2 (heap-model (cons 1 (cons 2 (cons 0 (cons 0 ,h+4)))))))])])
+                            (cons 2 (heap-model (cons 1 (cons 2 (cons ,p1 (cons ,p2 (cons 0 (cons ,(- size 4) ,h+6))))))))])])
+                      ; free block is fully used (i.e. 2 or 3...)
+                      (cons 2 (heap-model (cons 1 (cons ,size ,h+2)))))])])
             ; block is in use or too small, move to rest of heap
-            (let* ([r (interpret-alloc-no-free-rec (skip size h+2))])
+            (let* ([r (interpret-alloc-no-free (skip size h+2))])
               (match r
                 [(cons i hr)
                  (let* ([new-i (+ i (+ size 2))]
@@ -353,7 +355,7 @@
                b+ <- (ofail (replace b bl f))
                (heap-model (,b+ ,(cdr ph+) ,(car ph+))))]
           [(heap-model null)
-           (let* ([ph+ (interpret-alloc-no-free-rec h)]
+           (let* ([ph+ (interpret-alloc-no-free h)]
                   [b+  (replace b bl (heap-model ,(car ph+)))])
                (heap-model (,b+ ,(cdr ph+) ,f)))])]
        [(heap-model (set bl:buf-loc val:nnvalue))
@@ -386,6 +388,18 @@
      (interpret-interaction i+ (interpret-action a s))]
     [(heap-model nil)
      s]))
+
+
+; like interpret interaction, but check for validity on entry (so every step except last)
+(define (interpret-interaction-valid i s)
+      (match i
+        [(heap-model (cons a:action i+:interaction))
+         (if (valid-state 3 s)
+             (interpret-interaction-valid i+ (interpret-action a s))
+             (assert #f))]
+        [(heap-model nil)
+         s]))
+
 
 (define (interpret-observation o s)
   (match o 
@@ -921,15 +935,46 @@
 ; d-test2 except with a symbolic state
 ; 3/8 unsat in 41940 -- which shouldn't be the case
 ; 3/9 couldn't finish...
+; 3/11 took 218s to find a write to "size"
 (define (d-test2+)
   (begin
-    (define b3* (heap-model buf 5))
+    (define b3* (heap-model buf 4))
     (define h3* (heap-model heap 9))
     (define fp3* (heap-model pointer 1))
     (define s2* (heap-model (,b3* ,h3* ,fp3*)))
     (assert (valid-state 3 s2*))
-    (define i2* (heap-model interaction 4))
+    (define i2* (heap-model interaction 3))
     (define s2+* (interpret-interaction i2* s2*))
+;    (assert (heap-model-valid-interaction i2* s2*))
+;    (assert (heap-model-safe-interaction i2* s2*))
+    (define sol (solve (assert (not (valid-state 3 s2+*)))))
+    (if (unsat? sol)
+        (displayln "unsat")
+        (begin
+          (define s2 (concretize s2* sol))
+          (define i2 (concretize i2* sol))
+          (define s2+ (concretize s2+* sol))
+          (clear-asserts!)
+          (displayln "State:")
+          (display-state s2)
+          (displayln "Interaction:")
+          (displayln i2)
+          (displayln (heap-model-safe-interaction i2 s2))
+          (displayln (heap-model-valid-interaction i2 s2))
+          (displayln "State+:")
+          (display-state s2+)
+          (displayln (valid-state 3 s2+))))))
+
+; like d-test2+ but with interpret-interaction-valid
+(define (d-test2+valid)
+  (begin
+    (define b3* (heap-model buf 4))
+    (define h3* (heap-model heap 9))
+    (define fp3* (heap-model pointer 1))
+    (define s2* (heap-model (,b3* ,h3* ,fp3*)))
+    (define i2* (heap-model interaction 3))
+    (assert (valid-state 3 s2*))
+    (define s2+* (interpret-interaction-valid i2* s2*))
 ;    (assert (heap-model-valid-interaction i2* s2*))
 ;    (assert (heap-model-safe-interaction i2* s2*))
     (define sol (solve (assert (not (valid-state 3 s2+*)))))
