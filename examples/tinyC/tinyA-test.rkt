@@ -49,8 +49,10 @@
                                       (list)))
                   (seec-singleton 6)))
 
+  ;;;;;;;;;;;;;;;;;;;;
+  ; Password checker ;
+  ;;;;;;;;;;;;;;;;;;;;
 
-  ; Password checker
   (parameterize ([debug? #f])
     (check-equal? (tinyA:state-trace (tinyA:run password-checker
                                                 (list)
@@ -84,7 +86,21 @@
                               ; third is 1; this will overwrite auth directly
                   (seec-singleton 1)))
 
-
+  (check-equal? (tinyA:state-trace (tinyA:run password-checker-with-arg
+                                              (list 84) ; the password
+                                              (list (seec-singleton 84)) ; the guess
+                                              ))
+                (seec-singleton 1))
+  (check-equal? (tinyA:state-trace (tinyA:run password-checker-with-arg
+                                              (list 84) ; the password
+                                              (list (seec-singleton 42)) ; the guess (wrong)
+                                              ))
+                (seec-singleton 0))
+  (check-equal? (tinyA:state-trace (tinyA:run password-checker-with-arg
+                                              (list 84) ; the password
+                                              (list (list->seec (list 42 1))) ; auth gets set to '1'
+                                              ))
+                (seec-singleton 1))
 
 
 

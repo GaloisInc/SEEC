@@ -9,6 +9,7 @@
          assign-output-decl
          simple-call-example
          password-checker
+         password-checker-with-arg
          )
 
 (module+ test (require rackunit
@@ -161,8 +162,29 @@ void guarded_fun(int auth) {
                     (list )
                     (list (tinyC (OUTPUT "auth"))) ; ...
                     ))
+
 (define password-checker (list password-checker-main
                                password-checker-body))
+
+(define password-checker-main-with-arg
+  (make-declaration (string "main")
+                    (list (tinyC ("password" int))) ; The password is an input to main, instead of being hard-coded
+                    (list (tinyC ("candidate" int)) ; If 'candidate' is first in
+                                                    ; the list, we can overwrite
+                                                    ; the variables that come after.
+                          (tinyC ("auth" int))
+                          )
+                    (list (tinyC (ASSIGN "auth" 0))
+                          (tinyC (INPUT (& "candidate")))
+                          (tinyC (IF (= "candidate" "password")
+                                     (ASSIGN "auth" 1)
+                                     SKIP))
+                          (tinyC (CALL "guarded-fun"
+                                       (cons "auth" nil)))
+                          )))
+
+(define password-checker-with-arg (list password-checker-main-with-arg
+                                        password-checker-body))
 
 
 
