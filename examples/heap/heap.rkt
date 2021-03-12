@@ -75,6 +75,10 @@
       [(cons a b)
        (f a b)])))
 
+(define snoc
+  (lambda (a b) (cons b a)))
+
+
 ;; lifted list operations
 (define (length s)
   (match s
@@ -128,13 +132,14 @@
       (nth s i)
       *fail*))
 
+
 ; add v at the end of list s
-(define (snoc s v)
+(define (enqueue s v)
     (match s
       [(heap-model nil)
        (heap-model (cons ,v nil))]
       [(heap-model (cons hd:any s+:any))
-       (heap-model (cons ,hd ,(snoc s+ v)))]))
+       (heap-model (cons ,hd ,(enqueue s+ v)))]))
 
 
 ; replace the ith element in l with v
@@ -416,12 +421,20 @@
 
 
 
+(define-language heap-ss-lang
+  #:grammar heap-model
+  #:expression action #:size 2
+  #:context state #:size 6 #:where (lambda (s) (valid-state 3 s))
+  #:link snoc
+  #:evaluate (uncurry interpret-interaction))
+
 (define-language heap-lang
   #:grammar heap-model
   #:expression interaction #:size 4
-  #:context state #:size 8
-  #:link cons
+  #:context state #:size 6 #:where (lambda (s) (valid-state 3 s))
+  #:link snoc
   #:evaluate (uncurry interpret-interaction))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Alternative interaction language (where heap-loc provided directly)

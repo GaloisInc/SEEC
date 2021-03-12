@@ -53,7 +53,7 @@
 
 (define (no-freelist-alloc h)
   (let* ([l (length h)]
-         [h+ (snoc h empty-payload)])
+         [h+ (enqueue h empty-payload)])
     (cons (no-freelist ,l) h+)))
 
 ; return the value at location hl in h
@@ -187,8 +187,19 @@
   #:grammar no-freelist
   #:expression interaction #:size 4
   #:context state #:size 8 #:where no-freelist-valid-state
-  #:link cons
+  #:link snoc
   #:evaluate (uncurry no-freelist-interaction))
+
+
+(define-language no-freelist-ss-lang
+  #:grammar no-freelist
+  #:expression action #:size 2
+  #:context state #:size 8 #:where no-freelist-valid-state
+  #:link snoc
+  #:evaluate (uncurry no-freelist-interaction))
+
+
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -385,7 +396,7 @@
     (display-nf-state concr)
     (display "Deep eq: ")
     (displayln (deep-nf-state-eq concr s2))
-    (display "Done nf-test2+")
+    (display "Done nf-test2+ ")
     ))
 
 ; synthesize state, interaction and behavior to achieve a certain behavior (obs = 5)
@@ -411,6 +422,91 @@
     (displayln o3)
     (displayln "Behavior:")
     (displayln beh3)))
+
+
+; 113s (3/11)
+(define (nf-test4-)
+  (begin
+    (define nfs* (no-freelist state 6))
+    (define s* (heap-model state 9))
+    (assert (valid-state 3 s*))
+    (define sol (solve (assert (deep-nf-state-eq nfs* s*))))
+    (if (unsat? sol)
+        (displayln "UNSAT")
+        (begin
+          (define nfs (concretize nfs* sol))
+          (define s (concretize s* sol))
+          (displayln "NF State:")
+          (display-nf-state nfs)
+          (displayln "State:")
+          (display-state s)
+          (display "Done nf-test4- ")))))
+    
+(define (nf-test4)
+  (begin
+    (define nfs* (no-freelist state 6))
+    (define s* (heap-model state 9))
+    (assert (valid-state 3 s*))
+    (assert (deep-nf-state-eq nfs* s*))
+    (define a* (heap-model action 2))
+    (define nfs+* (no-freelist-action a* nfs*))
+    (define s+* (interpret-action a* s*))
+    (define sol (solve (assert (not (deep-nf-state-eq nfs+* s+*)))))
+        (if (unsat? sol)
+        (displayln "UNSAT")
+        (begin
+          (define nfs (concretize nfs* sol))
+          (define s (concretize s* sol))
+          (define a (concretize a* sol))
+          (define nfs+ (concretize nfs+* sol))
+          (define s+ (concretize s+* sol))
+          (displayln "NF State:")
+          (display-nf-state nfs)
+          (displayln "State:")
+          (display-state s)
+          (display "Action: ")
+          (displayln a)
+          (displayln "NF State+:")
+          (display-nf-state nfs+)
+          (displayln "State+:")
+          (display-state s+)
+          (display "Done nf-test4 ")))))
+
+
+(define (nf-test4-compiled)
+  (begin
+    (define nfs* (no-freelist state 6))
+    (assert (no-freelist-valid-state nfs*))
+    (define s* (compile-nf-state-wild 2 nfs*))
+;    (assert (valid-state 3 s*)) ; should be taken care of by the assert on nfs*
+    (define a* (heap-model action 2))
+    (define nfs+* (no-freelist-action a* nfs*))
+    (define s+* (interpret-action a* s*))
+    (define sol (solve (assert (not (deep-nf-state-eq nfs+* s+*)))))
+        (if (unsat? sol)
+        (displayln "UNSAT")
+        (begin
+          (define clist (concretize (list nfs* s* a* nfs+* s+*) sol))
+          (define nfs (first clist))
+          (define s (second clist))
+          (define a (third clist))
+          (define nfs+ (fourth clist))
+          (define s+ (fifth clist))
+          (displayln "NF State:")
+          (display-nf-state nfs)
+          (displayln "State:")
+          (display-state s)
+          (display "Action: ")
+          (displayln a)
+          (displayln "NF State+:")
+          (display-nf-state nfs+)
+          (displayln "State+:")
+          (display-state s+)
+          (displayln "Deep EQ?")
+          (parameterize ([debug? #t])      
+            (displayln (deep-nf-state-eq nfs+ s+)))
+          (display "Done nf-test4-compiled ")))))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -574,12 +670,6 @@
             (shallow-nf-val-eq nfb-z b-z #:default #f))])]))
 
 
-(define-compiler nf-to-heap-compiler
-  #:source no-freelist-lang
-  #:target heap-lang
-  #:behavior-relation buf-z-nf-eq
-  #:context-relation shallow-nf-state-eq
-  #:compile (lambda (x) x))
 
 
 
@@ -715,6 +805,36 @@
                         #:source-context nfs*
                         #:target-context s*)
 
+(define-compiler nf-to-heap-compiler
+  #:source no-freelist-lang
+  #:target heap-lang
+  #:behavior-relation shallow-nf-state-eq ;buf-z-nf-eq
+  #:context-relation shallow-nf-state-eq
+  #:compile (lambda (x) x))
+
+
+(define-compiler nf-to-heap-ss-compiler
+  #:source no-freelist-ss-lang
+  #:target heap-ss-lang
+  #:behavior-relation shallow-nf-state-eq ;buf-z-nf-eq
+  #:context-relation shallow-nf-state-eq
+  #:compile (lambda (x) x))
+
+; 1/11 Did not changed changed component
+(define (fsyn-ex1)
+  (display-changed-component
+   (find-changed-component nf-to-heap-ss-compiler)
+   displayln))
+
+
+(define (test-cb-c concr-n concr-s)
+  (display-changed-component
+   (find-changed-component nf-to-heap-compiler #:source-context concr-n #:target-context concr-s)
+   displayln))
+
+
+;(define (syn-ex1)
+;  )
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -801,7 +921,19 @@
 (define (init-freelist)
   (freelist nil))
 
+(define-language freelist-ss-lang
+  #:grammar freelist
+  #:expression action #:size 2
+  #:context state #:size 3
+  #:link snoc
+  #:evaluate (uncurry freelist-interaction))
 
+(define-language freelist-lang
+  #:grammar freelist
+  #:expression interaction #:size 4
+  #:context state #:size 3
+  #:link snoc
+  #:evaluate (uncurry freelist-interaction))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; COMPILING heap-model to freelist
@@ -830,14 +962,16 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Pretty-printing freelist
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (define (display-f-state fs)
-  (match fs
-    [(freelist nil)
-     (displayln "")]
-    [(freelist (cons n:natural fs+:any))
-     (displayln n)
-     (display-f-state fs+)]))
+  (define (display-f-state+ fs)
+    (match fs
+      [(freelist nil)
+       (displayln "")]
+      [(freelist (cons n:natural fs+:any))
+       (displayln n)
+       (display-f-state+ fs+)]))
+  (displayln "Freelist:")
+  (display-f-state+ fs))
 
 
 (define (display-hf-state sfs)
@@ -921,6 +1055,22 @@
 
 (define heap-and-freelist-shadow? (uncurry freelist-state-shadow?))
 
+(define-compiler heap-to-freelist
+  #:source heap-lang
+  #:target freelist-lang
+  #:behavior-relation freelist-state-shadow?
+  #:context-relation freelist-state-shadow?
+  #:compile (lambda (x) x))
+
+(define-compiler heap-to-ss-freelist
+  #:source heap-ss-lang
+  #:target freelist-ss-lang
+  #:behavior-relation freelist-state-shadow?
+  #:context-relation freelist-state-shadow?
+  #:compile (lambda (x) x))
+
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; SYMBOLIC TESTING df-state-shadow
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -960,3 +1110,4 @@
     (displayln (freelist-state-shadow? d0 concr))
     (display "Done df-test0+ ")
     ))
+
