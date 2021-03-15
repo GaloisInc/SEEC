@@ -232,7 +232,9 @@
 
 (define/contract (state->instruction st)
   (-> state? (failure/c tinyA-statement?))
-  (pc->instruction (state-pc st) (state-memory st)))
+  (for/all ([pc (state-pc st)])
+    (pc->instruction pc (state-memory st)))
+  #;(pc->instruction (state-pc st) (state-memory st)))
 
 
 ; Fetch the procedure name that encompasses the current PC. If the PC does not
@@ -456,6 +458,7 @@
 (define/contract (eval-statement-1 insn st)
   (-> tinyA-statement? state? (failure/c (or/c #t state?)))
 
+  (for/all ([insn insn])
   (debug-display "(eval-statement-1 ~a)" insn)
 
   (match insn
@@ -544,22 +547,33 @@
                        #:pc pc2
                        #:sp sp2))]
 
-    ))
+    [_ *fail*]
+
+    )))
 
 (define (CALL? insn)
   (match insn
     [(tinyA (CALL any any)) #t]
     [_ #f]))
 
+
 ; Take some number of states bounded by the amount of fuel given
 (define/contract (eval-statement fuel st)
   (-> (or/c #f integer?) state? (failure/c state?))
   (debug-display "(eval-statement ~a)" fuel)
 
-  (for/all ([insn (state->instruction st)])
+  (for/all ([st st])
+
+    (display-state st)
+    (for*/all ([pc (state-pc st)]
+               [mem (state-memory st)]
+               [insn (pc->instruction pc mem)])
+      #;(debug-display "pc: ~a" pc)
+      #;(render-value/window pc)
+      (tinyC:display-memory mem)
 
   (do insn+ <- insn
-      st+ <- (eval-statement-1 insn+ st)
+      st+   <- (eval-statement-1 insn+ st)
       (cond
         [(equal? st+ #t) ; This means the instruction halted with HALT
          st]
@@ -567,7 +581,7 @@
          *fail*] ; Fuel ran out. Return st here instead?
         [else
          (eval-statement (decrement-fuel fuel) st+)]
-        ))))
+        )))))
 
 
 

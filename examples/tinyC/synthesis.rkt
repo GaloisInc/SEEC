@@ -108,10 +108,11 @@
   (define-symbolic* x integer?)
   (define-symbolic* y integer?)
   (define input (list->seec (list x y)))
-  ; Note that when using an input, symbolic execution does not terminate
+  ; Note that when using an input, symbolic execution does not immediately terminate
   #;(define input (cond
                   [(havoc!) (seec-singleton x)]
                   [else     (list->seec (list x y))]))
+  #;(define input (tinyA list<integer> 3))
   (parameterize ([debug? #t])
     (let ([g (find-ctx-gadget tinyA-lang
                                ; Synthesize an input that gains authorization
@@ -144,7 +145,7 @@
   (define-symbolic* x integer?)
   (define-symbolic* y integer?)
   (define args  (seec-singleton pswd))
-  (define input (list->seec (list x y)))
+  (define input (list->seec (list x y))) ; Instead of list->seec, make a symbolic bonsai tree?
   (parameterize ([debug? #t])
     (let ([g (find-ctx-gadget tinyA-lang
                                ; Synthesize an input that gains authorization
@@ -177,7 +178,7 @@
                                      #:fresh-witness #f
                                      )])
       (display-weird-behavior g displayln))))
-(synthesize-weird-behavior-password)
+#;(synthesize-weird-behavior-password)
 ;
 ; Expected:
 ;
