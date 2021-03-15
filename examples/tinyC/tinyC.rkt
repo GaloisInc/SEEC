@@ -1,12 +1,17 @@
 #lang seec
 (require seec/private/util)
 (require seec/private/monad)
+(require (only-in seec/private/string
+                  string->racket))
 (require (only-in racket/base
                   build-list
                   make-parameter
                   raise-argument-error
-                  raise-arguments-error))
-(require (only-in racket/string ; foramtting
+                  raise-arguments-error
+                  [string? racket:string?]
+                  [string-append racket:string-append]
+                  ))
+(require (only-in racket/string ; formatting
                   string-join
                   ))
 (require rosette/lib/value-browser) ; debugging
@@ -79,6 +84,11 @@
             state->trace
             state->statement
             fresh-var
+
+            display-statement
+            display-declaration
+            display-program
+            make-declaration
 
             context->memory
             context->top-frame
@@ -360,6 +370,143 @@
      (printf "==Fresh Var== ~a~n~n" (state-fresh-var st))
      ]))
 
+
+(define/contract/debug (pp-expr e)
+  (-> syntax-expr? racket:string?)
+  (match e
+    [(syntax x:integer)
+     (format "~a" x)]
+    [(syntax null)
+     "null"]
+    [(syntax (* e+:expr))
+     (format "* ~a" (pp-expr e+))]
+    [(syntax x:var)
+     (string->racket x)]
+    [(syntax (& lv:lval))
+     (format "& ~a" (pp-expr lv))]
+    [(syntax (op:binop e1:expr e2:expr))
+     (format "~a ~a ~a" (pp-expr e1) op (pp-expr e2))]
+    ))
+
+(define-grammar listifyC #:extends tinyC
+  (single-stmt ::= (ASSIGN lval expr)
+                   (CALL proc-name list<expr>)
+                   RETURN
+                   (IF expr list<single-stmt> list<single-stmt>)
+                   (WHILE expr list<single-stmt>)
+                   (OUTPUT expr)
+                   (INPUT expr)
+                   ))
+(define/contract (statement->list stmt)
+  (-> tinyC-statement? (listof listifyC-single-stmt?))
+  (match stmt
+    [(tinyC (IF e:expr t:statement f:statement))
+     (list (listifyC (IF ,e
+                         ,(list->seec (statement->list t))
+                         ,(list->seec (statement->list f)))))]
+    [(tinyC (WHILE e:expr body:statement))
+     (list (listifyC (WHILE ,e
+                            ,(list->seec (statement->list body)))))]
+    [(tinyC (SEQ stmt1:statement stmt2:statement))
+     (append (statement->list stmt1)
+             (statement->list stmt2))]
+    [(tinyC SKIP)
+     (list)]
+    [_ (list stmt)]
+    ))
+
+
+(define (indent-string str)
+  (racket:string-append "  " str))
+
+; Produce a list of strings, one for each newline; this allows for proper indent
+; management
+(define/contract (pp-single-statement stmt)
+  (-> listifyC-single-stmt? (listof racket:string?))
+  (match stmt
+    [(listifyC (ASSIGN x:lval e:expr))
+     (list (format "~a = ~a;" (pp-expr x) (pp-expr e)))]
+    [(listifyC (CALL p:proc-name es:list<expr>))
+     (list (format "~a ~a;" (string->racket p) (map pp-expr (seec->list es))))]
+    [(listifyC RETURN)
+     (list (format "return();"))]
+    [(listifyC (IF e:expr t:list<single-stmt> f:list<single-stmt>))
+     (append (list (format "if (~a) {" (pp-expr e)))
+             (map indent-string (flatten (map pp-single-statement (seec->list t))))
+             (list (format "} else {"))
+             (map indent-string (flatten (map pp-single-statement (seec->list f))))
+             (list (format "}"))
+             )
+     #;(format "if (~a) {~n ~a~n} else {~n ~a~n};"
+             e
+             (pp-statement-list-indented (seec->list t))
+             (pp-statement-list-indented (seec->list f))
+             )]
+    [(listifyC (WHILE e:expr body:list<single-stmt>))
+     (append (list (format "while (~a) {" (pp-expr e)))
+             (map indent-string (flatten (map pp-single-statement (seec->list body))))
+             (list (format "}"))
+             )
+     #;(format "while (~a) {~n ~a ~n};"
+             e
+             (pp-statement-list-indented (seec->list body))
+             )]
+    [(listifyC (OUTPUT e:expr))
+     (list (format "output(~a);" (pp-expr e)))]
+    [(listifyC (INPUT e:expr))
+     (list (format "input(~a);" (pp-expr e)))]
+    ))
+
+; Produce a list of strings, one for each newline; this allows for proper indent
+; management
+(define/contract (pp-statement stmt)
+  (-> tinyC-statement? (listof racket:string?))
+  (let* ([stmts   (statement->list stmt)])
+    (flatten (map pp-single-statement stmts))))
+(define/contract/debug #:suffix (pp-statements stmts)
+  (-> (listof tinyC-statement?) (listof racket:string?))
+  (flatten (map pp-statement stmts)))
+
+(define (display-statement stmt)
+  (displayln (string-join (pp-statement stmt)
+                          "~n")))
+
+(define/contract (pp-decl local-decl)
+  (-> tinyC-local-decl? racket:string?)
+  (match local-decl
+    [(tinyC (x:var tp:type))
+     (format "~a ~a" tp (string->racket x))]))
+
+(define/contract (pp-params params)
+  (-> (curry seec-list-of? tinyC-param-decl?)
+      racket:string?)
+  (string-join (map pp-decl (seec->list params))
+               ", "))
+(define/contract (pp-locals locals)
+  (-> (curry seec-list-of? tinyC-local-decl?)
+      (listof racket:string?))
+  (map (λ (decl) (format "~a;" (pp-decl decl)))
+       (seec->list locals)))
+
+; Again produce a list of strings, for indent management
+(define/contract/debug #:suffix (pp-declaration decl)
+  (-> tinyC-declaration? (listof racket:string?))
+  (match decl
+    [(tinyC (p:proc-name params:list<param-decl> locals:list<local-decl> body:list<statement>))
+     (append (list (format "void ~a (~a) {" (string->racket p) (pp-params params)))
+             (map indent-string (pp-locals locals))
+             (map indent-string (pp-statements (seec->list body)))
+             (list (format "}"))
+             )]
+    ))
+
+(define/contract/debug #:suffix (display-declaration decl)
+  (-> tinyC-declaration? any/c)
+  (displayln (string-join (pp-declaration decl)
+                          (format "~n"))))
+(define/contract/debug #:suffix (display-program prog)
+  (-> tinyC-prog? any/c)
+  (andmap display-declaration (seec->list prog)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Testing pretty printing ;;
@@ -1099,6 +1246,14 @@
     (run+ (list->seec prog)
           (list->seec inputs)
           buf)))
+
+
+(define/contract (make-declaration name params locals statements)
+    (-> string? (listof tinyC-param-decl?)
+                (listof tinyC-local-decl?)
+                (listof tinyC-statement?)
+                tinyC-declaration?)
+    (tinyC (,name ,(list->seec params) ,(list->seec locals) ,(list->seec statements))))
 
 
 (define-language tinyC-lang

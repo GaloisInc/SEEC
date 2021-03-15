@@ -51,6 +51,9 @@
                           (list (tinyC (OUTPUT "y"))))
         ))
 
+#;(parameterize ([debug? #f])
+  (tinyC:display-program (list->seec simple-call-example)))
+
 
 ;;;;;;;;;;;;;
 ; Factorial ;
