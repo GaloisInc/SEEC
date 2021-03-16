@@ -376,8 +376,8 @@
 (define (display-env env)
   (match env
     [(tinyC (args:intlist input:list<intlist>))
-     (displayln (format "arguments: ~a" (pp-intlist args)))
-     (displayln (format "input stream: ~a" (map pp-intlist (seec->list input))))]
+     (displayln (format "arguments : ~a" (pp-intlist args)))
+     (displayln (format "input stream : ~a" (map pp-intlist (seec->list input))))]
     ))
 
 
@@ -437,7 +437,7 @@
     [(listifyC (ASSIGN x:lval e:expr))
      (list (format "~a = ~a;" (pp-expr x) (pp-expr e)))]
     [(listifyC (CALL p:proc-name es:list<expr>))
-     (list (format "~a ~a;" (string->racket p) (map pp-expr (seec->list es))))]
+     (list (format "~a~a;" (string->racket p) (map pp-expr (seec->list es))))]
     [(listifyC RETURN)
      (list (format "return();"))]
     [(listifyC (IF e:expr t:list<single-stmt> nil))

@@ -20,7 +20,7 @@
 (define/contract (tinyA:store-insn pc stmt p mem)
   (-> tinyA-program-counter? tinyA-statement? syntax-proc-name? tinyA-memory?
       tinyA-memory?)
-  (tinyA:store-mem pc (tinyA (,p ,stmt)) mem))
+  (tinyA:store-mem-sorted pc (tinyA (,p ,stmt)) mem))
 
 ; Compile statements into low-level forms. Replace structured control-flow
 ; with jumps

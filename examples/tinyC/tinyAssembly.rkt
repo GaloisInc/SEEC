@@ -43,6 +43,7 @@
          ; "tinyA:" prefix
          (prefix-out tinyA: (combine-out
             store-mem
+            store-mem-sorted
             declaration->pc
             declaration->frame
             (struct-out state)
@@ -358,6 +359,10 @@
 (define/contract (store-mem l obj mem)
   (-> tinyA-loc? tinyA-object? tinyA-memory? tinyA-memory?)
   (push-objs l (list obj) mem))
+(define/contract (store-mem-sorted l obj mem)
+  (-> tinyA-loc? tinyA-object? tinyA-memory? tinyA-memory?)
+  (push-objs-sorted l (list obj) mem))
+
 
 
 ; Initialize the locations in a stack frame that refer to arrays

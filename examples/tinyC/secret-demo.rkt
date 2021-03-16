@@ -90,6 +90,14 @@ void guarded-fun (int auth) {
 
 (max-fuel 20)
 
+(define (pp-intlist vals)
+  (format "~a" (seec->list vals)))
+(define (display-env-password-checker env)
+  (match env
+    [(tinyC (args:intlist input:list<intlist>))
+     (displayln (format "password : ~a" (pp-intlist args)))
+     (displayln (format "input stream : ~a" (map pp-intlist (seec->list input))))]
+    ))
 
 (define synthesize-tinyC-weird-behavior
   (λ (prog
@@ -107,7 +115,7 @@ void guarded-fun (int auth) {
                                   )])
       (display-weird-behavior g
                               #:display-expression tinyC:display-program
-                              #:display-context tinyC:display-env
+                              #:display-context display-env-password-checker
                               ))))
 
 
@@ -144,19 +152,10 @@ void guarded-fun (int auth) {
                               #:forall vars
                               )])
       (display-gadget g #:display-expression display-tinyA-lang-expression
-                        #:display-context display-tinyA-lang-context
-                        #:display-behavior displayln
+                        #:display-context display-env-password-checker
                         ))))
 
-(define (synthesize-password-gadget-0)
-  (define-symbolic* x integer?)
-  (synthesize-tinyC-gadget password-checker
-                           ; Synthesize a context that causes password-checker
-                           ; to set auth to true
-                           #:spec (λ (p tr) (not (equal? tr seec-empty)))
-                           #:args  (list 100)
-                           #:input (list x)
-                           ))
+
 
 (define (synthesize-password-gadget-1)
   (define-symbolic* password integer?)
@@ -220,3 +219,35 @@ void guarded-fun (int auth) {
 ;      symbolic execution projects. We are trying to find ways to handle these
 ;      problems in general, rather than on a case-by-case basis
 ;   3. Synthesizing more composable gadgets, handling DOP in general, e.g. with loops
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#; (define (synthesize-password-gadget-0)
+  (define-symbolic* x integer?)
+  (synthesize-tinyC-gadget password-checker
+                           ; Synthesize a context that causes password-checker
+                           ; to set auth to true
+                           #:spec (λ (p tr) (not (equal? tr seec-empty)))
+                           #:args  (list 100)
+                           #:input (list x)
+                           ))

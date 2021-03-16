@@ -1256,12 +1256,12 @@
     [else
      (let* ([lang-vars (first vars)])
        (out "Synthesized a gadget")
-       (out (format "~nExpression:~n"))
+       (out (format "~n==Expression==~n"))
        (out-expression (language-witness-expression lang-vars))
-       (out (format "~nContext:~n"))
+       (out (format "~n==Context==~n"))
        (out-context (language-witness-context lang-vars))
-       (out (format "~nBehavior:~n"))
-       (out-context (language-witness-behavior lang-vars))
+       (out (format "~n==Behavior==~n"))
+       (out-behavior (language-witness-behavior lang-vars))
 
        (display-gadget (rest vars) out
                        #:display-expression out-expression
