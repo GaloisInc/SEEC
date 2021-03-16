@@ -3,9 +3,11 @@
 (require racket/stxparam)
 (require (only-in racket/contract
                   [define/contract racket:define/contract]
+                  [listof          racket:listof]
                   ))
 (require (except-in racket/contract
-                    define/contract))
+                    define/contract
+                    listof))
 (require (only-in racket/base
                   make-parameter
                   parameterize
@@ -28,6 +30,7 @@
          define/contract/debug
          use-contracts-globally
          (all-from-out racket/contract) ; Since we didn't import define/contract, no overlap
+         listof
          )
 
 ;;;;;;;;;
@@ -82,6 +85,10 @@
             #'(void)
             ]
     ))
+
+(define (listof tp?)
+  (λ (x) (for/all ([x x])
+           ((racket:listof tp?) x))))
 
 ;;;;;;;;;;;;;;;;;;;;;
 ; Tunable debugging ;
