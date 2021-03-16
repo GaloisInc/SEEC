@@ -35,23 +35,31 @@ void guarded-fun (int auth) {
    ; ^ function name            ^ input
 
    (list (tinyC ("candidate" int))
-         (tinyC ("auth" int)))
+         (tinyC ("auth" int))
+         (tinyC ("secret" int))
+         )
    ;     ^ local arguments
 
     (list (tinyC (ASSIGN "auth" 0))
+          (tinyC (ASSIGN "secret" 42))
           (tinyC (INPUT (& "candidate")))
           (tinyC (IF (= "candidate" "password")
                      (ASSIGN "auth" 1)
                      SKIP))
           (tinyC (CALL "guarded-fun"
-                       (cons "auth" nil)))
+                       (cons "auth" (cons "secret" nil))))
 
           )))
 
 (define guarded-function-declaration
-  (tinyC:make-declaration (string "guarded-fun") (list (tinyC ("auth" int)))
+  (tinyC:make-declaration (string "guarded-fun") (list (tinyC ("auth" int))
+                                                       (tinyC ("secret" int)))
     (list )
-    (list (tinyC (OUTPUT "auth"))) ; ...
+    (list (tinyC (IF "auth"
+                     (OUTPUT "secret")
+                     SKIP))
+          ; ...
+          )
     ))
 (define password-checker (list main-declaration
                                guarded-function-declaration))
@@ -59,27 +67,12 @@ void guarded-fun (int auth) {
 
 
 
-
-
-
-
+; Display the program
+; In tinyC:
 #;(tinyC:display-program (list->seec password-checker))
-#|
-void main (int password) {
-  int candidate;
-  int auth;
-  auth = 0;
-  input(& candidate);
-  if (candidate = password) {
-    auth = 1;
-  } else {
-  }
-  guarded-fun (auth);
-}
-void guarded-fun (int auth) {
-  output(auth);
-}
-|#
+; In tinyA:
+#;(display-tinyA-lang-expression ((compiler-compile tinyC-compiler) (list->seec password-checker)))
+
 
 
 (define (run-password-checker correct-password guess)
@@ -87,17 +80,15 @@ void guarded-fun (int auth) {
              (list correct-password) ; The argument to main
              (list (seec-singleton guess)))) ; The input to INPUT
 
-#;(tinyC:display-state (run-password-checker 42 ; The password
-                                             42 ; The guess
-                                             ))
+#;(tinyC:display-state (run-password-checker 100        100))
+                                          ;  ^ password ^ guess
 ; Produces a trace of 1, indicating success
-#;(tinyC:display-state (run-password-checker 42 ; The password
-                                           03 ; The wrong guess
-                                           ))
+#;(tinyC:display-state (run-password-checker 100        0))
+                                          ;  ^ password ^ guess
 ; Produces a trace of 0, indicating failure
 
 
-(max-fuel 10)
+(max-fuel 20)
 
 
 (define synthesize-tinyC-weird-behavior
@@ -154,15 +145,16 @@ void guarded-fun (int auth) {
                               )])
       (display-gadget g #:display-expression display-tinyA-lang-expression
                         #:display-context display-tinyA-lang-context
+                        #:display-behavior displayln
                         ))))
 
 (define (synthesize-password-gadget-0)
   (define-symbolic* x integer?)
   (synthesize-tinyC-gadget password-checker
                            ; Synthesize a context that causes password-checker
-                           ; to always output "1": sets auth to true
-                           #:spec (λ (p tr) (equal? tr (seec-singleton 1)))
-                           #:args  (list 42)
+                           ; to set auth to true
+                           #:spec (λ (p tr) (not (equal? tr seec-empty)))
+                           #:args  (list 100)
                            #:input (list x)
                            ))
 
@@ -171,8 +163,8 @@ void guarded-fun (int auth) {
   (define-symbolic* x integer?)
   (synthesize-tinyC-gadget password-checker
                            ; Synthesize a context that causes password-checker
-                           ; to always output "1": sets auth to true
-                           #:spec (λ (p tr) (equal? tr (seec-singleton 1)))
+                           ; to set auth to true
+                           #:spec (λ (p tr) (not (equal? tr seec-empty)))
                            #:args  (list password)
                            #:input (list x)
                            #:forall password
@@ -183,20 +175,48 @@ void guarded-fun (int auth) {
   (define-symbolic* x y integer?)
   (synthesize-tinyC-gadget password-checker
                            ; Synthesize a context that causes password-checker
-                           ; to always output "1": sets auth to true
-                           #:spec (λ (p tr) (equal? tr (seec-singleton 1)))
+                           ; to set auth to true
+                           #:spec (λ (p tr) (not (equal? tr seec-empty)))
+                           #:args  (list password)
+                           #:input (list x y)
+                           #:forall password
+                           ))
+#;(tinyC:display-program (list->seec password-checker))
+
+
+(define (synthesize-password-gadget-2+ target-value)
+  (define-symbolic* password integer?)
+  (define-symbolic* x y integer?)
+  (synthesize-tinyC-gadget password-checker
+                           ; Synthesize a context that causes password-checker
+                           ; to set auth to true
+                           #:spec (λ (p tr) (equal? tr (seec-singleton target-value)))
                            #:args  (list password)
                            #:input (list x y)
                            #:forall password
                            ))
 
 
-(define (check-context input-list)
+(define (synthesize-password-gadget-3 target-value)
   (define-symbolic* password integer?)
+  (define-symbolic* x y z integer?)
   (synthesize-tinyC-gadget password-checker
-                           #:spec (λ (p tr) (equal? tr (seec-singleton 1)))
+                           ; Synthesize a context that causes password-checker
+                           ; to set auth to true
+                           #:spec (λ (p tr) (equal? tr (seec-singleton target-value)))
                            #:args  (list password)
-                           #:input input-list
+                           #:input (list x y z)
                            #:forall password
                            ))
-#;(check-context (list 0 1))
+
+
+
+; Read secret
+; Write to secret
+
+; Future work:
+;   1. Handling symbolic input lists of bounded size, rather than trying lists of length 1, 2, 3.
+;   2. Fixing symbolic execution bugs that cause state explosion, common to
+;      symbolic execution projects. We are trying to find ways to handle these
+;      problems in general, rather than on a case-by-case basis
+;   3. Synthesizing more composable gadgets, handling DOP in general, e.g. with loops

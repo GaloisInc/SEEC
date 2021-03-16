@@ -440,6 +440,11 @@
      (list (format "~a ~a;" (string->racket p) (map pp-expr (seec->list es))))]
     [(listifyC RETURN)
      (list (format "return();"))]
+    [(listifyC (IF e:expr t:list<single-stmt> nil))
+     (append (list (format "if (~a) {" (pp-expr e)))
+             (map indent-string (flatten (map pp-single-statement (seec->list t))))
+             (list (format "}"))
+             )]
     [(listifyC (IF e:expr t:list<single-stmt> f:list<single-stmt>))
      (append (list (format "if (~a) {" (pp-expr e)))
              (map indent-string (flatten (map pp-single-statement (seec->list t))))
