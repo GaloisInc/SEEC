@@ -178,4 +178,6 @@
                  (cond
                    [check body]
                    ...
-                   [else (unreachable "inexhaustive match")]))))))]))
+                   [else (begin
+                           (unreachable "inexhaustive match")
+                           (assert #f "inexhaustive match"))]))))))]))

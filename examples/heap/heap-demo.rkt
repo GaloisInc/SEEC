@@ -4,6 +4,7 @@
 
 ; This file provides some details on how we expect someone to interact with their model through SEEC in order to find bugs and refine their model and implementation.
 ;0: easy way to see double free bug:
+; takes 55 seconds
 (define (test-0)
   (begin
     (define s2* (heap-model state 6))
@@ -43,10 +44,13 @@
     (display-state s2)
     (displayln "Interaction:")
     (displayln i2)
+    (display "Safe Interaction?: ")
     (displayln (heap-model-safe-interaction i2 s2))
+    (display "Valid Interaction?: ")
     (displayln (heap-model-valid-interaction i2 s2))
     (displayln "State+:")
     (display-state s2+)
+    (display "Valid state+?")
     (displayln (valid-state 3 s2+))))
 
 ; Found "Interaction: ((set 0 2) ((write 0 0)))",
@@ -118,8 +122,7 @@
 
 (define (valid-free loc h)
   ; compute the location of the "allocated" bit
-  (let* ([loc-v (- (+ loc 3) (remainder loc 4))]
-         [v-bit (nth loc-v h)])
+  (let* ([v-bit (nth (- loc 2) h)])
     (if (equal? v-bit (heap-model 1))
         #t
         #f)))
