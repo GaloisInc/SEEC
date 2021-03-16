@@ -99,6 +99,7 @@ void guarded-fun (int auth) {
 
 (max-fuel 10)
 
+
 (define synthesize-tinyC-weird-behavior
   (λ (prog
       #:args   args
@@ -113,7 +114,10 @@ void guarded-fun (int auth) {
                                   #:forall (list)
                                   #:fresh-witness #f
                                   )])
-      (display-weird-behavior g displayln))))
+      (display-weird-behavior g
+                              #:display-expression tinyC:display-program
+                              #:display-context tinyC:display-env
+                              ))))
 
 
 (define (synthesize-weird-behavior-password-1)
@@ -148,7 +152,19 @@ void guarded-fun (int auth) {
                                                 (cons ,(list->seec input) nil)))
                               #:forall vars
                               )])
-      (display-gadget g displayln))))
+      (display-gadget g #:display-expression display-tinyA-lang-expression
+                        #:display-context display-tinyA-lang-context
+                        ))))
+
+(define (synthesize-password-gadget-0)
+  (define-symbolic* x integer?)
+  (synthesize-tinyC-gadget password-checker
+                           ; Synthesize a context that causes password-checker
+                           ; to always output "1": sets auth to true
+                           #:spec (λ (p tr) (equal? tr (seec-singleton 1)))
+                           #:args  (list 42)
+                           #:input (list x)
+                           ))
 
 (define (synthesize-password-gadget-1)
   (define-symbolic* password integer?)

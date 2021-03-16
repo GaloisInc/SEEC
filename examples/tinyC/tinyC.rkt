@@ -88,6 +88,7 @@
             display-statement
             display-declaration
             display-program
+            display-env
             make-declaration
 
             context->memory
@@ -369,6 +370,15 @@
      (printf "==Trace== ~a~n" (state->trace st))
      (printf "==Fresh Var== ~a~n~n" (state-fresh-var st))
      ]))
+
+(define (pp-intlist vals)
+  (format "~a" (seec->list vals)))
+(define (display-env env)
+  (match env
+    [(tinyC (args:intlist input:list<intlist>))
+     (displayln (format "arguments: ~a" (pp-intlist args)))
+     (displayln (format "input stream: ~a" (map pp-intlist (seec->list input))))]
+    ))
 
 
 (define/contract/debug (pp-expr e)

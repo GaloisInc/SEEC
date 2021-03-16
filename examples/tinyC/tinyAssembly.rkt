@@ -32,8 +32,12 @@
          tinyA+-expr?
          tinyA+-ctx?
 
+
+         ; pretty printing
          display-state
          (rename-out [tinyC:display-memory display-memory])
+         display-tinyA-lang-expression
+         display-tinyA-lang-context
 
          ; For functions that could potentially overlap with tinyC, add a
          ; "tinyA:" prefix
@@ -608,6 +612,17 @@
   ; list of lists of values that provide input to the INPUT command
   (ctx  ::= (vallist list<vallist>))
   )
+
+; For now, just print out the instructions in memory
+(define (display-tinyA-lang-expression expr)
+  (match expr
+    [(tinyA (g:global-store sp:stack-pointer mem:memory))
+     (tinyC:display-memory mem)]
+    ))
+
+(define (display-tinyA-lang-context ctx)
+  (tinyC:display-env ctx))
+     
 
 
 (define-language tinyA-lang
