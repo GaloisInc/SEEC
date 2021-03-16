@@ -11,7 +11,8 @@
 (provide (all-defined-out))
 
 
-(use-contracts-globally #t)
+;(use-contracts-globally #t)
+;(check-unreachable #t)
 
 (define (ofail f)
   (if (failure? f)
@@ -77,6 +78,13 @@
 
 (define snoc
   (lambda (a b) (cons b a)))
+
+(define (fold f l s)
+  (match l
+    [(heap-model nil)
+     s]
+    [(heap-model (cons hd:any l+:list<any>))
+     (f s (fold f l+ s))]))
 
 
 ;; lifted list operations
@@ -337,7 +345,7 @@
          [_
           ;(displayln "trying to free a block which wasn't allocated")
           ;(cons f h)
-          (assert false)
+          (assert #f)
           ]))]))
 
 
@@ -428,12 +436,29 @@
   #:link snoc
   #:evaluate (uncurry interpret-interaction))
 
+(define-language new-heap-ss-lang
+  #:grammar heap-model
+  #:expression state #:size 8
+  #:context action #:size 3
+  #:link cons
+  #:evaluate (uncurry interpret-interaction))
+
+
 (define-language heap-lang
   #:grammar heap-model
   #:expression interaction #:size 4
   #:context state #:size 6 #:where (lambda (s) (valid-state 3 s))
   #:link snoc
   #:evaluate (uncurry interpret-interaction))
+
+(define-language new-heap-lang
+  #:grammar heap-model
+  #:expression state #:size 10
+  #:context interaction #:size 4
+  #:link cons
+  #:evaluate (uncurry interpret-interaction))
+
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -478,6 +503,25 @@
      (interpret-interaction-hl i+ (interpret-action-hl a s))]
     [(heap-model nil)
      s]))
+
+
+(define-language heap-ss-hl-lang
+  #:grammar heap-model
+  #:expression action-hl #:size 2
+  #:context state #:size 6 #:where (lambda (s) (valid-state 3 s))
+  #:link snoc
+  #:evaluate (uncurry interpret-interaction-hl))
+
+
+(define-language heap-hl-lang
+  #:grammar heap-model
+  #:expression interaction-hl #:size 4
+  #:context state #:size 6 #:where (lambda (s) (valid-state 3 s))
+  #:link snoc
+  #:evaluate (uncurry interpret-interaction-hl))
+
+
+
 
 ; translate an action into a list of action-hl
 ; heap-model.action -> heap-model.interaction-hl
@@ -575,8 +619,8 @@
 
 ; heap -> pointer -> boolean
 ; p is the head of a freelist in h
-(define (valid-freelist fuel h p)
-  (define (valid-freelist+ fuel h p prev-p)
+(define/debug (valid-freelist fuel h p)
+  (define/debug #:suffix (valid-freelist+ fuel h p prev-p)
     (if (<= fuel 0)
         #t
         (match p      
@@ -587,17 +631,47 @@
                backward-p <- (nth h (+ l 1))
                check-v <- (nth h (- l 2))
              (if (and (equal? check-v (heap-model 0)) ; validation bit (size of pred) is properly set
-                      (fwd-pointer-alligned forward-p) ; fwd is pointing alligned 
-                      (equal? backward-p prev-p)) ; backward pointer is properly set                       
-                 (valid-freelist+ (- fuel 1) h forward-p p)
+                      ;(fwd-pointer-alligned forward-p) ; fwd is pointing alligned 
+                      (equal? backward-p prev-p)) ; backward pointer is properly set 
+                      (valid-freelist+ (- fuel 1) h forward-p p)
              (begin
-               *fail*)))])))
+               *fail*)))]
+          [(heap-model any)
+           *fail*])))
   (not (failure? (valid-freelist+ fuel h p (heap-model null))))) ; capture failures 
 
 (define (valid-freelist-state fuel s)
   (match s
     [(heap-model (b:buf h:heap p:pointer))
      (valid-freelist fuel h p)]))
+
+
+(define/debug (valid-freelist-af fuel h p)
+  (define/debug #:suffix (valid-freelist-af+ fuel h p prev-p)
+    (if (<= fuel 0)
+        #t
+        (match p      
+          [(heap-model null)
+           #t]
+          [(heap-model l:natural)
+           (do forward-p <- (nth h l)
+               backward-p <- (nth h (+ l 1))
+               check-v <- (nth h (- l 2))
+               (if (and (equal? check-v (heap-model 0)) ; validation bit (size of pred) is properly set
+                        ;(fwd-pointer-alligned forward-p) ; fwd is pointing alligned 
+                        (equal? backward-p prev-p)) ; backward pointer is properly set 
+                   (valid-freelist-af+ (- fuel 1) h forward-p p)
+                   (begin
+                        #f)))]
+          [(heap-model any)
+           #f])))
+  (valid-freelist-af+ fuel h p (heap-model null))) ; capture failures 
+
+(define (valid-freelist-state-af fuel s)
+  (match s
+    [(heap-model (b:buf h:heap p:pointer))
+     (valid-freelist-af fuel h p)]))
+
 
 
 ;; heap in heap-model is valid if length is divisible by 4
@@ -620,6 +694,29 @@
         #f])]
     [(heap-model any)
      #f]))
+
+(define (valid-state-block s)
+    (match s
+      [(heap-model (b:buf h:heap p:pointer))
+       (and
+        (valid-heap-block-size h)
+        #;(valid-freelist fuel h p))]))
+
+(define-language heap-ss-hl-no-lang
+  #:grammar heap-model
+  #:expression action-hl #:size 2
+  #:context state #:size 6 #:where valid-state-block
+  #:link snoc
+  #:evaluate (uncurry interpret-interaction-hl))
+
+
+(define-language heap-hl-no-lang
+  #:grammar heap-model
+  #:expression interaction-hl #:size 4
+  #:context state #:size 6 #:where valid-state-block
+  #:link snoc
+  #:evaluate (uncurry interpret-interaction-hl))
+
 
 (define (valid-state fuel s)
   (match s

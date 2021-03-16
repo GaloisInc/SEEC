@@ -590,6 +590,58 @@
        (heap-model (,b+ ,h+ null)))]))
 
 
+(define (head-or-null l)
+  (match l
+    [(no-freelist nil)
+     (no-freelist null)]
+    [(no-freelist (cons hd:any any))
+     hd]))
+     
+
+;; Trying to compile a no-freelist into a heap with a freelist.
+; input: a partial heap, the index into the heap (number of blocks), a stack of freelist block (list<natural>) 
+; Returns: a partial heap and backward pointer 
+(define/debug #:suffix (compile-nf-heap-freelist+ h total-block curr-block bwd)
+  (match h
+    [(no-freelist nil)
+     (let* ([wild-size (- total-block curr-block)]
+            [wild (if (< 0 wild-size)
+                      (make-wild wild-size)
+                      (heap-model nil))])
+       (cons wild (heap-model null)))]
+    [(no-freelist (cons nil h+:heap)) ; free block
+     (let* ([p-addr (+ (* curr-block 4) 2)]
+            [ret (compile-nf-heap-freelist+ h+ total-block (+ curr-block 1) (heap-model ,p-addr))]
+            [ret-h (car ret)]
+            [ret-fwd (cdr ret)]
+            [new-h (heap-model (cons 0 (cons 2 (cons ,ret-fwd (cons ,bwd ,ret-h)))))])
+            (cons new-h (heap-model ,p-addr)))]
+    [(no-freelist (cons v:payload h+:heap)) ; non-free block
+     (let* ([v+ (compile-nf-payload v)]
+            [ret (compile-nf-heap-freelist+ h+ total-block (+ curr-block 1) bwd)]
+            [ret-h (car ret)]
+            [ret-fwd (cdr ret)]
+            [new-h (append v+ ret-h)])
+       (cons new-h ret-fwd))]))
+            
+(define (compile-nf-heap-freelist n h)
+  (compile-nf-heap-freelist+ h n 0 (heap-model null)))
+      
+                  
+
+(define (compile-nf-state-freelist n s)
+  (match s
+    [(no-freelist (b:buf h:heap))
+     (let* ([b+ (compile-nf-buf b)]
+            [ret (compile-nf-heap-freelist n h)]
+            [ret-h (car ret)]
+            [ret-p (cdr ret)])
+       (heap-model (,b+ ,ret-h ,ret-p)))]))
+
+(define (test-freelist s)
+  (parameterize ([debug? #t])
+    (compile-nf-state-freelist 2 s)))
+
 ;; compare nnvalues out of shadow-heap.value and heap-model.value
 ;; returns def if nf-v is a non-null pointer compared to an integer
 (define/debug #:suffix (shallow-nf-val-eq+ nf-v v def)  
@@ -751,6 +803,77 @@
        [(heap-model (b:buf h:heap any))
         (deep-nf-buf-eq nf-h h nf-b b)])]))
 
+(define/debug #:suffix (compare-payload+ p l)
+    (match p
+      [(no-freelist (cons nv:nnvalue p+:payload))
+       (match l
+         [(heap-model (cons nv-l:nnvalue l+:heap))
+          (and (equal? nv nv-l)
+               (compare-payload+ p+ l+))]
+         [any
+          #f])]
+       [(no-freelist (cons v:pointer p+:payload))
+                     (match l
+                       [(heap-model (cons v-l:pointer l+:heap))
+                        ; at the moment, we ignore the pointers here
+                        (compare-payload+ p+ l+)]
+                       [any
+                        #f])]
+      [(no-freelist nil)
+       (match l
+         [(heap-model nil)
+          #t]
+         [any
+          #f])]
+      [any
+       #f]))
+
+
+(define/debug #:suffix (compare-payload p in-use l)
+  (match in-use
+    [(heap-model 0)
+     (match p
+       [(no-freelist nil)
+        #t]
+       [any
+        #f])]
+    [(heap-model 1)
+     (compare-payload+ p l)]
+    [any
+     #f]))
+
+
+;; true if the "in-use" portion of each heap is equal
+(define/debug #:suffix (heap-eq nf-h h)
+  (match nf-h
+    [(no-freelist (cons p:payload nf-h+:heap))
+     (match h
+       [(heap-model (cons in-use:natural h+:heap))
+        (match h+
+          [(heap-model (cons size:natural h+2:heap))
+           (and
+            (compare-payload p in-use (first-nth size h+2))
+            (heap-eq nf-h+ (skip size h+2)))]
+          [any
+           #f])]
+       [any
+        #f])]
+    [(no-freelist nil)
+     (match h
+       [(heap-model nil)
+        #t])]
+    [any
+     #f]))
+
+(define (state-heap-eq nf-s s)
+    (match nf-s
+    [(no-freelist (nf-b:buf nf-h:heap))
+     (match s
+       [(heap-model (b:buf h:heap any))
+        (heap-eq nf-h h)])]))
+
+
+
 ;; Testing synthesis with the no-freelist to heap-model compiler
 ; Make a schema for a heap-model.state with buf = 4 and state of size 8
 (define b* (heap-model buf 4))
@@ -808,7 +931,7 @@
 (define-compiler nf-to-heap-compiler
   #:source no-freelist-lang
   #:target heap-lang
-  #:behavior-relation shallow-nf-state-eq ;buf-z-nf-eq
+  #:behavior-relation deep-nf-state-eq ;buf-z-nf-eq
   #:context-relation shallow-nf-state-eq
   #:compile (lambda (x) x))
 
@@ -816,7 +939,7 @@
 (define-compiler nf-to-heap-ss-compiler
   #:source no-freelist-ss-lang
   #:target heap-ss-lang
-  #:behavior-relation shallow-nf-state-eq ;buf-z-nf-eq
+  #:behavior-relation deep-nf-state-eq ;buf-z-nf-eq
   #:context-relation shallow-nf-state-eq
   #:compile (lambda (x) x))
 
@@ -835,6 +958,237 @@
 
 ;(define (syn-ex1)
 ;  )
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Testing with nf-to-heap 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(define-language new-nf-lang
+  #:grammar no-freelist
+  #:expression state #:size 6
+  #:context interaction #:size 4
+  #:link cons
+  #:evaluate (uncurry no-freelist-interaction))
+
+(define-compiler new-nf-to-heap
+  #:source new-nf-lang
+  #:target new-heap-lang
+  #:behavior-relation state-heap-eq;deep-nf-state-eq ;buf-z-nf-eq
+  #:context-relation equal?
+  #:compile (lambda (x) compile-nf-state-wild 2 x))
+
+
+
+(define-language new-nf-ss-lang
+  #:grammar no-freelist
+  #:expression state #:size 5
+  #:context action #:size 3
+  #:link cons
+  #:evaluate (uncurry no-freelist-interaction))
+
+(define-compiler new-nf-to-ss-heap
+  #:source new-nf-ss-lang
+  #:target new-heap-ss-lang
+  #:behavior-relation deep-nf-state-eq ;buf-z-nf-eq
+  #:context-relation equal?
+  #:compile (lambda (x) compile-nf-state-wild 2 x))
+
+
+(define (size-two-payload p)
+  (let* ([size (length p)])
+    (or (equal? size 0)
+        (equal? size 2))))
+
+(define (size-two-heap h)
+  (match h
+    [(no-freelist nil)
+     #t]
+    [(no-freelist (cons p:payload h+:heap))
+     (and (size-two-payload p)
+          (size-two-heap h+))]))
+
+(define (size-two-state s)
+  (match s
+    [(no-freelist (b:buf h:heap))
+     (size-two-heap h)]))
+
+; this should be unsat
+(define (new-heap-syn-test)
+  (begin
+    (define nf-s* (no-freelist state 8))
+    (assert (size-two-state nf-s*)) ; at the moment, we only compile states with block size 2
+    (define s* (compile-nf-state-wild 2 nf-s*))
+    (define sol (solve (assert (not (state-heap-eq nf-s* s*)))))
+    (if (unsat? sol)
+        (displayln "unsat")
+        (begin
+          (displayln "sat")
+          (define nf-s (concretize nf-s* sol))
+          (define s (concretize s* sol))
+          (displayln "NF-state:")
+          (display-nf-state nf-s)
+          (displayln "State:")
+          (display-state s)
+          (display "Heap equal?: ")
+          (parameterize ([debug? #t]) (state-heap-eq nf-s s))))))
+
+(define (new-heap-syn-test+)
+  (begin
+    (define nf-s* (no-freelist state 8))
+    (define s* (compile-nf-state-wild 2 nf-s*))
+    (define sol (solve (assert (state-heap-eq nf-s* s*))))
+    (if (unsat? sol)
+        (displayln "unsat")
+        (begin
+          (displayln "sat")
+          (define nf-s (concretize nf-s* sol))
+          (define s (concretize s* sol))
+          (displayln "NF-state:")
+          (display-nf-state nf-s)
+          (displayln "State:")
+          (display-state s)
+          (display "Heap equal?: ")
+          (parameterize ([debug? #t]) (state-heap-eq nf-s s))))))
+
+
+; find an action that breaks state-heap-eq
+(define (new-heap-syn-test2)
+  (begin
+    (define nf-s* (no-freelist state 4))
+    (define s* (compile-nf-state-wild 2 nf-s*))
+    (assert (size-two-state nf-s*))
+    (define a* (heap-model action 3)) 
+    (define nf-s+* (no-freelist-action a* nf-s*))
+    (define s+* (interpret-action a* s*))
+    (define sol (solve (assert (not (state-heap-eq nf-s+* s+*)))))
+    (if (unsat? sol)
+        (displayln "unsat")
+        (begin
+          (displayln "sat")
+          (define nf-s (concretize nf-s* sol))
+          (define s (concretize s* sol))
+          (define a (concretize a* sol))
+          (define nf-s+ (concretize nf-s+* sol))
+          (define s+ (concretize s+* sol))
+          (displayln "NF-state:")
+          (display-nf-state nf-s)
+          (displayln "State:")
+          (display-state s)
+          (display "Action: ")
+          (displayln a)
+          (displayln "NF-state+:")
+          (display-nf-state nf-s+)
+          (displayln "State+:")
+          (display-state s+)
+          (display "Heap equal?: ")
+          (parameterize ([debug? #t]) (state-heap-eq nf-s+ s+))))))
+
+
+(define (syn-freelist-length)
+  (begin
+    (define nf-s* (no-freelist state 4))
+    (define s* (compile-nf-state-freelist 2 nf-s*))
+    (define sol (solve (assert (equal? (freelist-length 3 s*) 2))))
+    (if (unsat? sol)
+        (displayln "unsat")
+        (begin
+          (displayln "sat")
+          (define nf-s (concretize nf-s* sol))
+          (define s (concretize s* sol))
+          (displayln "NF-state:")
+          (display-nf-state nf-s)
+          (displayln "State:")
+          (display-state s)))))
+
+; find an action that breaks the freelist
+(define (new-heap-syn-test-freelist)
+  (begin
+    (define nf-s* (no-freelist state 4))
+    (define s* (compile-nf-state-freelist 2 nf-s*))
+    (define a* (heap-model action 3)) 
+    (define s+* (interpret-action a* s*))
+    (define sol (solve (assert (not (valid-state-block s+*)))))
+;    (define sol (solve (assert (not (valid-freelist-state-af 3 s+*)))))
+    ;(define sol (solve (assert (not (valid-state 3 s+*)))))
+    (if (unsat? sol)
+        (displayln "unsat")
+        (begin
+          (displayln "sat")
+          (define nf-s (concretize nf-s* sol))
+          (define s (concretize s* sol))
+          (define a (concretize a* sol))
+          (define s+ (concretize s+* sol))
+          (displayln "NF-state:")
+          (display-nf-state nf-s)
+          (displayln "State:")
+          (display-state s)
+          (display "Action: ")
+          (displayln a)
+          (displayln "State+:")
+          (display-state s+)
+          (display "valid block?: ")
+          (parameterize ([debug? #t]) (valid-state-block s+))))))
+
+
+(define (test-1)
+  (begin
+    (define s2* d+4*)
+    (define i2* (heap-model interaction 4))
+    (define s2+* (interpret-interaction i2* s2*))
+    (define sol (solve (assert (not (valid-freelist-state-af 3 s2+*)))))
+    (if (unsat? sol)
+        (displayln "unsat")
+        (begin
+          (define s2 (concretize s2* sol))
+          (define i2 (concretize i2* sol))
+          (define s2+ (concretize s2+* sol))
+          (clear-asserts!)
+          (displayln "State:")
+          (display-state s2)
+          (displayln "Interaction:")
+          (displayln i2)
+          (display "Safe Interaction?: ")
+          (displayln (heap-model-safe-interaction i2 s2))
+          (display "Valid Interaction?: ")
+          (displayln (heap-model-valid-interaction i2 s2))
+          (displayln "State+:")
+          (display-state s2+)
+          (display "Valid state+? ")
+          (displayln (valid-state 3 s2+))))))
+
+
+(define (new-heap-syn-break-freelist)
+  (begin
+    (define nf-s* (no-freelist state 6))
+    (define s* (compile-nf-state-wild 2 nf-s*))
+    (define a* (heap-model interaction 4)) 
+    (define nf-s+* (no-freelist-interaction a* nf-s*))
+    (define s+* (interpret-interaction a* s*))
+    (define sol (solve (assert (not (valid-freelist-state-af 3 s+*)))))
+    (if (unsat? sol)
+        (displayln "unsat")
+        (begin
+          (displayln "sat")
+          (define nf-s (concretize nf-s* sol))
+          (define s (concretize s* sol))
+          (define a (concretize a* sol))
+          (define nf-s+ (concretize nf-s+* sol))
+          (define s+ (concretize s+* sol))
+          (displayln "NF-state:")
+          (display-nf-state nf-s)
+          (displayln "State:")
+          (display-state s)
+          (display "Interaction: ")
+          (displayln a)
+          (displayln "NF-state+:")
+          (display-nf-state nf-s+)
+          (displayln "State+:")
+          (display-state s+)
+          (display "Heap equal?: ")
+          (parameterize ([debug? #t]) (valid-freelist-state 3 s+))))))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -915,6 +1269,7 @@
      (cons s fs)]))
 
 
+
 (define (heap-and-freelist-interaction i sfs)
   (freelist-shadow-interaction i (car sfs) (cdr sfs)))
 
@@ -957,6 +1312,29 @@
                  (compile-into-freelist h p)]))
 
 
+
+; heap-model.action-hl -> Failure freelist.action
+(define (compile-action-hl a)
+  (match a
+    [(heap-model (free h:heap-loc))
+     (freelist (free ,h))]
+    [(heap-model (alloc any any))
+     (freelist alloc)]
+    [(heap-model a:action-hl)
+     *fail*]))
+
+
+(define (compile-interaction-hl i)
+  (match i
+    [(heap-model nil)
+     (freelist nil)]
+    [(heap-model (cons a:action-hl i+:interaction-hl))
+     (let ([af (compile-action-hl a)])
+       (if (failure? af)
+           (compile-interaction-hl i+)
+           (freelist (cons ,af ,(compile-interaction-hl i+)))
+           ))]))
+     
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1035,7 +1413,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Relating the heap-model freelist with the shadow freelist
-;; no need for fuel since fl is a finite list?
+;; no need for fuel since fl is a finite list
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define (freelist-shadow? h f fs)
   (match fs
@@ -1044,8 +1422,12 @@
        [(heap-model null) #t]
         [(heap-model any) #f])]
     [(freelist (cons n:natural fs+:any))
-     (let* ([f+ (nth h f)])
-       (and (equal? f n)
+     (let* ([in-use (nth h (- f 2))]
+            [size (nth h (- f 1))]
+            [f+ (nth h f)])
+       (and (equal? in-use (heap-model 0))
+            (< 1 size)
+            (equal? f n)
             (freelist-shadow? h f+ fs+)))]))
 
 (define (freelist-state-shadow? s fs)
@@ -1056,20 +1438,42 @@
 (define heap-and-freelist-shadow? (uncurry freelist-state-shadow?))
 
 (define-compiler heap-to-freelist
-  #:source heap-lang
+  #:source heap-hl-lang
   #:target freelist-lang
   #:behavior-relation freelist-state-shadow?
   #:context-relation freelist-state-shadow?
-  #:compile (lambda (x) x))
+  #:compile compile-interaction-hl)
 
 (define-compiler heap-to-ss-freelist
-  #:source heap-ss-lang
+  #:source heap-ss-hl-lang
   #:target freelist-ss-lang
   #:behavior-relation freelist-state-shadow?
   #:context-relation freelist-state-shadow?
-  #:compile (lambda (x) x))
+  #:compile (lambda (x) (ofail (compile-action-hl x))))
 
 
+
+; (display-changed-component (find-changed-component heap-to-freelist) displayln)
+; found write in the freelist in 61.5s
+#| 
+Expression ((free 2) ((write 3 2)))
+ has behavior ((0 (null (-4 (0)))) (0 (2 (0 (null)))) 2)
+ in source-level context ((0 (null (-4 (0)))) (0 (2 (0 (0)))) null)
+
+Compiles to ((free 2))
+ with emergent behavior (2)
+ in target-level context *null* 
+|#
+;also found double free:
+#|
+Expression ((free 2))
+ has behavior ((0) (0 (2 (2 (2)))) 2)
+ in source-level context ((0) (0 (2 (null (null)))) 2)
+
+Compiles to ((free 2))
+ with emergent behavior (2 (2))
+ in target-level context (2)
+|#
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; SYMBOLIC TESTING df-state-shadow
@@ -1111,3 +1515,53 @@
     (display "Done df-test0+ ")
     ))
 
+
+
+;;;; HEAP-NO-TO-FREELIST-DEMO
+
+(define-compiler heap-no-to-freelist
+  #:source heap-hl-no-lang
+  #:target freelist-lang
+  #:behavior-relation freelist-state-shadow?
+  #:context-relation freelist-state-shadow?
+  #:compile compile-interaction-hl)
+
+(define (demo-test) (display-changed-component (find-changed-component heap-no-to-freelist) displayln))
+
+;(display-changed-component (find-changed-component heap-no-to-freelist) displayln)
+; finds a free on a block which is too small
+#|Expression ((free 2))
+ has behavior ((0 (0 (null (null)))) 2)
+in source-level context ((0 (0 (0 (0)))) null) |#
+
+; correction: changing free to make sure the block is big enough
+(define (interpret-free+ h f p)
+  (match p
+    [(heap-model n:natural)
+     (do size <- (nth h (- n 1))
+       (match size
+         [(heap-model sz:natural)
+          (if (< size 2)
+              (assert #f)
+          (do h+ <- (replace h (- n 2) (heap-model 0))
+              h++ <- (replace h+ n f)
+              h+++ <- (replace h++ (+ n 1) (heap-model null))
+              (match f ; update the whole fp head to point to new head
+                [(heap-model null)
+               h+++]
+                [(heap-model nf:natural)
+                 (do h+4 <- (replace h+++ (+ nf 1) p)
+                     h+4)])))]
+         [_
+          ;(displayln "trying to free a block which wasn't allocated")
+          ;(cons f h)
+          (assert #f)
+          ]))]))
+
+
+; break the freelist by writing to the size block directly. 
+#| Expression ((free 2) ((write 0 1)))
+ has behavior ((-6 (0 (null))) (0 (-6 (null (null)))) 2)
+ in source-level context ((-6 (0 (null))) (0 (2 (7 (4)))) null)
+|#
+; etc
