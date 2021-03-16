@@ -747,25 +747,38 @@
 
 
 ; show v1, c2 and b2
-(define (display-weird-component vars out)
+(define display-weird-component
+  (λ (vars [out displayln]
+           #:display-expression [out-expression out]
+           #:display-behavior   [out-behavior   out]
+           #:display-context    [out-context    out]
+           )
   (cond
-    [(equal? vars #f) (out (format "No weird behavior found~n"))]
+    [(equal? vars #f)      (out (format "No weird behavior found~n"))]
     [(equal? vars (list )) (out "")]
     [else
-     (let* ([cmp1 (first vars)]
+     (let* ([cmp1        (first vars)]
             [source-vars (first cmp1)]
             [target-vars (second cmp1)])
-       (out (format
+       (out (format "The following expression...~n"))
+       (out-expression (language-witness-expression source-vars))
+       (out (format "~n...has emergent behavior...~n"))
+       (out-behavior (language-witness-behavior target-vars))
+       (out (format "~n...witnessed by the following target-level context...~n"))
+       (out-context (language-witness-context target-vars))
+       #;(out (format
              "Expression ~a~n has emergent behavior ~a~n witnessed by target-level context ~a~n~n"
              (language-witness-expression source-vars)
              (language-witness-behavior target-vars)
              (language-witness-context target-vars)))
-       (display-weird-component (rest vars) out)
-       )]))
+       (display-weird-component (rest vars) out
+                                #:display-expression out-expression
+                                #:display-behavior   out-behavior
+                                #:display-context    out-context)
+       )])))
 
 ; alias (display-weird-component)
-(define (display-weird-behavior vars out)
-  (display-weird-component vars out))
+(define display-weird-behavior display-weird-component)
 
 
 (define/contract (expr-in-witness-list? e witness-list)
@@ -1231,22 +1244,31 @@
 
 
 
-(define/contract (display-gadget vars out)
-  (-> (or/c #f (listof language-witness?)) any/c any)
+(define display-gadget
+  (λ (vars [out displayln]
+           #:display-expression [out-expression out]
+           #:display-context    [out-context out]
+           #:display-behavior   [out-behavior out])
+  #;(-> (or/c #f (listof language-witness?)) any/c any)
   (cond
     [(equal? vars #f) (out (format "Gadget failed to synthesize~n"))]
     [(equal? vars (list )) (out (format "All gadgets synthesized~n"))]
     [else
      (let* ([lang-vars (first vars)])
        (out "Synthesized a gadget")
-       (out (format
-             "Expression: ~a~nContext: ~a~nBehavior: ~a~n"
-             (language-witness-expression lang-vars)
-             (language-witness-context lang-vars)
-             (language-witness-behavior lang-vars)))
-       (display-gadget (rest vars) out)
+       (out (format "~nExpression:~n"))
+       (out-expression (language-witness-expression lang-vars))
+       (out (format "~nContext:~n"))
+       (out-context (language-witness-context lang-vars))
+       (out (format "~nBehavior:~n"))
+       (out-context (language-witness-behavior lang-vars))
+
+       (display-gadget (rest vars) out
+                       #:display-expression out-expression
+                       #:display-context out-context
+                       #:display-behavior out-behavior)
      )]
-    ))
+    )))
 
 
 (define (display-list list)
