@@ -40,6 +40,8 @@
          max-str-len
          min-int
          max-int
+
+         string->racket
          )
 
 
@@ -111,6 +113,11 @@
       (racket/string-append "\""
                             (racket/list->string (map char->racket (seec-string-value s)))
                             "\"")))
+
+; Only safe to call for concrete strings
+(define/contract (string->racket s)
+  (-> string? racket/string?)
+  (racket/list->string (map char->racket (seec-string-value s))))
 
 
 (define (string-display str out)

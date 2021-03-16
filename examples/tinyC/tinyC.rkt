@@ -1,12 +1,17 @@
 #lang seec
 (require seec/private/util)
 (require seec/private/monad)
+(require (only-in seec/private/string
+                  string->racket))
 (require (only-in racket/base
                   build-list
                   make-parameter
                   raise-argument-error
-                  raise-arguments-error))
-(require (only-in racket/string ; foramtting
+                  raise-arguments-error
+                  [string? racket:string?]
+                  [string-append racket:string-append]
+                  ))
+(require (only-in racket/string ; formatting
                   string-join
                   ))
 (require rosette/lib/value-browser) ; debugging
@@ -79,6 +84,11 @@
             state->trace
             state->statement
             fresh-var
+
+            display-statement
+            display-declaration
+            display-program
+            make-declaration
 
             context->memory
             context->top-frame
@@ -158,6 +168,9 @@
       (WHILE expr statement)
       ; Outputs the value of 'ex' to the output log
       (OUTPUT expr)
+      ; Given a pointer to a buffer allocated in memory, accept input from the
+      ; environment and write to the buffer.
+      (INPUT expr)
       ; Evaluates the sequence of statements 'st ...'
       (SEQ statement statement)
       ; A no-op
@@ -205,6 +218,12 @@
   ; An output trace 't' is a sequence of values
   (trace        ::= list<val>)
 
+  ; The environment is a tuple consisting of both (1) a list of values with
+  ; which to call 'main'; and (2) a list of lists of values to be passed one at
+  ; a time to calls to 'INPUT'
+  (intlist      ::= list<integer>)
+  (env          ::= (intlist list<intlist>))
+
   )
 
 (define/contract (list->statement l)
@@ -221,7 +240,10 @@
 ;; States ;;
 ;;;;;;;;;;;;
 
-(struct state (statement context trace fresh-var)
+; The input-buffer is a (racket) list of 'intlist's that are fed to calls to
+; INPUT. This is a simple interaction model that cannot react dynamically to the
+; program execution.
+(struct state (statement context input-buffer trace fresh-var)
   #:transparent)
 (define/contract (state->context st)
   (-> state? tinyC-context?)
@@ -235,6 +257,7 @@
   (let* ([x (state-fresh-var st)]
          [st+ (state (state-statement st)
                      (state-context st)
+                     (state-input-buffer st)
                      (state-trace st)
                      (+ 1 x))])
     (cons x st+)))
@@ -259,12 +282,13 @@
       #:statement  [stmt (if stmts
                              (list->statement stmts)
                              (tinyC SKIP))]
-      #:memory     [m  #f] ; This option only works if ctx is not supplied
-      #:context    [ctx (if m
-                            (update-context-memory (state->context st) m)
-                            (state->context st))]
+      #:memory       [m  #f] ; This option only works if ctx is not supplied
+      #:input-buffer [buf (state-input-buffer st)]
+      #:context      [ctx (if m
+                              (update-context-memory (state->context st) m)
+                              (state->context st))]
       )
-    (state stmt ctx tr (state-fresh-var st))
+    (state stmt ctx buf tr (state-fresh-var st))
     ))
 
 (define (max-loc ctx)
@@ -281,6 +305,7 @@
 (define (init-state ctx)
   (state (tinyC SKIP)
          ctx
+         (list)
          seec-empty
          (+ 1 (max-loc ctx))))
 
@@ -302,10 +327,10 @@
   (map pp-mapping (seec->list m)))
 
 (define (pp-memory m)
-  (string-join (pp-map m)
-               (format "~n")))
+    (string-join (pp-map m)
+                 (format "~n")))
 (define (display-memory m)
-  (displayln (pp-memory m)))
+  (for/all ([m m]) (displayln (pp-memory m))))
 
 (define (pp-frame F)
   (string-join (pp-map F)
@@ -345,6 +370,143 @@
      (printf "==Fresh Var== ~a~n~n" (state-fresh-var st))
      ]))
 
+
+(define/contract/debug (pp-expr e)
+  (-> syntax-expr? racket:string?)
+  (match e
+    [(syntax x:integer)
+     (format "~a" x)]
+    [(syntax null)
+     "null"]
+    [(syntax (* e+:expr))
+     (format "* ~a" (pp-expr e+))]
+    [(syntax x:var)
+     (string->racket x)]
+    [(syntax (& lv:lval))
+     (format "& ~a" (pp-expr lv))]
+    [(syntax (op:binop e1:expr e2:expr))
+     (format "~a ~a ~a" (pp-expr e1) op (pp-expr e2))]
+    ))
+
+(define-grammar listifyC #:extends tinyC
+  (single-stmt ::= (ASSIGN lval expr)
+                   (CALL proc-name list<expr>)
+                   RETURN
+                   (IF expr list<single-stmt> list<single-stmt>)
+                   (WHILE expr list<single-stmt>)
+                   (OUTPUT expr)
+                   (INPUT expr)
+                   ))
+(define/contract (statement->list stmt)
+  (-> tinyC-statement? (listof listifyC-single-stmt?))
+  (match stmt
+    [(tinyC (IF e:expr t:statement f:statement))
+     (list (listifyC (IF ,e
+                         ,(list->seec (statement->list t))
+                         ,(list->seec (statement->list f)))))]
+    [(tinyC (WHILE e:expr body:statement))
+     (list (listifyC (WHILE ,e
+                            ,(list->seec (statement->list body)))))]
+    [(tinyC (SEQ stmt1:statement stmt2:statement))
+     (append (statement->list stmt1)
+             (statement->list stmt2))]
+    [(tinyC SKIP)
+     (list)]
+    [_ (list stmt)]
+    ))
+
+
+(define (indent-string str)
+  (racket:string-append "  " str))
+
+; Produce a list of strings, one for each newline; this allows for proper indent
+; management
+(define/contract (pp-single-statement stmt)
+  (-> listifyC-single-stmt? (listof racket:string?))
+  (match stmt
+    [(listifyC (ASSIGN x:lval e:expr))
+     (list (format "~a = ~a;" (pp-expr x) (pp-expr e)))]
+    [(listifyC (CALL p:proc-name es:list<expr>))
+     (list (format "~a ~a;" (string->racket p) (map pp-expr (seec->list es))))]
+    [(listifyC RETURN)
+     (list (format "return();"))]
+    [(listifyC (IF e:expr t:list<single-stmt> f:list<single-stmt>))
+     (append (list (format "if (~a) {" (pp-expr e)))
+             (map indent-string (flatten (map pp-single-statement (seec->list t))))
+             (list (format "} else {"))
+             (map indent-string (flatten (map pp-single-statement (seec->list f))))
+             (list (format "}"))
+             )
+     #;(format "if (~a) {~n ~a~n} else {~n ~a~n};"
+             e
+             (pp-statement-list-indented (seec->list t))
+             (pp-statement-list-indented (seec->list f))
+             )]
+    [(listifyC (WHILE e:expr body:list<single-stmt>))
+     (append (list (format "while (~a) {" (pp-expr e)))
+             (map indent-string (flatten (map pp-single-statement (seec->list body))))
+             (list (format "}"))
+             )
+     #;(format "while (~a) {~n ~a ~n};"
+             e
+             (pp-statement-list-indented (seec->list body))
+             )]
+    [(listifyC (OUTPUT e:expr))
+     (list (format "output(~a);" (pp-expr e)))]
+    [(listifyC (INPUT e:expr))
+     (list (format "input(~a);" (pp-expr e)))]
+    ))
+
+; Produce a list of strings, one for each newline; this allows for proper indent
+; management
+(define/contract (pp-statement stmt)
+  (-> tinyC-statement? (listof racket:string?))
+  (let* ([stmts   (statement->list stmt)])
+    (flatten (map pp-single-statement stmts))))
+(define/contract/debug #:suffix (pp-statements stmts)
+  (-> (listof tinyC-statement?) (listof racket:string?))
+  (flatten (map pp-statement stmts)))
+
+(define (display-statement stmt)
+  (displayln (string-join (pp-statement stmt)
+                          "~n")))
+
+(define/contract (pp-decl local-decl)
+  (-> tinyC-local-decl? racket:string?)
+  (match local-decl
+    [(tinyC (x:var tp:type))
+     (format "~a ~a" tp (string->racket x))]))
+
+(define/contract (pp-params params)
+  (-> (curry seec-list-of? tinyC-param-decl?)
+      racket:string?)
+  (string-join (map pp-decl (seec->list params))
+               ", "))
+(define/contract (pp-locals locals)
+  (-> (curry seec-list-of? tinyC-local-decl?)
+      (listof racket:string?))
+  (map (λ (decl) (format "~a;" (pp-decl decl)))
+       (seec->list locals)))
+
+; Again produce a list of strings, for indent management
+(define/contract/debug #:suffix (pp-declaration decl)
+  (-> tinyC-declaration? (listof racket:string?))
+  (match decl
+    [(tinyC (p:proc-name params:list<param-decl> locals:list<local-decl> body:list<statement>))
+     (append (list (format "void ~a (~a) {" (string->racket p) (pp-params params)))
+             (map indent-string (pp-locals locals))
+             (map indent-string (pp-statements (seec->list body)))
+             (list (format "}"))
+             )]
+    ))
+
+(define/contract/debug #:suffix (display-declaration decl)
+  (-> tinyC-declaration? any/c)
+  (displayln (string-join (pp-declaration decl)
+                          (format "~n"))))
+(define/contract/debug #:suffix (display-program prog)
+  (-> tinyC-prog? any/c)
+  (andmap display-declaration (seec->list prog)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Testing pretty printing ;;
@@ -947,6 +1109,24 @@
                           #:statement (tinyC SKIP))
        )]
 
+    [(tinyC (INPUT e:expr))
+     (let* ([ctx (state->context st)]
+            [F (ctx->top-frame ctx)]
+            [m (ctx->mem ctx)]
+            [input (state-input-buffer st)]
+            )
+       (cond
+         [(and (list? input)
+               (not (empty? input)))
+          (do (<- v (eval-expr e F m))
+              (<- ctx+ (set-lval v (car input) ctx))
+              (update-state st
+                            #:statement (tinyC SKIP)
+                            #:context ctx+
+                            #:input-buffer (cdr input)
+                            ))]
+            [else *fail*]
+            ))]
 
     ;; Procedure calls ;;
 
@@ -1049,30 +1229,46 @@
 (define run+
   (λ (prog    ; A seec list of declarations (aka global store)
       inputs  ; A seec list of inputs to main
+      buf     ; A racket list of seec lists to pass to INPUT
       )
     (eval-statement (max-fuel)
                     prog
                     (update-state (init-state (tinyC ((nil nil) nil)))
                                   #:statement (tinyC (CALL "main" ,inputs))
+                                  #:input-buffer buf
                                   ))))
 
 (define run
   (λ (prog    ; A racket list of declarations
       inputs  ; A racket list of inputs to main
+      buf     ; A racket list of seec lists to pass to INPUT
       )
     (run+ (list->seec prog)
-          (list->seec inputs))))
+          (list->seec inputs)
+          buf)))
+
+
+(define/contract (make-declaration name params locals statements)
+    (-> string? (listof tinyC-param-decl?)
+                (listof tinyC-local-decl?)
+                (listof tinyC-statement?)
+                tinyC-declaration?)
+    (tinyC (,name ,(list->seec params) ,(list->seec locals) ,(list->seec statements))))
 
 
 (define-language tinyC-lang
   #:grammar tinyC
   #:expression global-store #:size 5
-  #:context trace #:size 3 ; The trace acts like an argument list. Should we add
-                           ; a constraint that these should contain only
-                           ; integers, not locations?
-  #:link (λ (args prog) (cons args prog))
+  #:context env #:size 4 ; The trace acts like an argument list. Should we add
+                         ; a constraint that these should contain only
+                         ; integers, not locations?
+  #:link (λ (env prog) #;(cons args prog)
+            (match env
+              [(tinyC (args:intlist buf:list<intlist>))
+               (list prog args (seec->list buf))]))
+
   ; During evaluation, just produce the trace
-  #:evaluate (λ (p) (do st <- (run+ (cdr p) (car p))
+  #:evaluate (λ (p) (do st <- (run+ (first p) (second p) (third p))
                         (state-trace st)))
   )
 
