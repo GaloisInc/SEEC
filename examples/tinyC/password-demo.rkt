@@ -115,23 +115,14 @@ void guarded-fun (int auth) {
                                   )])
       (display-weird-behavior g displayln))))
 
-(define (synthesize-weird-behavior-password-1)
-  (define-symbolic* x integer?)
-  (synthesize-tinyC-weird-behavior password-checker
-                                   #:args  (list 42)
-                                   #:input (list x)
-                                   ))
-#;(synthesize-weird-behavior-password-1)
 
-(define (synthesize-weird-behavior-password-1+)
+(define (synthesize-weird-behavior-password-1)
   (define-symbolic* password integer?)
   (define-symbolic* x integer?)
   (synthesize-tinyC-weird-behavior password-checker
                                    #:args  (list password)
                                    #:input (list x)
                                    ))
-#;(synthesize-weird-behavior-password-1+)
-
 
 
 (define (synthesize-weird-behavior-password-2)
@@ -141,7 +132,6 @@ void guarded-fun (int auth) {
                                    #:args  (list password)
                                    #:input (list x y)
                                    ))
-#;(synthesize-weird-behavior-password-2)
 
 
 (define synthesize-tinyC-gadget
@@ -171,8 +161,6 @@ void guarded-fun (int auth) {
                            #:input (list x)
                            #:forall password
                            ))
-#;(synthesize-password-gadget-1)
-; Fails to synthesize
                            
 (define (synthesize-password-gadget-2)
   (define-symbolic* password integer?)
@@ -185,7 +173,6 @@ void guarded-fun (int auth) {
                            #:input (list x y)
                            #:forall password
                            ))
-#;(synthesize-password-gadget-2)
 ; Finds a gadget such that x = 0, y = 1
 
 (define (check-context input-list)
