@@ -49,7 +49,7 @@
          )
 
 ; Can turn off contracts for definitions defined in this module
-(use-contracts-globally #t)
+(use-contracts-globally #f)
 
 (define-grammar tinyA #:extends syntax
 
@@ -564,13 +564,11 @@
 
   (for/all ([st st])
 
-    (display-state st)
     (for*/all ([pc (state-pc st)]
                [mem (state-memory st)]
                [insn (pc->instruction pc mem)])
       #;(debug-display "pc: ~a" pc)
       #;(render-value/window pc)
-      (tinyC:display-memory mem)
 
   (do insn+ <- insn
       st+   <- (eval-statement-1 insn+ st)
