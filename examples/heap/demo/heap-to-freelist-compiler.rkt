@@ -1,5 +1,5 @@
 #lang seec
-(set-bitwidth 4)
+
 
 (require racket/format)
 (require seec/private/util)
@@ -10,24 +10,29 @@
 (require (file "heap-lang.rkt"))
 (require (file "freelist-lang.rkt"))
 
-(define/debug #:suffix (compile-into-freelist fuel h p )
-    (if (< fuel 1)
-        #f
-        (match p
-          [(heap-model null)
-           (freelist nil)]
-          [(heap-model n:natural)       
-           (let* ([new-p (nth h n)]
-                  [rest (compile-into-freelist (- fuel 1) h new-p)])
-             (if (and new-p
-                      rest)
-                 (freelist (cons ,n ,rest))
-                 #f))])))
+(define/debug #:suffix (compile-into-freelist fuel h p bwd) ; TODO: try without fuel, but checking the back-bit
+  (if (< fuel 1)
+      #f
+      (match p
+        [(heap-model null)
+         (freelist nil)]
+        [(heap-model n:natural)       
+         (let* ([new-p (opt-nth h n)]
+                [bwd-p (opt-nth h (+ n 1))])
+             (if (or (failure? bwd-p)
+                     (failure? new-p))
+                 #f                  
+                 (let* ([rest (compile-into-freelist (- fuel 1) h new-p p)])
+                   (if (and (equal? bwd-p bwd) ; check that the backward pointer is set properly
+                            rest)
+                       (freelist (cons ,n ,rest))
+                       #f))))]))) 
 
+; heap-model.state -> (freelist.state + #f)
 (define (compile-heap-to-freelist s)
   (match s
     [(heap-model (any h:heap p:pointer))
-                 (compile-into-freelist 3 h p)]))
+                 (compile-into-freelist 3 h p (heap-model null))])) 
 
 
 
@@ -79,9 +84,7 @@
         (displayln ", to state: ")
         (display-state (fourth lwl-heap))
         (displayln "... with freelist: ")
-        (print (compile-heap-to-freelist (fourth lwl-heap)))
-        (displayln "")
+        (displayln (compile-heap-to-freelist (fourth lwl-heap)))
         (displayln "... with emergent behavior: ")
-        (print (fourth lwl-freelist))
-        (displayln ""))
+        (displayln (fourth lwl-freelist))
       (displayln "No example found")))

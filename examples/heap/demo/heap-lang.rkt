@@ -1,5 +1,5 @@
  #lang seec
-(set-bitwidth 4)
+
 (require seec/private/util)
 (require seec/private/monad)
 (require racket/format)
@@ -89,7 +89,7 @@
 (define (skip n l)
   (if (equal? n 0)
       l
-      (do tl <- (tail l)
+      (let  ([tl (tail l)])
           (skip (- n 1) tl))))
     
 
@@ -104,11 +104,13 @@
   ;  (-> any/c natural-number/c any/c)
   (if (equal? i 0)
       (head s)
-      (do ts <- (tail s)
+      (let ([ts  (tail s)])
           (nth ts (- i 1)))))
 
 (define (opt-nth s i)
-  (if (< i (length s))
+  (if (and (<= 0 i)
+           (< i (length s)))
+           
       (nth s i)
       *fail*))
 

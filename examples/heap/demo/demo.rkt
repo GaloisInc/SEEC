@@ -1,5 +1,5 @@
 #lang seec
-(set-bitwidth 4)
+
 
 (require racket/format)
 (require seec/private/util)
@@ -16,7 +16,6 @@
 
 ; Makes sure the block is allocated and big enough to be in the freelist
 (define (valid-free loc h)
-  ; compute the location of the "allocated" bit
   (let* ([v-bit (nth (- loc 2) h)]
          [s-bit (nth (- loc 1) h)])
     (if (and (equal? v-bit 1)

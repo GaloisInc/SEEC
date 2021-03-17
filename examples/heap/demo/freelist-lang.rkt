@@ -1,5 +1,5 @@
  #lang seec
-(set-bitwidth 4)
+
 (require seec/private/util)
 (require seec/private/monad)
 (require racket/format)
