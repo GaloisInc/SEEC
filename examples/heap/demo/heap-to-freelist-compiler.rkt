@@ -67,8 +67,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (display-heap-to-freelist witnesses)
-  (if (unsat? witnesses)
-      (displayln "No example found")
+  (if witnesses     
       (let* ([lwl-heap (unpack-language-witness (first witnesses))]
              [lwl-freelist (unpack-language-witness (second witnesses))])
         (displayln "State: ")
@@ -84,4 +83,5 @@
         (displayln "")
         (displayln "... with emergent behavior: ")
         (print (fourth lwl-freelist))
-        (displayln ""))))
+        (displayln ""))
+      (displayln "No example found")))

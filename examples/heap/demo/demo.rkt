@@ -14,13 +14,13 @@
 (define (demo1) (display-heap-to-freelist (find-changed-component heap-to-freelist #:source-context d+3*)))
 
 
-
-;; Check that write is performed in the payload of an allocated block
-(define (valid-write loc h)
+; Makes sure the block is allocated and big enough to be in the freelist
+(define (valid-free loc h)
   ; compute the location of the "allocated" bit
-  (let* ([loc-v (- (+ loc 3) (remainder loc 4))]
-         [v-bit (nth loc-v h)])
-    (if (equal? v-bit (heap-model 1))
+  (let* ([v-bit (nth (- loc 2) h)]
+         [s-bit (nth (- loc 1) h)])
+    (if (and (equal? v-bit 1)
+             (< 1 s-bit))
         #t
         #f)))
 
@@ -28,13 +28,10 @@
   (match s
     [(heap-model (b:buf h:heap f:pointer))
      (match a
-       [(heap-model (write bl:buf-loc hl:heap-loc))
-        (do val <- (nth b bl) ; get the value from the buffer
-            loc <- (heap-loc-addr hl) ; compute the address in the heap
-            h+ <- (write h loc val) ; overwrite the location in the heap with the value
-          (if (valid-write loc h)
-              (heap-model (,b ,h+ ,f))
-              (assert #f)))]
+       [(heap-model (free p:heap-loc))
+        (if (valid-free p h)
+            (heap-model (,b ,(interpret-free h f p) ,p))
+            (assert #f))]       
        [_ (interpret-action a s)])]))
 
 (define (interpret-interaction+ i s)
@@ -61,13 +58,14 @@
 
 (define (demo2) (display-heap-to-freelist (find-changed-component heap-to-freelist+ #:source-context d+3*)))
 
-; Makes sure the block is allocated and big enough to be in the freelist
-(define (valid-free loc h)
+
+
+;; Check that write is performed in the payload of an allocated block
+(define (valid-write loc h)
   ; compute the location of the "allocated" bit
-  (let* ([v-bit (nth (- loc 2) h)]
-         [s-bit (nth (- loc 1) h)])
-    (if (and (equal? v-bit 1)
-             (< 1 s-bit))
+  (let* ([loc-v (- (+ loc 3) (remainder loc 4))]
+         [v-bit (nth loc-v h)])
+    (if (equal? v-bit (heap-model 1))
         #t
         #f)))
 
@@ -76,10 +74,13 @@
   (match s
     [(heap-model (b:buf h:heap f:pointer))
      (match a
-       [(heap-model (free p:heap-loc))
-        (if (valid-free p h)
-            (heap-model (,b ,(interpret-free h f p) ,p))
-            (assert #f))]
+              [(heap-model (write bl:buf-loc hl:heap-loc))
+        (do val <- (nth b bl) ; get the value from the buffer
+            loc <- (heap-loc-addr hl) ; compute the address in the heap
+            h+ <- (write h loc val) ; overwrite the location in the heap with the value
+          (if (valid-write loc h)
+              (heap-model (,b ,h+ ,f))
+              (assert #f)))]
        [_ (interpret-action+ a s)])]))
 
 
