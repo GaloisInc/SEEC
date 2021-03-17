@@ -702,7 +702,7 @@
         (valid-heap-block-size h)
         #;(valid-freelist fuel h p))]))
 
-(define-language heap-ss-hl-no-lang
+#;(define-language heap-ss-hl-no-lang
   #:grammar heap-model
   #:expression action-hl #:size 2
   #:context state #:size 6 #:where valid-state-block
@@ -710,7 +710,7 @@
   #:evaluate (uncurry interpret-interaction-hl))
 
 
-(define-language heap-hl-no-lang
+(define-language heap-hl-block-lang
   #:grammar heap-model
   #:expression interaction-hl #:size 4
   #:context state #:size 6 #:where valid-state-block
@@ -784,6 +784,15 @@
        (display-buf+ b+ (+ addr 1))]))
   (display-buf+ b 0))
 
+(define (print-list-value h)
+  (match h
+    [(heap-model nil)
+     ""]
+    [(heap-model (cons v:value h+:heap))
+     (let ([sh+ (print-list-value h+)])
+       (format " ~a |~a "
+               (~a (print-value v) #:width 4)
+               (~a sh+)))]))
 
 (define (display-heap h)
   (define (display-heap+ h addr)
@@ -799,8 +808,10 @@
                           (~a (print-value h4) #:width 4)))
        (display-heap+ h+ (+ addr 4))]
       [(heap-model any)
-       (displayln "HEAP not a multiple of 4")
-       (displayln (print-list print-value h))
+       ;       (displayln "HEAP not a multiple of 4")
+       (display (format "~a > |"
+                        (~a addr #:width 2)))
+       (displayln (print-list-value h))
        ]))
   (display-heap+ h 0))
 

@@ -1294,23 +1294,58 @@
 ; COMPILING heap-model to freelist
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(define/debug #:suffix (compile-into-freelist2 fuel h p bwd) ; TODO: try without fuel, but checking the back-bit
+  (if (< fuel 1)
+      #f
+      (match p
+        [(heap-model null)
+         (freelist nil)]
+        [(heap-model n:natural)       
+           (let* ([new-p (opt-nth h n)]
+                  [bwd-p (opt-nth h (+ n 1))])
+             (if (or (failure? new-p)
+                     (failure? bwd-p))
+                 #f                  
+                 (let* ([rest (compile-into-freelist2 (- fuel 1) h new-p p)])
+                   (if (and (equal? bwd-p bwd) ; check that the backward pointer is set properly
+                            rest)
+                       (freelist (cons ,n ,rest))
+                       #f))))]))) 
+
 ; heap-model.state -> (freelist.state + #f)
-(define (compile-heap-to-freelist s)
-  (define (compile-into-freelist h p )
-    (match p
-      [(heap-model null)
-       (freelist nil)]
-      [(heap-model n:natural)
-       (let* ([new-p (nth h n)]
-              [rest (compile-into-freelist h new-p)])
-         (if (and new-p
-                  rest)
-             (freelist (cons ,n ,rest))
-             #f))]))
+(define (compile-heap-to-freelist2 s)
   (match s
     [(heap-model (any h:heap p:pointer))
-                 (compile-into-freelist h p)]))
+                 (compile-into-freelist2 3 h p (heap-model null))])) 
 
+
+; using fuel but not checking backbit -- this allows more heap-model than it should (e.g. null (0 2 null) 1) would get (2 (1))
+(define/debug #:suffix (compile-into-freelist fuel h p ) ; TODO: try without fuel, but checking the back-bit
+    (if (< fuel 1)
+        #f
+        (match p
+          [(heap-model null)
+           (freelist nil)]
+          [(heap-model n:natural)       
+           (let* ([new-p (nth h n)]
+                  [rest (compile-into-freelist (- fuel 1) h new-p)])
+             (if (and new-p
+                      rest)
+                 (freelist (cons ,n ,rest))
+                 #f))])))
+
+(define (compile-heap-to-freelist s)
+  (match s
+    [(heap-model (any h:heap p:pointer))
+                 (compile-into-freelist 3 h p)]))
+
+(define (test-heap-to-freelist s)
+  (parameterize ([debug? #t])
+    (compile-heap-to-freelist s)))
+
+(define (test-heap-to-freelist2 s)
+  (parameterize ([debug? #t])
+    (compile-heap-to-freelist2 s)))
 
 
 ; heap-model.action-hl -> Failure freelist.action
@@ -1517,16 +1552,151 @@ Compiles to ((free 2))
 
 
 
+
+(define (break-df-test0)
+  (begin
+    (define concr f)
+    (define d* (heap-model state 6))
+    (assert (freelist-state-shadow? d* concr))
+    (define i* (heap-model interaction-hl 3))
+    (define d+* (interpret-interaction-hl i* d*))
+    (define i-f* (compile-interaction-hl i*))
+    (define concr+* (freelist-interaction i-f* concr))
+    (define sol (solve (assert (not (freelist-state-shadow? d+* concr+*)))))
+    (define d (concretize d* sol))
+    (define i (concretize i* sol))
+    (define d+ (concretize d+* sol))
+    (define i-f (concretize i-f* sol))
+    (define concr+ (concretize concr+* sol))
+    (displayln "State:")
+    (display-state d)
+    (displayln "Freelist:")
+    (displayln concr)
+    (display "Shadows?:")
+    (displayln (freelist-state-shadow? d concr))
+    (display "Interaction: ")
+    (displayln i)
+    (display "Freelist Interaction: ")
+    (displayln i-f)              
+    (displayln "State+:")
+    (display-state d+)
+    (displayln "Freelist+:")
+    (displayln concr+)
+    (display "Shadows+?:")
+    (displayln (freelist-state-shadow? d+ concr+))
+    (display "Done break-df-test0 ")
+    ))
+
+; concrete heap, break compilation to freelist
+(define (break-df-test1)
+  (begin
+;    (define d* d+4*)
+    (define d* (heap-model state 7))
+    (assert (valid-state-block d*))
+    (define f* (compile-heap-to-freelist d*))
+      ;(define f* (freelist state 4))
+    (define i* (heap-model interaction-hl 4))
+    (define d+* (interpret-interaction-hl i* d*))
+    (define i-f* (compile-interaction-hl i*))
+    (define f+* (freelist-interaction i-f* f*))
+    (define d+-f* (compile-heap-to-freelist d+*))
+    (define sol (solve (assert (not (equal? f+* d+-f*)))))
+    (if (unsat? sol)
+        (displayln "UNSAT")
+        (begin
+          (displayln "SAT")
+          (define d (concretize d* sol))
+          (define f (concretize f* sol))
+          (define i (concretize i* sol))
+          (define d+ (concretize d+* sol))
+          (define i-f (concretize i-f* sol))
+          (define f+ (concretize f+* sol))
+          (define d+-f (concretize d+-f* sol))
+          (displayln "State:")
+          (display-state d)
+          (displayln "Freelist:")
+          (displayln f)
+          (display "Shadows?:")
+          (displayln (freelist-state-shadow? d f))
+          (display "Interaction: ")
+          (displayln i)
+          (display "Freelist Interaction: ")
+          (displayln i-f)              
+          (displayln "State+:")
+          (display-state d+)
+          (displayln "Freelist+:")
+          (displayln f+)
+          (displayln "Freelist through state+?:")
+          (displayln d+-f)
+          (display "Done break-df-test1 ")))))
+
+
+(define d+3+* (interpret-action-hl (heap-model (free 2)) d+3*))
+
 ;;;; HEAP-NO-TO-FREELIST-DEMO
+(define-language heap-hl-no-lang
+  #:grammar heap-model
+  #:expression interaction-hl #:size 3
+  #:context state #:size 8
+  #:link snoc
+  #:evaluate (uncurry interpret-interaction-hl))
 
 (define-compiler heap-no-to-freelist
+  #:source heap-hl-no-lang
+  #:target freelist-lang
+  #:behavior-relation (lambda (s f) (equal? (compile-heap-to-freelist s) f))
+  #:context-relation (lambda (s f) (equal? (compile-heap-to-freelist s) f))
+  #:compile compile-interaction-hl)
+
+
+#;(define-compiler heap-no-to-freelist
   #:source heap-hl-no-lang
   #:target freelist-lang
   #:behavior-relation freelist-state-shadow?
   #:context-relation freelist-state-shadow?
   #:compile compile-interaction-hl)
 
-(define (demo-test) (display-changed-component (find-changed-component heap-no-to-freelist) displayln))
+(define (display-heap-model-witness witness)
+  (let ([lwl (unpack-language-witness witness)])
+    (displayln "State: ")
+    (display-state (first lwl))
+    (displayln "... under interaction: ")
+    (displayln (second lwl))
+    (displayln "... steps to state: ")
+    (display-state (fourth lwl))))
+
+(define (display-freelist-witness witness)
+  (let ([lwl (unpack-language-witness witness)])
+    (displayln "Freelist: ")
+    (display-state (first lwl))
+    (displayln "... under interaction: ")
+    (displayln (second lwl))
+    (displayln "... steps to freelist: ")
+    (display-state (fourth lwl))))
+
+(define (display-heap-to-freelist witnesses)
+  (if (unsat? witnesses)
+      (displayln "No example found")
+      (let* ([lwl-heap (unpack-language-witness (first witnesses))]
+             [lwl-freelist (unpack-language-witness (second witnesses))])
+        (displayln "State: ")
+        (display-state (second lwl-heap))
+        (displayln "... has freelist:")
+        (displayln (second lwl-freelist))
+        (display "... and steps, under interaction ")
+        (display (first lwl-heap))
+        (displayln ", to state: ")
+        (display-state (fourth lwl-heap))
+        (displayln "... with freelist: ")
+        (displayln (compile-heap-to-freelist2 (fourth lwl-heap)))
+        (displayln "... with emergent behavior: ")
+        (displayln (fourth lwl-freelist)))))
+
+
+
+(define (demo-test1) (display-heap-to-freelist (find-changed-component heap-no-to-freelist #:source-context d+3*)))
+
+(define (demo-test1+) (display-heap-to-freelist (find-changed-component heap-no-to-freelist #:source-context-where (lambda (v c) (valid-state-block c)))))
 
 ;(display-changed-component (find-changed-component heap-no-to-freelist) displayln)
 ; finds a free on a block which is too small
@@ -1534,14 +1704,26 @@ Compiles to ((free 2))
  has behavior ((0 (0 (null (null)))) 2)
 in source-level context ((0 (0 (0 (0)))) null) |#
 
-; correction: changing free to make sure the block is big enough
-(define (interpret-free+ h f p)
+; correction: changing free to make sure the block is big enough and allocated
+(define (valid-free loc h)
+  ; compute the location of the "allocated" bit
+  (let* ([v-bit (nth (- loc 2) h)]
+         [s-bit (nth (- loc 1) h)])
+    (if (and (equal? v-bit 1)
+             (< 1 s-bit))
+        #t
+        #f)))
+
+
+#;(define (interpret-free+ h f p)
   (match p
     [(heap-model n:natural)
-     (do size <- (nth h (- n 1))
+     (do in-use <- (nth h (- n 2))
+         size <- (nth h (- n 1))
        (match size
          [(heap-model sz:natural)
-          (if (< size 2)
+          (if (or (< size 2)
+                  (not (equal? size 0)))
               (assert #f)
           (do h+ <- (replace h (- n 2) (heap-model 0))
               h++ <- (replace h+ n f)
@@ -1558,10 +1740,103 @@ in source-level context ((0 (0 (0 (0)))) null) |#
           (assert #f)
           ]))]))
 
+(define (interpret-action-hl+ a s)
+  (match s
+    [(heap-model (b:buf h:heap f:pointer))
+     (match a
+       [(heap-model (free p:heap-loc))
+        (if (valid-free p h)
+            (heap-model (,b ,(interpret-free h f p) ,p))
+            (assert #f))]
+       [_ (interpret-action-hl a s)])]))
 
-; break the freelist by writing to the size block directly. 
-#| Expression ((free 2) ((write 0 1)))
- has behavior ((-6 (0 (null))) (0 (-6 (null (null)))) 2)
- in source-level context ((-6 (0 (null))) (0 (2 (7 (4)))) null)
+(define (interpret-interaction-hl+ i s)
+  (match i
+    [(heap-model (cons a:action-hl i+:interaction-hl))
+     (interpret-interaction-hl+ i+ (interpret-action-hl+ a s))]
+    [(heap-model nil)
+     s]))
+
+
+(define-language heap-hl-no-lang+
+  #:grammar heap-model
+  #:expression interaction-hl #:size 3
+  #:context state #:size 8
+  #:link snoc
+  #:evaluate (uncurry interpret-interaction-hl+))
+
+(define-compiler heap-no-to-freelist+
+  #:source heap-hl-no-lang+
+  #:target freelist-lang
+  #:behavior-relation (lambda (s f) (equal? (compile-heap-to-freelist2 s) f))
+  #:context-relation (lambda (s f) (equal? (compile-heap-to-freelist2 s) f))
+  #:compile compile-interaction-hl)
+
+
+
+(define (demo-test2) (display-heap-to-freelist (find-changed-component heap-no-to-freelist+ #:source-context d+3*)))
+
+(define (demo-test2+) (display-heap-to-freelist (find-changed-component heap-no-to-freelist+ #:source-context-where (lambda (v c) (valid-state-block c)))))
+
+; break the freelist by writing in the freelist meta data
+#| Expression ((write 3 2))
+ has behavior ((null (6 (0 (0)))) (0 (2 (0 (null (1 (2 (0 (0)))))))) 2)
+ in source-level context ((null (6 (0 (0)))) (0 (2 (null (null (1 (2 (0 (0)))))))) 2)
+
+Compiles to *null*
+ with emergent behavior (2)
+ in target-level context (2)
 |#
-; etc
+; Can fix write to only write to allocated blocks
+(define (valid-write loc h)
+  ; compute the location of the "allocated" bit
+  (let* ([loc-v (- (+ loc 3) (remainder loc 4))]
+         [v-bit (nth loc-v h)])
+    (if (equal? v-bit (heap-model 1))
+        #t
+        #f)))
+
+(define (interpret-action-hl++ a s)
+  (match s
+    [(heap-model (b:buf h:heap f:pointer))
+     (match a
+       [(heap-model (write bl:buf-loc hl:heap-loc))
+        (do val <- (nth b bl) ; get the value from the buffer
+            loc <- (heap-loc-addr hl) ; compute the address in the heap
+            h+ <- (write h loc val) ; overwrite the location in the heap with the value
+          (if (valid-write loc h)
+              (heap-model (,b ,h+ ,f))
+              (assert #f)))]
+       [_ (interpret-action-hl+ a s)])]))
+
+(define (interpret-interaction-hl++ i s)
+  (match i
+    [(heap-model (cons a:action-hl i+:interaction-hl))
+     (interpret-interaction-hl++ i+ (interpret-action-hl++ a s))]
+    [(heap-model nil)
+     s]))
+
+
+(define-language heap-hl-no-lang++
+  #:grammar heap-model
+  #:expression interaction-hl #:size 3
+  #:context state #:size 8
+  #:link snoc
+  #:evaluate (uncurry interpret-interaction-hl++))
+
+(define-compiler heap-no-to-freelist++
+  #:source heap-hl-no-lang++
+  #:target freelist-lang
+  #:behavior-relation (lambda (s f) (equal? (compile-heap-to-freelist2 s) f))
+  #:context-relation (lambda (s f) (equal? (compile-heap-to-freelist2 s) f))
+  #:compile compile-interaction-hl)
+
+(define (demo-test3) (display-heap-to-freelist (find-changed-component heap-no-to-freelist++ #:source-context d+3*)))
+
+; find nonsense
+
+(define (demo-test3+) (display-heap-to-freelist (find-changed-component heap-no-to-freelist++)))
+
+
+; 
+(define (demo-test3++) (display-heap-to-freelist (find-changed-component heap-no-to-freelist++ #:source-context-where (lambda (v c) (valid-state-block c)))))

@@ -20,7 +20,7 @@
   (nnvalue ::= integer)
   (value ::= nnvalue pointer)
   (payload ::= empty (integer integer))
-  (buf ::= (integer integer))
+  (buf ::= (value value))
   (heap ::= list<payload>) ;(payload payload))
   (state ::= (buf heap))
   (action ::=
@@ -130,72 +130,72 @@
 ; Pretty-printing heap-struct
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (print-nf-pointer p)
+(define (print-hs-pointer p)
   (match p
     [(heap-model (n:natural o:natural))
      (format "<~a,~a>" n o)]
     [(heap-model null)
      "null"]))
 
-(define (print-nf-nnvalue nv)
+(define (print-hs-nnvalue nv)
   (format "~a" nv))
 
-(define (print-nf-value v)
+(define (print-hs-value v)
   (match v
     [(heap-struct nv:nnvalue)
-     (print-nf-nnvalue nv)]
+     (print-hs-nnvalue nv)]
     [(heap-struct p:pointer)
-     (print-nf-pointer p)]))
+     (print-hs-pointer p)]))
 
-(define (print-nf-payload p)
+(define (print-hs-payload p)
   (match p
     [(heap-struct empty)
      "empty"]                  
     [(heap-struct (v0:value v1:value))
      (format "(~a ~a)"
-                        (print-nf-value v0)
-                        (print-nf-value v1))]))
+                        (print-hs-value v0)
+                        (print-hs-value v1))]))
 
 
-(define (display-nf-buf h)
+(define (display-hs-buf h)
   (match h
-    [(heap-struct (p0:integer p1:integer))
+    [(heap-struct (p0:value p1:value))
      (displayln (format "0 > ~a"
-                        p0))
+                        (print-hs-value p0)))
      (displayln (format "1 > ~a"
-                        p1))]))
+                        (print-hs-value p1)))]))
 
-(define (display-nf-heap h)
-  (define (display-nf-heap+ h addr)
+(define (display-hs-heap h)
+  (define (display-hs-heap+ h addr)
     (match h
       [(heap-struct nil)
        (displayln "")]
       [(heap-struct (cons p:payload h+:heap))
        (displayln (format "~a > ~a"
                           (~a addr #:width 2)
-                          (print-nf-payload p)))
-       (display-nf-heap+ h+ (+ addr 1))]))
-  (display-nf-heap+ h 0))
+                          (print-hs-payload p)))
+       (display-hs-heap+ h+ (+ addr 1))]))
+  (display-hs-heap+ h 0))
 
-(define (display-nf-state s)
+(define (display-hs-state s)
   (match s
     [(heap-struct (b:buf h:heap))
      (begin
        (displayln "BUFFER:")
-       (display-nf-buf b)
+       (display-hs-buf b)
        (displayln "HEAP (heap-struct model):")
-       (display-nf-heap h)
+       (display-hs-heap h)
        )]))
 
 ;; heap-struct.buf -> heap-model.buf 
-(define (compile-nf-buf b)
+(define (compile-hs-buf b)
   (match b
     [(heap-struct (n1:integer n2:integer))
      (heap-model (cons ,n1 (cons ,n2  nil)))]))
 
 ;; heap-struct.payload -> heap-model.heap -> heap-model.heap
 ;; add the payload in from of the heap
-(define (compile-nf-payload v)
+(define (compile-hs-payload v)
   (match v
     [(heap-struct empty)
      (heap-model (cons 0 (cons 2 (cons null (cons null nil)))))]
@@ -212,22 +212,22 @@
 
 ; n is the size (in block) of the resulting heap.
 ;; natural -> heap-struct.heap -> heap-model.heap)
-(define/debug (compile-nf-heap-wild n h)
+(define/debug (compile-hs-heap-wild n h)
   (match h
       [(heap-struct nil)
        (make-wild n)]
       [(heap-struct (cons v:payload h+:heap))
-       (let* ([v+ (compile-nf-payload v)]
-              [hp (compile-nf-heap-wild (- n 1) h+)])
+       (let* ([v+ (compile-hs-payload v)]
+              [hp (compile-hs-heap-wild (- n 1) h+)])
          (append v+ hp))]))
 
 ;;  natural -> heap-struct.state -> heap-model.state
-(define (compile-nf-state-wild n s)
+(define (compile-hs-state-wild n s)
   (match s
     [(heap-struct (b:buf h:heap))
-     (let* ([b+ (compile-nf-buf b)]
+     (let* ([b+ (compile-hs-buf b)]
 ;            [h+ (seec-pair-to-list h)]
-            [h+ (compile-nf-heap-wild n h)])
+            [h+ (compile-hs-heap-wild n h)])
        (heap-model (,b+ ,h+ null)))]))
 
 
@@ -245,7 +245,7 @@
 ;; Trying to compile a heap-struct into a heap with a freelist.
 ; input: a partial heap, the index into the heap (number of blocks), a stack of freelist block (list<natural>) 
 ; Returns: a partial heap and backward pointer 
-(define/debug #:suffix (compile-nf-heap-freelist+ h total-block curr-block bwd)
+(define/debug #:suffix (compile-hs-heap-freelist+ h total-block curr-block bwd)
   (match h
     [(heap-struct nil)
      (let* ([wild-size (- total-block curr-block)]
@@ -253,30 +253,30 @@
        (cons wild (heap-model null)))]
     [(heap-struct (cons empty h+:heap)) ; free block
      (let* ([p-addr (+ (* curr-block 4) 2)]
-            [ret (compile-nf-heap-freelist+ h+ total-block (+ curr-block 1) (heap-model ,p-addr))]
+            [ret (compile-hs-heap-freelist+ h+ total-block (+ curr-block 1) (heap-model ,p-addr))]
             [ret-h (car ret)]
             [ret-fwd (cdr ret)]
             [new-h (heap-model (cons 0 (cons 2 (cons ,ret-fwd (cons ,bwd ,ret-h)))))])
             (cons new-h (heap-model ,p-addr)))]
     [(heap-struct (cons v:payload h+:heap)) ; non-free block
-     (let* ([v+ (compile-nf-payload v)]
-            [ret (compile-nf-heap-freelist+ h+ total-block (+ curr-block 1) bwd)]
+     (let* ([v+ (compile-hs-payload v)]
+            [ret (compile-hs-heap-freelist+ h+ total-block (+ curr-block 1) bwd)]
             [ret-h (car ret)]
             [ret-fwd (cdr ret)]
             [new-h (append v+ ret-h)])
        (cons new-h ret-fwd))]))
             
-(define (compile-nf-heap-freelist n h)
-  (compile-nf-heap-freelist+ h n 0 (heap-model null)))
+(define (compile-hs-heap-freelist n h)
+  (compile-hs-heap-freelist+ h n 0 (heap-model null)))
       
                   
 
-(define (compile-nf-state-freelist n s)
+(define (compile-hs-state-freelist n s)
   (match s
     [(heap-struct (b:buf h:heap))
-     (let* ([b+ (compile-nf-buf b)]
+     (let* ([b+ (compile-hs-buf b)]
 ;            [h+ (seec-pair-to-list h)]
-            [ret (compile-nf-heap-freelist n h)]
+            [ret (compile-hs-heap-freelist n h)]
             [ret-h (car ret)]
             [ret-p (cdr ret)])
        (heap-model (,b+ ,ret-h ,ret-p)))]))
@@ -286,13 +286,110 @@
 
 (define (test-freelist s)
   (parameterize ([debug? #t])
-    (compile-nf-state-freelist 2 s)))
+    (compile-hs-state-freelist 2 s)))
 
 (define (test-wild s)
   (parameterize ([debug? #t])
-    (compile-nf-state-wild 2 s)))
+    (compile-hs-state-wild 2 s)))
 
 ;;; EQUALITY
+; shallow value equality
+; #t on pointers
+(define/debug (eq-hs-shallow-value hv v)
+  (match hv
+    [(heap-struct i:integer)
+     (match v
+       [(heap-model iv:integer)
+        (equal? i iv)]
+       [any 
+        #f])]
+    [(heap-struct p:pointer)
+     #t]))
+
+; deep value equality
+; #t on pointers
+(define/debug (eq-hs-deep-pointer hp p hh h)
+  (define (eq-hs-deep-pointer+ l o i hh h)
+    (do v <- opt-nth h i
+        p <- opt-nth hh l
+        (match p
+          [(heap-struct empty) #f]
+          [(heap-struct (i0:integer i1:integer))
+           (match o
+             [(heap-struct 0)
+              (equal? v i0)]
+             [(heap-struct 1)
+              (equal? v i1)]
+             [any #f])])))
+  (match hp
+    [(heap-struct null)
+     (match p
+       [(heap-model null)
+        #t]
+       [any
+        #f])]
+    [(heap-struct (l:natural o:natural))
+     (match p
+       [(heap-model i:natural)
+        (let ([r (eq-hs-deep-pointer+ l o i hh h)])
+          (if (failure? r)
+              #f
+              r))]
+       [any
+        #f])]))
+
+(define/debug (eq-hs-deep-value hv v hh h)
+  (match hv
+    [(heap-struct hi:integer)
+     (match v
+       [(heap-model i:integer)
+        (equal? hi i)]
+       [any 
+        #f])]
+    [(heap-struct hp:pointer)
+     (match v
+       [(heap-model p:pointer)
+        (eq-hs-deep-pointer hp p hh h)]
+       [any 
+        #f])]))
+
+
+
+; shallow buffer equality
+(define/debug #:suffix (eq-hs-shallow-buf hb b)
+  (match hb
+    [(heap-struct (v0:value v1:value))
+     (match b
+       [(heap-model (cons b0:value (cons b1:value nil)))
+        (and (eq-hs-shallow-value v0 b0)
+             (eq-hs-shallow-value v1 b1))]
+       [any
+        #f])]))
+
+; deep buffer equality
+(define/debug #:suffix (eq-hs-deep-buf hb b hh h)
+  (match hb
+    [(heap-struct (v0:value v1:value))
+     (match b
+       [(heap-model (cons b0:value (cons b1:value nil)))
+        (and (eq-hs-deep-value v0 b0 hh h)
+             (eq-hs-deep-value v1 b1 hh h))]
+       [any
+        #f])]))
+
+(define (eq-hs-shallow-state hs s)
+  (match hs
+    [(heap-struct (nf-b:buf nf-h:heap))
+     (match s
+       [(heap-model (b:buf h:heap any))
+        (eq-hs-shallow-buf nf-b b)])]))
+
+(define (eq-hs-deep-state hs s)
+  (match hs
+    [(heap-struct (nf-b:buf nf-h:heap))
+     (match s
+       [(heap-model (b:buf h:heap any))
+        (eq-hs-deep-buf nf-b b nf-h h)])]))
 
 ; compare a heap-struct.payload with a heap-model.block
 (define/debug #:suffix (eq-struct-payload p bl)
@@ -320,7 +417,7 @@
        [(heap-model nil)
         #t]
        [(heap-model (cons 0 (cons size:natural h+:heap))) ; TODO: handle trailing wildarea
-        #t]
+        (equal? size (length h+))]
        [(heap-model any)
         #f])]
     [(heap-struct (cons p:payload hs+:heap))
@@ -357,7 +454,7 @@
 (define (syn-freelist-length)
   (begin
     (define nf-s* (heap-struct state 4))
-    (define s* (compile-nf-state-freelist 2 nf-s*))
+    (define s* (compile-hs-state-freelist 2 nf-s*))
     (define sol (solve (assert (equal? (freelist-length 3 s*) 1))))
     (if (unsat? sol)
         (displayln "unsat")
@@ -366,7 +463,7 @@
           (define nf-s (concretize nf-s* sol))
           (define s (concretize s* sol))
           (displayln "NF-state:")
-          (display-nf-state nf-s)
+          (display-hs-state nf-s)
           (displayln "State:")
           (display-state s)))))
 
@@ -374,7 +471,7 @@
 (define (new-heap-syn-test-freelist)
   (begin
     (define nf-s* (heap-struct state 4))
-    (define s* (compile-nf-state-freelist 2 nf-s*))
+    (define s* (compile-hs-state-freelist 2 nf-s*))
     (define a* (heap-model action 3)) 
     (define s+* (interpret-action a* s*))
     (define sol (solve (assert (not (valid-state-block s+*)))))
@@ -389,7 +486,7 @@
           (define a (concretize a* sol))
           (define s+ (concretize s+* sol))
           (displayln "NF-state:")
-          (display-nf-state nf-s)
+          (display-hs-state nf-s)
           (displayln "State:")
           (display-state s)
           (display "Action: ")
@@ -404,7 +501,7 @@
 (define (new-heap-syn-test-wild)
   (begin
     (define nf-s* (heap-struct state 4))
-    (define s* (compile-nf-state-wild 2 nf-s*))
+    (define s* (compile-hs-state-wild 2 nf-s*))
     (define a* (heap-model action 3)) 
     (define s+* (interpret-action a* s*))
     (define sol (solve (assert (not (valid-state-block s+*)))))
@@ -419,7 +516,7 @@
           (define a (concretize a* sol))
           (define s+ (concretize s+* sol))
           (displayln "NF-state:")
-          (display-nf-state nf-s)
+          (display-hs-state nf-s)
           (displayln "State:")
           (display-state s)
           (display "Action: ")
@@ -434,7 +531,7 @@
 (define (new-heap-syn-test-wild-i)
   (begin
     (define nf-s* (heap-struct state 4))
-    (define s* (compile-nf-state-wild 2 nf-s*))
+    (define s* (compile-hs-state-wild 2 nf-s*))
     (define a* (heap-model interaction 4)) 
     (define s+* (interpret-interaction a* s*))
     (define sol (solve (assert (not (valid-state-block s+*)))))
@@ -449,7 +546,7 @@
           (define a (concretize a* sol))
           (define s+ (concretize s+* sol))
           (displayln "NF-state:")
-          (display-nf-state nf-s)
+          (display-hs-state nf-s)
           (displayln "State:")
           (display-state s)
           (display "Action: ")
@@ -492,15 +589,15 @@
 (define nf-b (heap-struct (0 0)))
 (define nf-h (heap-struct (cons empty (cons (9 10) nil)))) ;(empty (9 10))))
 (define nf (heap-struct (,nf-b ,nf-h)))
-(define nfs-w (compile-nf-state-wild 2 nf))
-(define nfs-f (compile-nf-state-freelist 2 nf))
+(define nfs-w (compile-hs-state-wild 2 nf))
+(define nfs-f (compile-hs-state-freelist 2 nf))
 
 
 #;(define-language struct-lang
   #:grammar heap-struct
   #:expression interaction #:size 3
   #:context state #:size 6
-  #:link (lambda (e c) (cons (compile-nf-state-wild c) e))
+  #:link (lambda (e c) (cons (compile-hs-state-wild c) e))
   #:evaluate (uncurry interpret-interaction))
 
 
@@ -530,7 +627,7 @@
   #:target new-heap-ss-lang
   #:behavior-relation eq-struct-heap-state
   #:context-relation equal?
-  #:compile (lambda (x) (compile-nf-state-freelist 2 x)))
+  #:compile (lambda (x) (compile-hs-state-freelist 2 x)))
 
 
 
@@ -540,10 +637,10 @@
 (define (test-hs-compiler)
   (begin
     (define nf-s* (heap-struct state 4))
-    (define s* (compile-nf-state-freelist 2 nf-s*))
+    (define s* (compile-hs-state-freelist 2 nf-s*))
     (define a* (heap-model action 3))
     (define s+* (interpret-action a* s*))
-    (define nf-new* (heap-struct state 4))
+    (define nf-new* (heap-struct state 6)) ; have to be bigger than nf-s* since allocated block have more depth, should fix it
     (define sol (synthesize
                  #:forall nf-new*
                  #:guarantee (assert (not (eq-struct-heap-state nf-new* s+*)))))
@@ -557,7 +654,7 @@
           (define s+ (concretize s+* sol))
           (define nf-new (concretize nf-new* sol))
           (displayln "NF-state:")
-          (display-nf-state nf-s)
+          (display-hs-state nf-s)
           (displayln "State:")
           (display-state s)
           (display "Action: ")
@@ -566,10 +663,10 @@
           (display-state s+)))))
 
 
-(define (test-compiler)
+(define (test-compiler-heap)
   (begin
     (define nf-s* (heap-struct state 4))
-    (define s* (compile-nf-state-freelist 2 nf-s*))
+    (define s* (compile-hs-state-freelist 2 nf-s*))
     (define a* (heap-model action 3))
     (define nf-s+* (heap-struct-action a* nf-s*))
     (define s+* (interpret-action a* s*))
@@ -585,7 +682,7 @@
           (define s+ (concretize s+* sol))
           (define nf-s+ (concretize nf-s+* sol))
           (displayln "NF-state:")
-          (display-nf-state nf-s)
+          (display-hs-state nf-s)
           (displayln "State:")
           (display-state s)
           (display "Action: ")
@@ -593,10 +690,91 @@
           (displayln "State+:")
           (display-state s+)
           (displayln "New State+:")
-          (display-nf-state nf-s+)))))
+          (display-hs-state nf-s+)))))
 
+(define (test-compiler-shallow)
+  (begin
+    (define nf-s* (heap-struct state 4))
+    (define s* (compile-hs-state-freelist 2 nf-s*))
+    (define a* (heap-model action 3))
+    (define nf-s+* (heap-struct-action a* nf-s*))
+    (define s+* (interpret-action a* s*))
+    (define sol (solve (assert (not (eq-hs-shallow-state nf-s+* s+*)))))
+    (if (unsat? sol)
+        (displayln "unsat")
+        (begin
+          (displayln "sat")
+          (define nf-s (concretize nf-s* sol))
+          (define s (concretize s* sol))
+          (define a (concretize a* sol))
+          (define s+ (concretize s+* sol))
+          (define nf-s+ (concretize nf-s+* sol))
+          (displayln "NF-state:")
+          (display-hs-state nf-s)
+          (displayln "State:")
+          (display-state s)
+          (display "Action: ")
+          (displayln a)
+          (displayln "State+:")
+          (display-state s+)
+          (displayln "New State+:")
+          (display-hs-state nf-s+)))))
 
-    
+ (define (test-compiler-deep)
+  (begin
+    (define nf-s* (heap-struct state 4))
+    (define s* (compile-hs-state-freelist 2 nf-s*))
+    (define a* (heap-model action 3))
+    (define nf-s+* (heap-struct-action a* nf-s*))
+    (define s+* (interpret-action a* s*))
+    (define sol (solve (assert (not (eq-hs-deep-state nf-s+* s+*)))))
+    (if (unsat? sol)
+        (displayln "unsat")
+        (begin
+          (displayln "sat")
+          (define nf-s (concretize nf-s* sol))
+          (define s (concretize s* sol))
+          (define a (concretize a* sol))
+          (define s+ (concretize s+* sol))
+          (define nf-s+ (concretize nf-s+* sol))
+          (displayln "NF-state:")
+          (display-hs-state nf-s)
+          (displayln "State:")
+          (display-state s)
+          (display "Action: ")
+          (displayln a)
+          (displayln "State+:")
+          (display-state s+)
+          (displayln "New State+:")
+          (display-hs-state nf-s+)))))
+
+ (define (test-compiler-deep-i)
+  (begin
+    (define nf-s* (heap-struct state 4))
+    (define s* (compile-hs-state-freelist 2 nf-s*))
+    (define a* (heap-model interaction 4))
+    (define nf-s+* (heap-struct-interaction a* nf-s*))
+    (define s+* (interpret-interaction a* s*))
+    (define sol (solve (assert (not (eq-hs-deep-state nf-s+* s+*)))))
+    (if (unsat? sol)
+        (displayln "unsat")
+        (begin
+          (displayln "sat")
+          (define nf-s (concretize nf-s* sol))
+          (define s (concretize s* sol))
+          (define a (concretize a* sol))
+          (define s+ (concretize s+* sol))
+          (define nf-s+ (concretize nf-s+* sol))
+          (displayln "NF-state:")
+          (display-hs-state nf-s)
+          (displayln "State:")
+          (display-state s)
+          (display "Action: ")
+          (displayln a)
+          (displayln "State+:")
+          (display-state s+)
+          (displayln "New State+:")
+          (display-hs-state nf-s+)))))
 
 
 (define (cc-hs-compiler)
