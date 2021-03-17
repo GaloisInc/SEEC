@@ -86,5 +86,5 @@
         (displayln "... with freelist: ")
         (displayln (compile-heap-to-freelist (fourth lwl-heap)))
         (displayln "... with emergent behavior: ")
-        (displayln (fourth lwl-freelist))
+        (displayln (fourth lwl-freelist)))
       (displayln "No example found")))
