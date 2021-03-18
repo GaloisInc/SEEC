@@ -298,7 +298,7 @@
            (do ph+ <- (interpret-alloc-no-free h)
                b+ <- (replace b bl (car ph+))
              (heap-model (,b+ ,(cdr ph+) ,f)))])]
-       [(heap-model (set bl:buf-loc val:nnvalue))
+       [(heap-model (set bl:buf-loc val:value))
         (do b+ <- (replace b bl val)
           (heap-model (,b+ ,h ,f)))]
        [(heap-model (read hl:heap-loc bl:buf-loc))
@@ -336,7 +336,8 @@
     [(heap-model (cons in-use:natural h+:heap))
      (match h+
        [(heap-model (cons size:natural h++:heap))
-        (if (< in-use 2) ; s should be 0 or 1
+        (if (and (< in-use 2) ; s should be 0 or 1
+                 (equal? size 2)) ; temporary
             (valid-heap-block-size (skip size h++))
             #f)]
        [(heap-model any)
@@ -350,6 +351,31 @@
        (and
         (valid-heap-block-size h)
         #;(valid-freelist fuel h p))]))
+
+(define/debug (valid-freelist fuel h p)
+  (define/debug #:suffix (valid-freelist+ fuel h p prev-p)
+    (if (<= fuel 0)
+        #t
+        (match p      
+          [(heap-model null)
+           #t]
+          [(heap-model l:natural)
+           (do forward-p <- (nth h l)
+               backward-p <- (nth h (+ l 1))
+               check-v <- (nth h (- l 2))
+             (if (and (equal? check-v (heap-model 0)) ; validation bit (size of pred) is properly set
+                      (equal? backward-p prev-p)) ; backward pointer is properly set 
+                      (valid-freelist+ (- fuel 1) h forward-p p)
+             (begin
+               #f)))]
+          [(heap-model any)
+           #f])))
+  (not (failure? (valid-freelist+ fuel h p (heap-model null))))) ; capture failures 
+
+(define (valid-freelist-state s)
+  (match s
+    [(heap-model (b:buf h:heap p:pointer))
+     (valid-freelist 3 h p)]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -444,16 +470,17 @@
 (define aw (heap-model (write 2 2)))
 (define ar (heap-model (read 2 3)))
 
-
+(define as0 (heap-model (set 0 null)))
 (define af0 (heap-model (free 2)))
+(define as1 (heap-model (set 1 null)))
 (define af1 (heap-model (free 6)))
 
-(define d+ (interpret-action aa0 d))
-(define d++     (parameterize ([debug? #f]) (interpret-action aa1 d+)))
+(define d+  (interpret-action aa0 d))
+(define d++ (interpret-action aa1 d+))
 
 
-(define d+3* (interpret-action af0 d++))
-(define d+4* (interpret-action af1 d+3*))
+(define d+3* (interpret-action af0 (interpret-action as0 d++)))
+(define d+4* (interpret-action af1 (interpret-action as1 d+3*)))
 
 
 (define d+3 (interpret-action as d++))
@@ -461,11 +488,3 @@
 (define d+5 (interpret-action ar d+4))
 
 
-(define i-attack (heap-model (cons (set 0 2) (cons (set 1 3) (cons (write 2 1) nil)))))
-(define d+5* (interpret-interaction i-attack d+4*))
-
-(define a-d+4* (heap-model (write 0 2)))
-(define ad+4* (interpret-action a-d+4* d+4*))
-
-(define a-d+3 (heap-model (write 2 3)))
-(define ad+3 (interpret-action a-d+3 d+3))

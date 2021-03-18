@@ -58,10 +58,14 @@
 
 (define (show-freelist) (displayln (compile-heap-to-freelist d+3*)))
 
-(define (demo1) (display-heap-to-freelist
-                 (find-changed-component heap-to-freelist
-                                         #:source-context d+3*)))
+#| Starting with a concrete state, we ask SEEC if it can find interactions 
+  that make the heap model and the freelist view diverge |#
+(define (demo1) (display-heap-to-freelist (find-changed-component heap-to-freelist #:source-context d+3*)))
 
+
+#| It find (free 2) which is an instance of double-free. We can modify
+   the implementation of free to make sure the block is allocated
+   and big enough to be in the freelist |#
 (define (valid-free loc h)
   (let* ([v-bit (nth (- loc 2) h)]
          [s-bit (nth (- loc 1) h)])
@@ -102,10 +106,12 @@
   #:context-relation (lambda (s f) (equal? (compile-heap-to-freelist s) f))
   #:compile compile-interaction)
 
-(define (demo2) (display-heap-to-freelist
-                 (find-changed-component heap-to-freelist+
-                                         #:source-context d+3*)))
+#| We ask SEEC again if it can find interactions where the heap model and the freelist view diverge |#
+(define (demo2) (display-heap-to-freelist (find-changed-component heap-to-freelist+ #:source-context d+3*)))
 
+
+#| It finds a write into the freelist. We can prevent this by modifying write to only accept 
+   allocated locations |#
 (define (valid-write loc h)
   (let* ([loc-v (- (+ loc 3) (remainder loc 4))]
          [v-bit (nth loc-v h)])
@@ -151,19 +157,17 @@
   #:context-relation (lambda (s f) (equal? (compile-heap-to-freelist s) f))
   #:compile compile-interaction)
 
-(define (demo3) (display-heap-to-freelist
-                 (find-changed-component heap-to-freelist++
-                                         #:source-context d+3*)))
+#| We can use SEEC to confirm there are no more changed behavior using this state under the freelist view |#
+(define (demo3) (display-heap-to-freelist (find-changed-component heap-to-freelist++ #:source-context d+3*)))
 
-(define (demo3+) (display-heap-to-freelist
-                  (find-changed-component heap-to-freelist++)))
+#| We can then run the query again without specifying a concrete state. It find a broken freelist, but in a nonsensical state |#
+(define (demo3+) (display-heap-to-freelist (find-changed-component heap-to-freelist++)))
 
-(define (demo3++) (display-heap-to-freelist
-                   (find-changed-component heap-to-freelist++
-                                           #:source-expression-bound 5
-                                           #:source-context d)))
+#| We could look for states reachable using interactions from the initial state, but doesn't scale (exponential blowup) |#
+(define (demo3++) (display-heap-to-freelist (find-changed-component heap-to-freelist++ #:source-expression-bound 5 #:source-context d)))
 
-(define (demo3+++) (display-heap-to-freelist
-                    (find-changed-component heap-to-freelist++
-                                            #:source-context-where (lambda (v c) (valid-state-block c)))))
+#| One alternative is to write predicate to restrict the starting states to valid ones |#
+(define (demo3+++) (display-heap-to-freelist (find-changed-component heap-to-freelist++ #:source-context-where (lambda (v c) (valid-state-block c)))))
+
+#| What may be more intuitive (the SEEC way) would be to write a higher-level model providing more structures to valid states, allowing us to synthesize states which are one step away from being exploited |#
 

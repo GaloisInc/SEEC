@@ -16,7 +16,7 @@
           alloc)
   (interaction ::= list<action>)
   (state ::= list<natural>) ; list of free blocks
-         )
+)
 
 
 ;; freelist.action -> freelist.state -> freelist.state

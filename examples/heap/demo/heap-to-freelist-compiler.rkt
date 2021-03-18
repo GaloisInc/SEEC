@@ -10,20 +10,25 @@
 (require (file "heap-lang.rkt"))
 (require (file "freelist-lang.rkt"))
 
-(define/debug #:suffix (compile-into-freelist fuel h p bwd) ; TODO: try without fuel, but checking the back-bit
+(define/debug #:suffix (compile-into-freelist fuel h p bwd)
   (if (< fuel 1)
       #f
       (match p
         [(heap-model null)
          (freelist nil)]
         [(heap-model n:natural)       
-         (let* ([new-p (opt-nth h n)]
+         (let* (;[in-use (opt-nth h (- n 2))]
+                ;[size (opt-nth h (- n 1))]
+                [new-p (opt-nth h n)]
                 [bwd-p (opt-nth h (+ n 1))])
-             (if (or (failure? bwd-p)
-                     (failure? new-p))
+           (if (or (failure? bwd-p)
+                   (failure? new-p))
+                     ;(failure? in-use))
                  #f                  
                  (let* ([rest (compile-into-freelist (- fuel 1) h new-p p)])
                    (if (and (equal? bwd-p bwd) ; check that the backward pointer is set properly
+                            ;(equal? in-use 0)
+                            ;(<= 2 size)
                             rest)
                        (freelist (cons ,n ,rest))
                        #f))))]))) 
