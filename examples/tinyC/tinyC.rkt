@@ -371,8 +371,17 @@
      (printf "==Fresh Var== ~a~n~n" (state-fresh-var st))
      ]))
 
+(define (indent-string str)
+  (racket:string-append "  " str))
+(define (pp-list-with-commas strlist)
+  (string-join strlist
+               ", "
+               #:before-first "("
+               #:after-last ")"))
 (define (pp-intlist vals)
-  (format "~a" (seec->list vals)))
+  #;(format "~a" (seec->list vals))
+  (pp-list-with-commas (map (λ (v) (format "~a" v)))))
+
 (define (display-env env)
   (match env
     [(tinyC (args:intlist input:list<intlist>))
@@ -426,8 +435,6 @@
     ))
 
 
-(define (indent-string str)
-  (racket:string-append "  " str))
 
 ; Produce a list of strings, one for each newline; this allows for proper indent
 ; management
@@ -437,7 +444,8 @@
     [(listifyC (ASSIGN x:lval e:expr))
      (list (format "~a = ~a;" (pp-expr x) (pp-expr e)))]
     [(listifyC (CALL p:proc-name es:list<expr>))
-     (list (format "~a~a;" (string->racket p) (map pp-expr (seec->list es))))]
+     (list (format "~a~a;" (string->racket p)
+                           (pp-list-with-commas (map pp-expr (seec->list es)))))]
     [(listifyC RETURN)
      (list (format "return();"))]
     [(listifyC (IF e:expr t:list<single-stmt> nil))

@@ -349,27 +349,51 @@
 
 
 ; show (c1, v1) ~> b1 and (c2, v2) ~> b2
-(define (display-changed-behavior vars out)
+(define display-changed-behavior
+  (λ (vars
+      [out displayln]
+      #:display-source-expression [out-source-expr out]
+      #:display-target-expression [out-target-expr out]
+
+      #:display-context           [out-context out]
+      #:display-source-context    [out-source-context out-context]
+      #:display-target-context    [out-target-context out-context]
+
+      #:display-behavior          [out-behavior out]
+      #:display-source-behavior   [out-source-behavior out-behavior]
+      #:display-target-behavior   [out-target-behavior out-behavior]
+      )
   (cond
     [(equal? vars #f) (out (format "No changed behavior found~n"))]
     [else
      (let* ([source-vars (first vars)]
             [target-vars (second vars)])
-       (begin 
-         (out (format
+       (begin
+         (out (format "The following expression..."))
+         (out-source-expr (language-witness-expression source-vars))
+         (out (format "~n...has behavior..."))
+         (out-source-behavior (language-witness-behavior source-vars))
+         (out (format "~n...in the following source-level context..."))
+         (out-source-context (language-witness-context source-vars))
+         (out (format "~n====~nCompiles to..."))
+         (out-target-expr (language-witness-expression target-vars))
+         (out (format "~n...with emergent behavior..."))
+         (out-target-behavior (language-witness-behavior target-vars))
+         (out (format "~n...in the following target-level context..."))
+         (out-target-context (language-witness-context target-vars))
+         #;(out (format
                "Expression ~a~n has behavior ~a~n in source-level context ~a~n"
                (language-witness-expression source-vars)
                (language-witness-behavior source-vars)
                (language-witness-context source-vars)))
-         (out (format
+         #;(out (format
                "Compiles to ~a~n with emergent behavior ~a~n in target-level context ~a~n"
                (language-witness-expression target-vars)
                (language-witness-behavior target-vars)
-               (language-witness-context target-vars)))))]))
+               (language-witness-context target-vars)))))])))
 
 ; alias display-changed-behavior
-(define (display-changed-component vars out)
-  (display-changed-behavior vars out))
+(define display-changed-component display-changed-behavior)
 
 
 ; If there's nothing to quantify over, we can use the simple solver (verify)

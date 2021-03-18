@@ -10,23 +10,7 @@
 ; A simple password checker ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-#|
-void main (int password) {
-  int candidate;
-  int auth;
-  auth = 0;
-  input(& candidate);
-  if (candidate = password) {
-    auth = 1;
-  } else {
-  }
-  guarded-fun (auth);
-}
-void guarded-fun (int auth) {
-  output(auth);
-  .... ; /* Other sensitive operations depending on auth */
-}
-|#
+
 
 
 (define main-declaration
@@ -69,9 +53,11 @@ void guarded-fun (int auth) {
 
 ; Display the program
 ; In tinyC:
-#;(tinyC:display-program (list->seec password-checker))
+(define (print-password-checker)
+  (tinyC:display-program (list->seec password-checker)))
 ; In tinyA:
-#;(display-tinyA-lang-expression ((compiler-compile tinyC-compiler) (list->seec password-checker)))
+(define (print-compiled-password-checker)
+  (display-tinyA-lang-expression ((compiler-compile tinyC-compiler) (list->seec password-checker))))
 
 
 
@@ -99,42 +85,42 @@ void guarded-fun (int auth) {
      (displayln (format "input stream : ~a" (map pp-intlist (seec->list input))))]
     ))
 
-(define synthesize-tinyC-weird-behavior
+(define synthesize-tinyC-changed-behavior
   (λ (prog
       #:args   args
       #:input  input
       )
-    (let ([g (find-weird-behavior tinyC-compiler
-                                  #:source-expr (list->seec prog)
-                                  #:source-context (tinyC (,(list->seec args)
-                                                           (cons ,(list->seec input) nil)))
-                                  #:target-context (tinyA (,(list->seec args)
-                                                           (cons ,(list->seec input) nil)))
-                                  #:forall (list)
-                                  #:fresh-witness #f
-                                  )])
-      (display-weird-behavior g
-                              #:display-expression tinyC:display-program
-                              #:display-context display-env-password-checker
-                              ))))
+    (let ([g (find-changed-behavior
+                tinyC-compiler
+                (list->seec prog)
+                #:source-context (tinyC (,(list->seec args)
+                                         (cons ,(list->seec input) nil)))
+                #:target-context (tinyA (,(list->seec args)
+                                         (cons ,(list->seec input) nil)))
+                )])
+      (display-changed-behavior g
+                                #:display-source-expression tinyC:display-program
+                                #:display-target-expression display-tinyA-lang-expression
+                                #:display-context display-env-password-checker
+                                ))))
 
 
-(define (synthesize-weird-behavior-password-1)
+(define (synthesize-changed-behavior-1)
   (define-symbolic* password integer?)
   (define-symbolic* x integer?)
-  (synthesize-tinyC-weird-behavior password-checker
-                                   #:args  (list password)
-                                   #:input (list x)
-                                   ))
+  (synthesize-tinyC-changed-behavior password-checker
+                                     #:args  (list password)
+                                     #:input (list x)
+                                     ))
 
 
-(define (synthesize-weird-behavior-password-2)
+(define (synthesize-changed-behavior-2)
   (define-symbolic* password integer?)
   (define-symbolic* x y integer?)
-  (synthesize-tinyC-weird-behavior password-checker
-                                   #:args  (list password)
-                                   #:input (list x y)
-                                   ))
+  (synthesize-tinyC-changed-behavior password-checker
+                                     #:args  (list password)
+                                     #:input (list x y)
+                                     ))
 
 
 (define synthesize-tinyC-gadget
@@ -157,18 +143,7 @@ void guarded-fun (int auth) {
 
 
 
-(define (synthesize-password-gadget-1)
-  (define-symbolic* password integer?)
-  (define-symbolic* x integer?)
-  (synthesize-tinyC-gadget password-checker
-                           ; Synthesize a context that causes password-checker
-                           ; to set auth to true
-                           #:spec (λ (p tr) (not (equal? tr seec-empty)))
-                           #:args  (list password)
-                           #:input (list x)
-                           #:forall password
-                           ))
-                           
+
 (define (synthesize-password-gadget-2)
   (define-symbolic* password integer?)
   (define-symbolic* x y integer?)
@@ -180,7 +155,19 @@ void guarded-fun (int auth) {
                            #:input (list x y)
                            #:forall password
                            ))
-#;(tinyC:display-program (list->seec password-checker))
+#;(print-password-checker)
+
+(define (synthesize-password-gadget-1)
+  (define-symbolic* password integer?)
+  (define-symbolic* x integer?)
+  (synthesize-tinyC-gadget password-checker
+                           ; Synthesize a context that causes password-checker
+                           ; to set auth to true
+                           #:spec (λ (p tr) (not (equal? tr seec-empty)))
+                           #:args  (list password)
+                           #:input (list x)
+                           #:forall password
+                           ))
 
 
 (define (synthesize-password-gadget-2+ target-value)
@@ -189,12 +176,13 @@ void guarded-fun (int auth) {
   (synthesize-tinyC-gadget password-checker
                            ; Synthesize a context that causes password-checker
                            ; to set auth to true
-                           #:spec (λ (p tr) (equal? tr (seec-singleton target-value)))
+                           #:spec (λ (p tr)
+                                    (equal? tr (seec-singleton target-value)))
                            #:args  (list password)
                            #:input (list x y)
                            #:forall password
                            ))
-
+#;(synthesize-password-gadget-2+ 300)
 
 (define (synthesize-password-gadget-3 target-value)
   (define-symbolic* password integer?)
@@ -207,6 +195,11 @@ void guarded-fun (int auth) {
                            #:input (list x y z)
                            #:forall password
                            ))
+
+
+
+
+
 
 
 
@@ -242,7 +235,7 @@ void guarded-fun (int auth) {
 
 
 
-#; (define (synthesize-password-gadget-0)
+(define (synthesize-password-gadget-0)
   (define-symbolic* x integer?)
   (synthesize-tinyC-gadget password-checker
                            ; Synthesize a context that causes password-checker
@@ -251,3 +244,5 @@ void guarded-fun (int auth) {
                            #:args  (list 100)
                            #:input (list x)
                            ))
+
+                           
