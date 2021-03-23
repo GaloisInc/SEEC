@@ -17,13 +17,6 @@
                        racket/contract
                        ))
 
-(define/contract (make-declaration name params locals statements)
-    (-> string? (listof tinyC-param-decl?)
-                (listof tinyC-local-decl?)
-                (listof tinyC-statement?)
-                tinyC-declaration?)
-    (tinyC (,name ,(list->seec params) ,(list->seec locals) ,(list->seec statements))))
-
 
 ;;;;;;;;;;;;;;;;;;;
 ; Simple programs ;
