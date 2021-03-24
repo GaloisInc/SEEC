@@ -73,6 +73,11 @@
                                           ;  ^ password ^ guess
 ; Produces a trace of 0, indicating failure
 
+(define (run-password-checker-n correct-password input)
+  (tinyA:run password-checker
+             (list correct-password) ; The argument to main
+             (list (list->seec input)))) ; The input to INPUT
+
 
 (max-fuel 20)
 
@@ -88,15 +93,16 @@
 (define synthesize-tinyC-changed-behavior
   (λ (prog
       #:args   args
-      #:input  input
+      #:input  [input (list)]
+      #:seec-input [seec-input (list->seec input)]
       )
     (let ([g (find-changed-behavior
                 tinyC-compiler
                 (list->seec prog)
                 #:source-context (tinyC (,(list->seec args)
-                                         (cons ,(list->seec input) nil)))
+                                         (cons ,seec-input nil)))
                 #:target-context (tinyA (,(list->seec args)
-                                         (cons ,(list->seec input) nil)))
+                                         (cons ,seec-input nil)))
                 )])
       (display-changed-behavior g
                                 #:display-source-expression tinyC:display-program
@@ -122,19 +128,28 @@
                                      #:input (list x y)
                                      ))
 
+(define (synthesize-changed-behavior-n)
+  (define-symbolic* password integer?)
+  (define input-seec-list (tinyC list<integer> 3))
+  (synthesize-tinyC-changed-behavior password-checker
+                                     #:args  (list password)
+                                     #:seec-input input-seec-list
+                                     ))
+
 
 (define synthesize-tinyC-gadget
   (λ (prog
       #:spec   spec
       #:args   args
-      #:input  input
+      #:input  [input (list)]
+      #:seec-input [seec-input (list->seec input)]
       #:forall [vars (list)]
       )
     (let ([g (find-ctx-gadget tinyA-lang
                               spec
                               #:expr ((compiler-compile tinyC-compiler) (list->seec prog))
                               #:context (tinyA (,(list->seec args)
-                                                (cons ,(list->seec input) nil)))
+                                                (cons ,seec-input nil)))
                               #:forall vars
                               )])
       (display-gadget g #:display-expression display-tinyA-lang-expression
@@ -169,6 +184,21 @@
                            #:forall password
                            ))
 
+(define (synthesize-password-gadget-n)
+  (define-symbolic* password integer?)
+  (define input-seec-list (tinyA list<integer> 3))
+  (debug? #t)
+  (synthesize-tinyC-gadget password-checker
+                           ; Synthesize a context that causes password-checker
+                           ; to set auth to true
+                           #:spec (λ (p tr) (not (equal? tr seec-empty)))
+                           #:args  (list password)
+;                           #:input (seec->list input-seec-list)
+                           #:seec-input input-seec-list
+                           #:forall password
+                           ))
+
+
 
 (define (synthesize-password-gadget-2+ target-value)
   (define-symbolic* password integer?)
@@ -197,9 +227,36 @@
                            ))
 
 
+(define (symbolic-list-length-le max)
+  (cond
+    [(or (<= max 0)
+         (havoc!))
+     (list)]
+    [else
+     (begin (define-symbolic* x integer?)
+            (define xs (symbolic-list-length-le (- max 1)))
+            (cons x xs))]
+    ))
 
+(define (synthesize-password-gadget-n+ target-value)
+  (define-symbolic* password integer?)
+  #;(define input-seec-list (tinyA list<integer> 4))
+  (define input (symbolic-list-length-le 3)) ; I think this might be better for
+                                             ; decomposition than a generic
+                                             ; bonsai tree
+  (for/all ([x input]) (displayln x))
+  (debug? #t)
+  (synthesize-tinyC-gadget password-checker
+                           ; Synthesize a context that causes password-checker
+                           ; to set auth to true
+                           #:spec (λ (p tr) (equal? tr (seec-singleton target-value)))
+                           #:args  (list password)
+;                           #:seec-input input-seec-list
+                           #:input input
+                           #:forall password
+                           ))
 
-
+#;(time (synthesize-password-gadget-n+ 200))
 
 
 
