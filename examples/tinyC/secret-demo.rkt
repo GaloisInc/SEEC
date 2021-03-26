@@ -1,6 +1,7 @@
 #lang seec
 
-(require seec/private/util)
+(require seec/private/util
+         seec/private/monad)
 (require "tinyC.rkt"
          "tinyAssembly.rkt"
          "tinyC-tinyAssembly-compiler.rkt"
@@ -128,14 +129,30 @@
                                      #:input (list x y)
                                      ))
 
-(define (synthesize-changed-behavior-n)
+(define (synthesize-changed-behavior-n n)
   (define-symbolic* password integer?)
-  (define input-seec-list (tinyC list<integer> 3))
+  (define input-seec-list (tinyC list<integer> (+ n 1)))
   (synthesize-tinyC-changed-behavior password-checker
                                      #:args  (list password)
                                      #:seec-input input-seec-list
                                      ))
 
+
+(define (test-symbolic-run-tinyC n)
+  (define-symbolic* password integer?)
+  (debug? #t)
+  (define input-seec-list (tinyC list<integer> (+ n 1)))
+  (let ([g (find-ctx-gadget tinyC-lang
+                            (λ (p tr) (and (not (equal? tr seec-empty))
+                                           (not (equal? tr *fail*))))
+                            #:expr (list->seec password-checker)
+                            #:context (tinyC ((cons ,password nil)
+                                              (cons ,input-seec-list nil)))
+                            #:forall (list))])
+        (display-gadget g
+                        #:display-expression tinyC:display-program
+                        #:display-context display-env-password-checker))
+  )
 
 (define synthesize-tinyC-gadget
   (λ (prog
@@ -240,23 +257,23 @@
 
 (define (synthesize-password-gadget-n+ target-value)
   (define-symbolic* password integer?)
-  #;(define input-seec-list (tinyA list<integer> 4))
-  (define input (symbolic-list-length-le 3)) ; I think this might be better for
+  (define input-seec-list (tinyA list<integer> 4)) ; This works if the `state` struct is opaque
+  #;(define input (symbolic-list-length-le 3)) ; I think this might be better for
                                              ; decomposition than a generic
                                              ; bonsai tree
-  (for/all ([x input]) (displayln x))
+  #;(for/all ([x input]) (displayln x))
   (debug? #t)
   (synthesize-tinyC-gadget password-checker
                            ; Synthesize a context that causes password-checker
                            ; to set auth to true
                            #:spec (λ (p tr) (equal? tr (seec-singleton target-value)))
                            #:args  (list password)
-;                           #:seec-input input-seec-list
-                           #:input input
+                           #:seec-input input-seec-list
+;                           #:input input
                            #:forall password
                            ))
 
-#;(time (synthesize-password-gadget-n+ 200))
+#;(time (synthasize-password-gadget-n+ 200))
 
 
 

@@ -123,8 +123,10 @@
 ; The input-buffer is a (racket) list of 'intlist's that are fed to calls to
 ; INPUT. This is a simple interaction model that cannot react dynamically to the
 ; program execution.
-(struct state (global-store pc sp memory input-buffer trace)
-  #:transparent)
+;
+; Note: making this struct `transparent` leads to less reliable union splitting
+; behavior.
+(struct state (global-store pc sp memory input-buffer trace))
 
 (define update-state
   (λ (st #:increment-pc [inc-pc #f] ; If the pc has already been abstracted
