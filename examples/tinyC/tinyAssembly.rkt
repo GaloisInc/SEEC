@@ -45,6 +45,7 @@
             store-mem
             store-mem-sorted
             lookup-mem
+            naive-lookup-mem
             declaration->pc
             declaration->frame
             (struct-out state)
@@ -196,6 +197,17 @@
            (lookup-mem l m+)))]
      )))
 
+(define/contract/debug (naive-lookup-mem l mem)
+  (-> tinyA-loc? tinyA-memory? tinyA-object?)
+    (match mem
+    [(tinyA nil) 0]
+    [(tinyA (cons (l+:loc obj+:object) m+:memory))
+       (if (equal? l l+)
+           obj+
+           (naive-lookup-mem l m+))]
+     ))
+
+
 ; If l↦v occurs in mem for a value v, return v, otherwise return *fail*
 (define/contract (loc->val l mem)
   (-> tinyA-loc? tinyA-memory? (failure/c tinyA-val?))
@@ -322,7 +334,8 @@
 ; Unsorted simpler version, possibly better for symbolic analysis
 (define/contract (push-objs l objs mem)
   (-> tinyA-loc? (listof tinyA-object?) tinyA-memory? tinyA-memory?)
-  (for/all ([objs objs])
+  (for*/all ([objs objs]
+             [mem mem])
   #;(debug-display "(push-objs ~a ~a)" l objs)
   (cond
     [(empty? objs) mem]
@@ -546,8 +559,9 @@
                 [x   (debug-display "Got sp1: ~a" sp1)]
                 [pc1 pc #;(state-pc st)]
                 [x   (debug-display "Got pc1: ~a" pc1)]
-                [m1  (state-memory st)]
-                [x   (tinyC:display-memory m1)]
+                #;[m1  (state-memory st)]
+                #;[x   (debug-display "m1: ~a" m1)]
+                #;[x   (tinyC:display-memory m1)]
                 [F2  (declaration->frame d2)]
                 [x   (debug-display "Got F2: ~a" F2)]
                 [pc2 (declaration->pc d2)]
