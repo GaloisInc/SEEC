@@ -197,7 +197,7 @@
            (lookup-mem l m+)))]
      )))
 
-(define/contract/debug (naive-lookup-mem l mem)
+(define/contract (naive-lookup-mem l mem)
   (-> tinyA-loc? tinyA-memory? tinyA-object?)
     (match mem
     [(tinyA nil) 0]

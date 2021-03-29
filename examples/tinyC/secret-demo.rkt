@@ -95,14 +95,16 @@
        mem)))
   (display-memory password-checker-program)
 
-  (define symbolic-mem
+  (define-symbolic* key integer?)
+  (define symbolic-mem (seec-cons (tinyC (,key 5)) password-checker-program))
+  #;(define symbolic-mem
     (cond
       [(havoc!) password-checker-program]
       [else     (seec-cons (tinyC (99 5)) password-checker-program)]
       ))
   (displayln (union? symbolic-mem))
   #;(displayln symbolic-mem)
-  #;(for/all ([mem0 symbolic-mem])
+  (for/all ([mem0 symbolic-mem])
     (display-memory mem0))
 
   (debug? #t)
@@ -309,7 +311,7 @@
                            #:forall password
                            ))
 
-(time (synthesize-password-gadget-n+ 3 200))
+#;(time (synthesize-password-gadget-n+ 3 200))
 
 
 
