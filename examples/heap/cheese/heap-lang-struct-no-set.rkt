@@ -43,6 +43,7 @@
 
 ; in this version, state is a struct
 (struct state (buf heap pointer))
+
 (define state->buf
   state-buf)
 (define state->heap
