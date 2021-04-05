@@ -46,6 +46,14 @@
 (define (make-state b h p)
   (state b h p))
 
+; from state-con to state
+(define (make-state-struct s)
+  (match s
+    [(heap-model (b:buf h:heap p:pointer))
+     (make-state b h p)]))
+                 
+    
+; from state to state-con
 (define (make-state-con s)
   (heap-model (,(state->buf s) ,(state->heap s) ,(state->pointer s))))
 
@@ -219,6 +227,30 @@
 (define (state-safe-write i s)
   (< i (length (state->heap s))))
 
+
+; check if the size of the buf and heap of the state are exactly bs and hs.
+(define (state-size bs hs)
+  (lambda (s)
+    (and (equal? (length (state->buf s)) bs)
+         (equal? (length (state->heap s)) hs))))
+
+(define (state-con-size bs hs)
+  (lambda (s)
+    ((state-size bs hs) (make-state-struct s))))
+
+(define (state-same-heap s s+)
+  (equal? (state->heap s) (state->heap s+)))
+
+(define (state-con-same-heap s s+)
+  (state-same-heap (make-state-struct s) (make-state-struct s+)))
+
+
+(define (prog-state-size bs hs)
+  (lambda (p)
+    (let ([s (cdr p)])
+      ((state-size bs hs) s))))
+
+    
 ; pointer* -> boolean
 (define (is-null? p)
   (match p
@@ -374,23 +406,28 @@
     [(heap-model nil)
      s]))
 
-#;(define-language heap-lang
-  #:grammar heap-model
-  #:expression interaction #:size 3
-  #:context state #:size 8
-  #:link snoc
-  #:evaluate (uncurry interpret-interaction))
 
 (define-language heap-lang
   #:grammar heap-model
   #:expression interaction #:size 4
-  #:context state-con #:size 8
+  #:context state-con #:size 10
   #:link (lambda (state inte)
            (match state
              [(heap-model (b:buf h:heap p:pointer))
               (cons inte (make-state b h p))]))
   #:evaluate (uncurry interpret-interaction))
               
+
+(define (synthesize-interaction-gadget size ctx spec)
+  (let* ([sol (find-gadget heap-lang
+                           spec
+                           #:expr-bound size
+                           #:expression-witness-only #t
+                           #:context ctx)])
+    (if sol
+        (first sol)
+        #f)))
+
 
 ;; checks that the heap block layout is valid
 ;; every slot on the heap is either null or a size s followed s+1 slots
@@ -564,12 +601,14 @@
              [val (nth (state->heap s+) (- hl 1))])
         (equal? size val))))
 
-(define (resize-gadget-query)
+(define (resize-query)
   (begin
     (define target (heap-model integer 2))
-    (define s* (make-state-con (state-buf-set 3 target dc)))
-    (display-gadget (find-gadget heap-lang (resize-spec 3 1) #:context s*)
-                    displayln)))
+    (define s-* (state-buf-set 1 6 dc))
+    (define s* (make-state-con (state-buf-set 3 target s-*)))
+    (define gadget (synthesize-interaction-gadget 4 s* (resize-spec 3 1)))
+    (displayln "Gadget:")
+    (displayln gadget)))
     
   
 (define (resize-gadget-syn)
@@ -620,8 +659,9 @@
   (begin
     (define target (heap-model integer 2))
     (define s* (make-state-con (state-buf-set 0 target dc)))
-    (display-gadget (find-gadget heap-lang (next-alloc-spec 0) #:context s*)
-                    displayln)))
+    (define gadget (synthesize-interaction-gadget 4 s* (next-alloc-spec 0)))
+    (displayln "Gadget:")
+    (displayln gadget)))
 
 ; WARNING: this is very slow at |i*| < 6
 (define (next-alloc-gadget-syn)
@@ -661,8 +701,9 @@
     (define target (heap-model integer 2))
     (define s-* (state-buf-set 3 (state->pointer dc) dc))
     (define s* (make-state-con (state-buf-set 1 target s-*)))
-    (display-gadget (find-gadget heap-lang (next-alloc-spec 1) #:context s*)
-                    displayln)))
+    (define gadget (synthesize-interaction-gadget 4 s* (next-alloc-spec 1)))
+    (displayln "Gadget:")
+    (displayln gadget)))
 
 
 (define (insert-in-freelist-gadget-syn)
@@ -690,9 +731,7 @@
           (display " and b[0] to fp, then")
           (displayln i)
           (define s- (state-buf-set 1 target s--))
-          (displayln  "Done s-")
           (define s (state-buf-set 0 (state->pointer s-) s-))
-          (displayln  "Done s")
           (define s+ (interpret-interaction i s))
           (displayln "in initial state:")
           (display-state s--)
@@ -702,17 +741,18 @@
 
 ; Then, try to find a gadget that discovers the head of the freelist
 (define (find-freelist-head-spec bl0)
-  (lambda (s s+)
-       (let* ([val (nth (state->buf s+) bl0)])
-               (equal? (state->pointer s+) val))))
+  (lambda (p s+)
+    (let* ([s (cdr p)]
+           [val (nth (state->buf s+) bl0)])
+       (equal? (state->pointer s+) val))))
 
 (define (find-freelist-head-query)
   (begin
     (define fp* (heap-model pointer 2))
     (define s* (make-state-con (state-fp-set fp* dc)))
-    (display-gadget (find-gadget heap-lang (find-freelist-head-spec 2) #:context s*)
-                    displayln)))
-
+    (define gadget (synthesize-interaction-gadget 5 s* (find-freelist-head-spec 2)))
+    (displayln "Gadget:")
+    (displayln gadget)))
 
 (define (find-freelist-head-gadget-syn)
   (begin
@@ -720,10 +760,11 @@
     (define s-* dc)
     (define s* (state-fp-set fp* s-*))
     (define i* (heap-model interaction 5))
+    (define p* (cons i* s*))
     (define s+* (interpret-interaction i* s*))
     (define sol (synthesize
                  #:forall (list fp*)
-                 #:guarantee (assert ((find-freelist-head-spec 2) s* s+*))))
+                 #:guarantee (assert ((find-freelist-head-spec 2) p* s+*))))
     (if (unsat? sol)
         (displayln "UNSAT")
         (begin
