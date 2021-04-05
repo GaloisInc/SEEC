@@ -568,7 +568,8 @@
   (begin
     (define target (heap-model integer 2))
     (define s* (make-state-con (state-buf-set 3 target dc)))
-    (find-gadget heap-lang (resize-spec 3 1) #:context s*)))
+    (display-gadget (find-gadget heap-lang (resize-spec 3 1) #:context s*)
+                    displayln)))
     
   
 (define (resize-gadget-syn)
@@ -619,7 +620,8 @@
   (begin
     (define target (heap-model integer 2))
     (define s* (make-state-con (state-buf-set 0 target dc)))
-    (find-gadget heap-lang (next-alloc-spec 0) #:context s*)))
+    (display-gadget (find-gadget heap-lang (next-alloc-spec 0) #:context s*)
+                    displayln)))
 
 ; WARNING: this is very slow at |i*| < 6
 (define (next-alloc-gadget-syn)
@@ -659,7 +661,8 @@
     (define target (heap-model integer 2))
     (define s-* (state-buf-set 3 (state->pointer dc) dc))
     (define s* (make-state-con (state-buf-set 1 target s-*)))
-    (find-gadget heap-lang (next-alloc-spec 1) #:context s*)))
+    (display-gadget (find-gadget heap-lang (next-alloc-spec 1) #:context s*)
+                    displayln)))
 
 
 (define (insert-in-freelist-gadget-syn)
@@ -707,7 +710,8 @@
   (begin
     (define fp* (heap-model pointer 2))
     (define s* (make-state-con (state-fp-set fp* dc)))
-    (find-gadget heap-lang (find-freelist-head-spec 2) #:context s*)))
+    (display-gadget (find-gadget heap-lang (find-freelist-head-spec 2) #:context s*)
+                    displayln)))
 
 
 (define (find-freelist-head-gadget-syn)
