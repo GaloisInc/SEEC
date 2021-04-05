@@ -423,7 +423,7 @@
                            spec
                            #:expr-bound size
                            #:expression-witness-only #t
-                           #:context ctx)])
+                           #:context (make-state-con ctx))])
     (if sol
         (first sol)
         #f)))
@@ -605,7 +605,7 @@
   (begin
     (define target (heap-model integer 2))
     (define s-* (state-buf-set 1 6 dc))
-    (define s* (make-state-con (state-buf-set 3 target s-*)))
+    (define s* (state-buf-set 3 target s-*))
     (define gadget (synthesize-interaction-gadget 4 s* (resize-spec 3 1)))
     (displayln "Gadget:")
     (displayln gadget)))
@@ -658,7 +658,7 @@
 (define (next-alloc-query)
   (begin
     (define target (heap-model integer 2))
-    (define s* (make-state-con (state-buf-set 0 target dc)))
+    (define s* (state-buf-set 0 target dc))
     (define gadget (synthesize-interaction-gadget 4 s* (next-alloc-spec 0)))
     (displayln "Gadget:")
     (displayln gadget)))
@@ -700,7 +700,7 @@
   (begin
     (define target (heap-model integer 2))
     (define s-* (state-buf-set 3 (state->pointer dc) dc))
-    (define s* (make-state-con (state-buf-set 1 target s-*)))
+    (define s* (state-buf-set 1 target s-*))
     (define gadget (synthesize-interaction-gadget 4 s* (next-alloc-spec 1)))
     (displayln "Gadget:")
     (displayln gadget)))
@@ -749,7 +749,7 @@
 (define (find-freelist-head-query)
   (begin
     (define fp* (heap-model pointer 2))
-    (define s* (make-state-con (state-fp-set fp* dc)))
+    (define s* (state-fp-set fp* dc))
     (define gadget (synthesize-interaction-gadget 5 s* (find-freelist-head-spec 2)))
     (displayln "Gadget:")
     (displayln gadget)))
