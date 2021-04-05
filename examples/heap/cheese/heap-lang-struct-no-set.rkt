@@ -567,7 +567,7 @@
 (define (resize-gadget-query)
   (begin
     (define target (heap-model integer 2))
-    (define s* (make-state-con (state-buf-set 3 target d+3*)))
+    (define s* (make-state-con (state-buf-set 3 target dc)))
     (find-gadget heap-lang (resize-spec 3 1) #:context s*)))
     
   
@@ -615,6 +615,12 @@
            [target (nth (state->buf s) bl-target)])
          (equal? (state->pointer s+) target))))
 
+(define (next-alloc-query)
+  (begin
+    (define target (heap-model integer 2))
+    (define s* (make-state-con (state-buf-set 0 target dc)))
+    (find-gadget heap-lang (next-alloc-spec 0) #:context s*)))
+
 ; WARNING: this is very slow at |i*| < 6
 (define (next-alloc-gadget-syn)
   (begin
@@ -626,7 +632,6 @@
     (define s+* (interpret-interaction i* s*))
     (define sol (synthesize
                    #:forall (list target*)
-                   #:assume (assert (state-safe-write (+ target* 1) s*)) ; making sure target+1 is writable for next (alloc) to succeed
                    #:guarantee (assert ((next-alloc-spec 0) p* s+*))))
     (if (unsat? sol)
         (displayln "UNSAT")
@@ -649,6 +654,14 @@
           (display-state s+)))))
 
 ; Try to find a simpler gadget where the head of the freelist is already known
+(define (insert-in-freelist-query)
+  (begin
+    (define target (heap-model integer 2))
+    (define s-* (state-buf-set 3 (state->pointer dc) dc))
+    (define s* (make-state-con (state-buf-set 1 target s-*)))
+    (find-gadget heap-lang (next-alloc-spec 1) #:context s*)))
+
+
 (define (insert-in-freelist-gadget-syn)
   (begin
     (define s--* (clear-buf d+3*))
@@ -660,7 +673,6 @@
     (define s+* (interpret-interaction i* s*))
     (define sol (synthesize
                    #:forall (list target*)
-                   #:assume (assert (state-safe-write (+ target* 1) s*)) 
                    #:guarantee (assert ((next-alloc-spec 1) p* s+*))))
     (if (unsat? sol)
         (displayln "UNSAT")
@@ -690,6 +702,12 @@
   (lambda (s s+)
        (let* ([val (nth (state->buf s+) bl0)])
                (equal? (state->pointer s+) val))))
+
+(define (find-freelist-head-query)
+  (begin
+    (define fp* (heap-model pointer 2))
+    (define s* (make-state-con (state-fp-set fp* dc)))
+    (find-gadget heap-lang (find-freelist-head-spec 2) #:context s*)))
 
 
 (define (find-freelist-head-gadget-syn)
@@ -732,7 +750,7 @@
 
 (define (next-alloc-gadget-verify)
   (begin
-    (define s-* (clear-buf d+3*))
+    (define s-* dc)
     (define target* (heap-model integer 2))
     (define s* (state-buf-set 0 target* s-*))
     (define i* (next-alloc 0 1 2))
