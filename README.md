@@ -13,6 +13,8 @@ The three main case studies in this report are in the following directories:
 * `examples/list`
 * `examples/set`
 * `examples/printf`
+* `examples/tinyC`
+* `examples/heap`
 
 See the READMEs in those subdirectories for more information about the case study code.
 
@@ -24,6 +26,15 @@ See the READMEs in those subdirectories for more information about the case stud
 
 │   ├── bitvector-tests.rkt
 │   ├── exp.rkt
+
+│   ├── heap - heap allocator case study
+│   │   ├── demo.rkt
+│   │   ├── freelist-lang.rkt
+│   │   ├── gadget-synthesis.rkt
+│   │   ├── heap-lang-hl.rkt
+│   │   ├── heap-lang.rkt
+│   │   ├── heap-to-freelist-compiler.rkt
+│   │   └── lib.rkt
 
 │   ├── list - linked list API case study
 │   │   ├── alist-lang.rkt
@@ -63,6 +74,17 @@ See the READMEs in those subdirectories for more information about the case stud
 │   ├── test-matchlet.rkt
 
 │   ├── tests.rkt - unit tests for synthesis queries
+
+│   ├── tinyC - Small C-to-assembly compiler
+│   │   ├── password-demo.rkt
+│   │   ├── secret-demo.rkt
+│   │   ├── synthesis.rkt
+│   │   ├── tinyAssembly.rkt
+│   │   ├── tinyA-test.rkt
+│   │   ├── tinyC.rkt
+│   │   ├── tinyC-test.rkt
+│   │   └── tinyC-tinyAssembly-compiler.rkt
+
 │   └── unit
 │       ├── languages.rkt
 │       ├── lib.rkt
@@ -81,11 +103,14 @@ See the READMEs in those subdirectories for more information about the case stud
     ├── main.rkt - interface for SEEC framework
 	
     └── private - backend for SEEC framework
-        ├── bonsai2.rkt - representation of Bonsai data structures
+        ├── bonsai3.rkt - representation of Bonsai data structures
         ├── framework.rkt - synthesis queries
         ├── language.rkt - parsing and macros for SEEC grammars and languages
         ├── match.rkt - custom match expander
+        ├── monad.rkt - syntax for error monad
+        ├── solver-aided.rkt - debugging infrastructure for useful error messages
         ├── string.rkt - custom symbolic strings
+        ├── util.rkt - debugging infrastructure and contracts
 ```
 
 # Acknowledgment
