@@ -24,33 +24,50 @@
   (offset ::= integer)
   (nnvalue ::= integer)
   (value ::= nnvalue pointer)
-  ;  (writevalue ::= (start natural) (end natural)) ; NOTE: could limit the offset of writes to start or end of blocks
   (buf-loc ::= natural)
   (buf ::= list<value>)
   (heap-loc ::= pointer)
   (heap ::= list<value>) 
-  (state ::= (buf heap pointer)) ; global buffer, heap and free list pointer
-    (action ::=
-          (set buf-loc nnvalue) ; Set element at buf-loc in buffer to nnvalue
+  (action ::=
           (read buf-loc buf-loc) ; place the element at pointer (1)buf-loc in heap into the buffer at (2)buf-loc
           (write buf-loc buf-loc); place the element at (1)buf-loc in buffer into the heap pointer (2)buf-loc
           (copy buf-loc buf-loc) ; overwrite (2) with value of (1)
+          (incr buf-loc) ; add 1 to value at buf-loc
+          (decr buf-loc) ; remove 1 to value at buf-loc
           (free buf-loc) ; free the object at the pointer held in buf-loc in buffer
           (alloc buf-loc)) ; alloc an object with n blocks, placing its pointer in buffer at buf-loc
   (interaction ::= list<action>)
+  (saction ::=
+           (set buf-loc nnvalue))
+  (setup ::= list<saction>)
+  (complete-interaction ::= (setup interaction))
+  (state-con ::= (buf heap pointer))
  )
 
-; What do we need to keep track of:
 
-; head of the free list? 
-;
-; Alternative models (archeap's shadow memory)
-;; - datastructure + containers + global buffer
-;; - free list datastructure
-;; - allocated objects (as a list, w/o free list management)
+(struct state (buf heap pointer))
 
-; free - generate an index into allocated-object list 
-; write - write according to 
+(define (make-state b h p)
+  (state b h p))
+
+; from state-con to state
+(define (make-state-struct s)
+  (match s
+    [(heap-model (b:buf h:heap p:pointer))
+     (make-state b h p)]))
+                 
+    
+; from state to state-con
+(define (make-state-con s)
+  (heap-model (,(state->buf s) ,(state->heap s) ,(state->pointer s))))
+
+(define state->buf
+  state-buf)
+(define state->heap
+  state-heap)
+(define state->pointer
+  state-pointer)
+
 
 
 (define (fold f l s)
@@ -102,12 +119,14 @@
      (heap-model (cons ,hd ,(append tl s2)))]))
 
 ; fails if out of bound
+;(define/debug #:suffix (nth s i)
 (define (nth s i)
+  (for/all ([i i #:exhaustive])
   ;  (-> any/c natural-number/c any/c)
   (if (equal? i 0)
       (head s)
       (let ([ts  (tail s)])
-          (nth ts (- i 1)))))
+          (nth ts (- i 1))))))
 
 (define (opt-nth s i)
   (if (and (<= 0 i)
@@ -150,6 +169,14 @@
          (heap-model (cons ,hd ,(remove-one-elem l+ v))))]))
 
 
+(define (and-seec-list f l)
+  (match l
+    [(heap-model nil)
+     #t]
+    [(heap-model (cons hd:any l+:any))
+     (and (f hd)
+          (and-seec-list f l+))]))
+
 ; create a list repeating v i times
 (define (repeat v i)
   (if (equal? i 0)
@@ -167,23 +194,6 @@
      (format "~a, ~a" (f v) (print-list f vs+))]))
 
 
-
-;; Heap, Buff and State operations
-(define (get-buf s)
-  (match s
-    [(heap-model (b:buf h:heap f:pointer))
-     b]))
-
-(define (get-heap s)
-  (match s
-    [(heap-model (b:buf h:heap f:pointer))
-     h]))
-
-(define (get-fp s)
-  (match s
-    [(heap-model (b:buf h:heap f:pointer))
-     f]))
-
      
 ; write value at the ith position of cell
 (define (write hp i v)
@@ -195,16 +205,56 @@
 ; init a state with buf size b-i and heap size (in cells) h-i
 ; heap has a wilderness (unused block not in free list) of size (h-i*4)-2
 
-; natural -> natural -> state*
-(define (init-state b-i h-i)
+; buf -> natural -> state*
+(define (init-state b h-i)
   (if (< h-i 1)
       false
       (let* ([payload (repeat (heap-model 0) (- (* h-i 4) 2))]           
              [hp (heap-model (cons ,(- (* h-i 4) 2) ,payload))]
              [hp+ (heap-model (cons 0 ,hp))])        
-      (heap-model (,(repeat (heap-model 0) b-i) ,hp+ null)))))
+      (state b hp+ (heap-model null)))))
+
+(define (init-empty-state b-i h-i)
+  (init-state (repeat (heap-model 0) b-i) h-i))
 
 
+; set loc bl in buffer of s to val
+(define (state-buf-set bl v s)
+  (let* ([b (state->buf s)]
+        [b+ (replace b bl v)])
+    (state b+ (state->heap s) (state->pointer s))))
+
+(define (state-fp-set fp s)
+  (state (state->buf s) (state->heap s) fp))
+
+; check if p is a valid pointer in s->heap
+(define (state-safe-write i s)
+  (< i (length (state->heap s))))
+
+
+; check if the size of the buf and heap of the state are exactly bs and hs.
+(define (state-size bs hs)
+  (lambda (s)
+    (and (equal? (length (state->buf s)) bs)
+         (equal? (length (state->heap s)) hs))))
+
+(define (state-con-size bs hs)
+  (lambda (s)
+    ((state-size bs hs) (make-state-struct s))))
+
+(define (state-same-heap s s+)
+  (equal? (state->heap s) (state->heap s+)))
+
+(define (state-con-same-heap s s+)
+  (state-same-heap (make-state-struct s) (make-state-struct s+)))
+
+
+(define (prog-state-size bs hs)
+  (lambda (p)
+    (let ([s (cdr p)])
+      ((state-size bs hs) s))))
+
+    
 ; pointer* -> boolean
 (define (is-null? p)
   (match p
@@ -218,6 +268,15 @@
     [(heap-model n:natural)
      n]))
 
+(define (find-interaction-size size i)
+  (begin
+    (define i* (heap-model interaction size))
+    (define sol (solve (assert (equal? i* i))))
+    (if (unsat? sol)
+        (displayln "UNSAT")
+        (displayln "SAT"))))
+
+
 ; calculate the address of a heap-loc in the heap
 (define (heap-loc-addr hl)
   (match hl
@@ -225,7 +284,7 @@
      n]))
 
 
-(define/debug (interpret-alloc-no-free h)
+(define (interpret-alloc-no-free h)
   (match h
     [(heap-model (cons in-use:value h+1:heap))
      (match h+1
@@ -260,17 +319,14 @@
 ; heap* -> natural -> (pointer* x heap*)
 ; returns new free pointer X new heap
 (define (interpret-alloc-free h n)
-  (do newf <- (nth h n) ; get the tail of the free-list
-      size <- (nth h (- n 1)) ; get the size of this block
-       (match size
-         [(heap-model sz:natural)
-          (do h+ <- (replace h (- n 2) (heap-model 1))
-            (match newf
-              [(heap-model nf:natural)
-               (do h++ <- (replace h+ (+ nf 1) (heap-model null))
+  (let* ([newf  (nth h n)] ; get the tail of the free-list
+         [h+ (replace h (- n 2) (heap-model 1))]) ; alloc the head of the free-list
+          (match newf
+            [(heap-model nf:natural)
+             (do h++ <- (replace h+ (+ nf 1) (heap-model null)) ; change the new head's backward pointer to be null
                  (cons newf h++))]
-               [(heap-model null)
-                (cons newf h+)]))])))
+            [(heap-model null)
+             (cons newf h+)])))
 
 
 ; free block at p in h, adding it to the free-list headed at f
@@ -301,44 +357,50 @@
 
 
 (define (interpret-action a s)
-  (match s
-    [(heap-model (b:buf h:heap f:pointer))
-     ;(displayln "matched heap")
+ (for/all ([a a])
+;            [s s])
+    (debug-display "~a" a)
+    (let ([b (state->buf s)]
+          [h (state->heap s)]
+          [f (state->pointer s)])
      (match a
        [(heap-model (copy bl0:buf-loc bl1:buf-loc))
         (let* ([val (nth b bl0)]
                [b+ (replace b bl1 val)])
-          (heap-model (,b+ ,h ,f)))]                    
+          (state b+ h f))]                    
        [(heap-model (free bl:buf-loc))
         (let* ([p (nth b bl)]
                [b+ (replace b bl (heap-model null))]
                [h+ (interpret-free h f p)])
-          (heap-model (,b+ ,h+ ,p)))]
+          (state b+ h+ p))]
        [(heap-model (alloc bl:buf-loc))
         (match f
           [(heap-model n:natural)
            (let* ([ph+ (interpret-alloc-free h n)]
                   [b+ (replace b bl f)])
-             (heap-model (,b+ ,(cdr ph+) ,(car ph+))))]
+             (state b+ (cdr ph+) (car ph+)))]
           [(heap-model null)
            (let* ([ph+ (interpret-alloc-no-free h)]
                   [b+  (replace b bl (heap-model ,(car ph+)))])
-             (heap-model (,b+ ,(cdr ph+) ,f)))])]
-       [(heap-model (set bl:buf-loc val:nnvalue))
-        (let* ([b+ (replace b bl val)])
-          (heap-model (,b+ ,h ,f)))]
+             (state b+ (cdr ph+) f))])]
+       [(heap-model (incr bl:buf-loc))
+        (let* ([val (nth b bl)]
+               [b+ (replace b bl (+ val 1))])
+          (state b+ h f))]
+       [(heap-model (decr bl:buf-loc))
+        (let* ([val (nth b bl)]
+               [b+ (replace b bl (- val 1))])
+          (state b+ h f))]
        [(heap-model (read bhl:buf-loc bl:buf-loc))
-        ;(displayln "action read")
         (let* ([loc (nth b bhl)] ; get the pointer
                [val (nth h loc)] ; get the value at the location
                [b+ (replace b bl val)]) ; place the value in the buffer
-             (heap-model (,b+ ,h ,f)))]
+             (state b+ h f))]
        [(heap-model (write bl:buf-loc bhl:buf-loc))
-        ;(displayln "action write")
         (let* ([val (nth b bl)]
                [loc (nth b bhl)]
                [h+ (write h loc val)])
-          (heap-model (,b ,h+ ,f)))])]))
+          (state b h+ f))]))))
 
 
 (define (interpret-interaction i s)
@@ -348,62 +410,41 @@
     [(heap-model nil)
      s]))
 
+(define (interpret-saction a s)
+  (match a
+    [(heap-model (set bl:buf-loc v:nnvalue))
+     (state-buf-set bl v s)]))
+                 
+
+
+(define (interpret-setup setup s)
+  (match setup
+    [(heap-model nil)
+     s]
+    [(heap-model (cons a:saction setup+:setup))
+     (interpret-setup setup+ (interpret-saction a s))]))
+
 (define-language heap-lang
   #:grammar heap-model
-  #:expression interaction #:size 3
-  #:context state #:size 8
-  #:link snoc
+  #:expression interaction #:size 4
+  #:context state-con #:size 10
+  #:link (lambda (state inte)
+           (match state
+             [(heap-model (b:buf h:heap p:pointer))
+              (cons inte (make-state b h p))]))
   #:evaluate (uncurry interpret-interaction))
+              
 
-;; checks that the heap block layout is valid
-;; every slot on the heap is either null or a size s followed s+1 slots
-(define (valid-heap-block-size h)
-  (match h
-    [(heap-model nil)
-     #t]
-    [(heap-model (cons in-use:natural h+:heap))
-     (match h+
-       [(heap-model (cons size:natural h++:heap))
-        (if (and (< in-use 2) ; s should be 0 or 1
-                 (equal? size 2)) ; temporary
-            (valid-heap-block-size (skip size h++))
-            #f)]
-       [(heap-model any)
-        #f])]
-    [(heap-model any)
-     #f]))
+(define (synthesize-interaction-gadget size ctx spec)
+  (let* ([sol (find-gadget heap-lang
+                           spec
+                           #:expr-bound size
+                           #:expression-witness-only #t
+                           #:context (make-state-con ctx))])
+    (if sol
+        (first sol)
+        #f)))
 
-(define (valid-state-block s)
-    (match s
-      [(heap-model (b:buf h:heap p:pointer))
-       (and
-        (valid-heap-block-size h)
-        #;(valid-freelist fuel h p))]))
-
-(define/debug (valid-freelist fuel h p)
-  (define/debug #:suffix (valid-freelist+ fuel h p prev-p)
-    (if (<= fuel 0)
-        #t
-        (match p      
-          [(heap-model null)
-           #t]
-          [(heap-model l:natural)
-           (do forward-p <- (nth h l)
-               backward-p <- (nth h (+ l 1))
-               check-v <- (nth h (- l 2))
-             (if (and (equal? check-v (heap-model 0)) ; validation bit (size of pred) is properly set
-                      (equal? backward-p prev-p)) ; backward pointer is properly set 
-                      (valid-freelist+ (- fuel 1) h forward-p p)
-             (begin
-               #f)))]
-          [(heap-model any)
-           #f])))
-  (not (failure? (valid-freelist+ fuel h p (heap-model null))))) ; capture failures 
-
-(define (valid-freelist-state s)
-  (match s
-    [(heap-model (b:buf h:heap p:pointer))
-     (valid-freelist 3 h p)]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -474,15 +515,13 @@
   (display-heap+ h 0))
 
 (define (display-state s)
-  (match s
-    [(heap-model (b:buf h:heap f:pointer))
-     (begin
-       (displayln "BUFFER:")
-       (display-buf b)
-       (displayln "HEAP:")
-       (display-heap h)
-       (displayln "FP HEAD:")
-       (displayln (print-pointer f)))]))
+  (begin
+    (displayln "BUFFER:")
+    (display-buf (state->buf s))
+    (displayln "HEAP:")
+    (display-heap (state->heap s))
+    (displayln "FP HEAD:")
+    (displayln (print-pointer (state->pointer s)))))
       
 
 
@@ -490,12 +529,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; TESTING heap-model
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
-(define d (init-state 4 2))
+(define d (init-empty-state 4 2))
 (define aa0 (heap-model (alloc 0)))
 (define aa1 (heap-model (alloc 1)))
-(define as (heap-model (set 2 7)))
 (define aw (heap-model (write 2 0)))
 (define ar (heap-model (read 0 3)))
 
@@ -509,399 +545,261 @@
 (define d+3* (interpret-action af0 d++))
 (define d+3** (interpret-action af1 d++))
 (define d+4* (interpret-action af1 d+3*))
+(define d+5* (interpret-action aa0 d+4*))
 (define d+4** (interpret-action af0 d+3**))
 
-
-(define d+3 (interpret-action as d++))
+(define d+3  (state-buf-set 2 7 d++))
 (define d+4 (interpret-action aw d+3))
 (define d+5 (interpret-action ar d+4))
 
 
+(define (clear-buf s)
+  (state (repeat (heap-model null) 4) (state->heap s) (state->pointer s)))
+
+(define dc (clear-buf d+3*))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Trying to create gadgets
+; Trying to find a Resize gadget
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;;;; Allocate at (force the next block to be allocated to be at a certain place on the heap ;;;
-; Starting state: any
-; Goal: on end state, next (alloc x) has buf.x = hl
-(define db (init-state 4 4))
-(define db+  (interpret-action aa0 db))
-(define db++ (interpret-action aa1 db+))
-
-
-
-; assumes: bl0 bl1 disjoint
-; result: bl0 points to head of free list
-; TODO: try to synthesize this gadget
-; This is (heap-model interaction 5)
-(define (find-freelist-head bl0 bl1)
-       (heap-model (cons (alloc ,bl1)
-                         (cons (copy ,bl1 ,bl0)
-                               (cons (free ,bl1) nil)))))
-
-
-(define (find-freelist-head-spec bl0)
-  (lambda (s s+)
-    (match s+
-      [(heap-model (b:buf h:heap f:pointer))
-       (let* ([val (nth b bl0)])
-         (and
-          (not (equal? f (heap-model null)))
-               (equal? f val)))])))
-
-; works with d+3* (4) in 26s: (set 2 2)
-;                 (5) slow 292637, found (set 2 2) (copy 1 3)
-; works with d+3** (4) 28s (set 2 6)
-;                  (5) super slow?
-; works with d+4* (4): (set 2 6), did find  
-;                 (5) in 61s : (alloc 1) (set 3 1) (read 3 2)
-;                           and  (alloc 3) ((copy 3 2) ((free 3)))
-; works with d++ (4): (copy 0 2) (free 0)
-;                 (5) super slloow [not terminating?]
-; d+4** works too with interaction = 4 and 5, 
-; d (5) not terminating?
-(define (find-freelist-head-gadget)
-  (begin
-    (define b* (heap-model buf 5))
-    (define h* (heap-model heap 9))
-    (define p* (heap-model pointer 2))
-    (define s* d+4**)
-    ;    (define s* (heap-model (,b* ,h* ,p*)))
-    (define i* (heap-model interaction 5))
-    ;(define i* (find-freelist-head 0 1))
-    (define s+* (interpret-interaction i* s*))
-    (define sol (solve (assert ((find-freelist-head-spec 2) s* s+*))))
-    (if (unsat? sol)
-        (displayln "UNSAT")
-        (begin
-          (displayln "SAT")
-          (define s (concretize s* sol))
-          (define i (concretize i* sol))
-          (define s+ (concretize s+* sol))
-          (displayln "State:")
-          (display-state s)
-          (display "Interaction: ")
-          (displayln i)
-          (displayln "Results in state: ")
-          (display-state s+)))))
-;(time (find-freelist-head-gadget))
-
-
-(define (find-freelist-head-gadget-test)
-  (begin
-    (define b* (heap-model buf 5))
-    (define h* (heap-model heap 9))
-    (define p* (heap-model pointer 2))
-    (define s--* d+3**)
-    (define bl* (heap-model buf-loc 2))
-    (define bll* (heap-model buf-loc 2))
-    (define bl0* (heap-model buf-loc 2))
-    (define bl1* (heap-model buf-loc 2))
-    (define v* (heap-model nnvalue 2))
-    (define i-* (heap-model (cons (free ,bl*) (cons (alloc ,bll*) nil))))
-  ;  (define a-* (heap-model (set ,bl* ,v*)))
-    (define s-* (interpret-interaction i-* s--*))
-    ;    (define s* (heap-model (,b* ,h* ,p*)))
-;    (define a* (heap-model (copy ,bl0* ,bl1*)))
-;    (define a* (heap-model (read ,bl0* ,bl1*)))
-;    (define a* (heap-model (write ,bl0* ,bl1*)))
-    (define a* (heap-model (free ,bl0*))) 
-;    (define a* (heap-model (alloc ,bl0*)))
-;    (define a* (heap-model (set ,bl0* ,v*)))
-;    (define a* (heap-model action 2))
-    (define s* (interpret-action a* s-*))
-    (define i* (heap-model interaction 2))
-    ;(define i* (find-freelist-head 0 1))
-    (define s+* (interpret-interaction i* s*))
-    (define sol (solve (assert ((find-freelist-head-spec 2) s* s+*))))
-    (if (unsat? sol)
-        (displayln "UNSAT")
-        (begin
-          (displayln "SAT")
-          (define s (concretize s* sol))
-          (define i- (concretize i-* sol))
-          (define a (concretize a* sol))
-          (define i (concretize i* sol))
-          (define s+ (concretize s+* sol))
-          (displayln "State:")
-          (display-state s)
-          (display "Interaction: ")
-          (displayln i-)
-          (displayln a)
-          (displayln i)
-          (displayln "Results in state: ")
-          (display-state s+)))))
-;(time (find-freelist-head-gadget-test))
-
-
-
-
-; slooooow
-; with d+3* and d+4*, found ((set 0 6) ((free 0) ((set 2 6)))) in 118s (heap-model int 5)
-; also found (alloc 2) (copy 2 3) (free 3) in 69s
-; trying again with no set in interaction
-(define (find-freelist-head-gadget-multi)
-  (begin
-    (define b* (heap-model buf 5))
-    (define h* (heap-model heap 9))
-    (define p* (heap-model pointer 2))
-    (define sl* (list d+4* d+3*))
-;    (define s* (heap-model (,b* ,h* ,p*)))
-    (define i* (heap-model interaction 5))
-    ;(define i* (find-freelist-head 0 1))
-    (define sl+* (map (lambda (x) (interpret-interaction i* x)) sl*))
-    (define sol (solve (assert (andmap (find-freelist-head-spec 2) sl* sl+*))))
-    (if (unsat? sol)
-        (displayln "UNSAT")
-        (begin
-          (displayln "SAT")
-          (define sl (concretize sl* sol))
-          (define i (concretize i* sol))
-          (define sl+ (concretize sl+* sol))
-          (display "Interaction: ")
-          (displayln i)
-          (map (lambda (s s+) (begin
-                                (displayln "State:")
-                                (display-state s)
-                                (displayln "Results in state:")
-                                (display-state s+)))
-               sl
-               sl+)))))
-;(time (find-freelist-head-gadget-multi))
-
-
-; Trying to find the gadget that works "for any" pointer head
-
-
-
-(define d+3*-a (interpret-interaction (find-freelist-head 0 1) d+3*))
-(define d+4*-a (interpret-interaction (find-freelist-head 0 1) d+4*))
-; Assume: hd of freelist is at bl0, and bl1, bl2 and bl0 are disjoint cells
-; Result: freelist is still headed at *bl0, but block at hl is now linked (as second element)
-; size: big (over 10)
-(define (insert-in-freelist bl0 bl1 bl2 hl)
-       (heap-model (cons (read ,bl0 ,bl1) ; read next (fwd*bl0)
-                         (cons (set ,bl2 ,hl) ; set bl2 to hl
-                               (cons (write ,bl2 ,bl0) ; at this point fwd*bl0 points to hl
-                                     (cons (write ,bl1 ,bl2) ; at this point fwd*hl points to next
-                                           (cons (set ,bl2 ,(+ hl 1)) ; set bl2 to bwd*hl
-                                                 (cons (write ,bl0 ,bl2) ;set bwd*hl to hd
-                                                       (cons (set ,bl2 ,(- hl 2))
-                                                             (cons (set ,bl1 0)
-                                                                   (cons (write ,bl1 ,bl2)
-                                                                         nil)))))))))))
-
-
-
-; Assume: hd of freelist is at bl0, and bl0, bl1, bl2 are disjoint cells
-; Result: freelist is still headed at *bl0, fwd points to hl (but freelist may be invalid)
-; SIZE: 6
-(define (insert-in-freelist-unsafe bl0 bl1 bl2 hl)
-  (heap-model (cons (read ,bl0 ,bl1)
-                    (cons (set ,bl2 ,hl) ; set bl1 to hl
-                          (cons (write ,bl2 ,bl0) ; at this point fwd*bl0 points to hl
-                                (cons (write ,bl1 ,bl2) ; set fwd*hl to next
-                                      nil))))))
-
-#;(define (size-of-concr n)
-  (begin
-    (define concr (insert-in-freelist-unsafe 0 1 3 6))
-    (define abstr (heap-model interaction n))
-    (define sol (solve (assert (equal? concr abstr))))
-    (if (unsat? sol)
-        (displayln "UNSAT")
-        (displayln "SAT"))))
-
-
-
-(define d+3*-a+u (interpret-interaction (insert-in-freelist-unsafe 0 1 2 6) d+3*-a))
-(define d+3*-a+ (interpret-interaction (insert-in-freelist 0 1 2 6) d+3*-a))
-
-
-(define (insert-in-freelist-spec target)
-  (lambda (s s+)
-    (let* ([s++ (interpret-action (heap-model (alloc 0)) s+)])           
-      (match s++
-        [(heap-model (b:buf h:heap f:pointer))
-         (equal? f target)]))))
-
-; found (in 33s) ((set 0 2) (write 1 0)) with d+3* and hl = 6, unsat (i* size 4) with hl = 42
-(define (insert-in-freelist-gadget)
-  (begin
-    (define b* (heap-model buf 5))
-    (define h* (heap-model heap 9))
-    (define p* (heap-model pointer 2))
-    (define s* d+3*)
-;    (define s* (heap-model (,b* ,h* ,p*)))
-    (define i* (heap-model interaction 4))
-    ;(define i* (find-freelist-head 0 1))
-    (define s+* (interpret-interaction i* s*))
-    (define sol (solve (assert ((insert-in-freelist-spec 6) s* s+*))))
-    (if (unsat? sol)
-        (displayln "UNSAT")
-        (begin
-          (displayln "SAT")
-          (define s (concretize s* sol))
-          (define i (concretize i* sol))
-          (define s+ (concretize s+* sol))
-          (displayln "State:")
-          (display-state s)
-          (display "Interaction: ")
-          (displayln i)
-          (display "Results in state: ")
-          (display-state s+)))))
-;(time (insert-in-freelist-gadget))
-
-; this is what we want, but very slow (couldn't get it to terminate) atm with d+3* and interaction 4
-(define d+3*-fp  (interpret-action (heap-model (set 2 2)) d+3*))
-
-; this should just be (write 3 2), but cannot find it at the moment
-(define (insert-in-freelist-gadget-forall)
-  (begin
-    (define b* (heap-model buf 5))
-    (define h* (heap-model heap 9))
-    (define p* (heap-model pointer 2))
-    (define s--* d+3*)
-    ;(define s-* (interpret-action (heap-model (set 2 2)) s--*)) ; set the free pointer
-    (define s-* d+3*-fp)
-    ;    (define s* (heap-model (,b* ,h* ,p*)))
-    (define target (heap-model integer 2))    
-    (define s* (interpret-action (heap-model (set 3 ,target)) s-*))
-    (define i* (heap-model interaction 3))
-    ;(define i* (find-freelist-head 0 1))
-    (define s+* (interpret-interaction i* s*))
-   #;(define sol (solve (assert ((arbitrary-fp-spec 3) s* s+*))))
-    (define sol (synthesize #:forall (list target)
-                            #:guarantee (assert ((insert-in-freelist-spec target) s* s+*))))
-    (if (unsat? sol)
-        (displayln "UNSAT")
-        (begin
-          (displayln "SAT")
-          (define s (concretize s-* sol))
-          (define i (concretize i* sol))
-          (define s+ (concretize s+* sol))
-          (display "Interaction: ")
-          (displayln i)
-          (displayln "State:")
-          (display-state s)          
-          (displayln "Results in state: ")
-          (display-state s+)))))
-
-;(time (insert-in-freelist-gadget-forall))
-
-
-
-; Allocate a block at location hl
-; assumes: hl-2 to hl+1 are valid locations, there is space for one extra block on freelist
-(define (allocate-at hl)
-  (append (find-freelist-head 0 1)
-          (append (insert-in-freelist 0 1 2 hl)
-                  (heap-model (cons (alloc 0)
-                                    (cons (alloc 0) nil))))))
-
-(define d+3*-alloc (interpret-interaction (allocate-at 6) d+3*))
-
-(define (next-alloc-at-spec hl)
-  (lambda (s s+)
-    (let* ([s++ (interpret-action (heap-model (alloc 0)) s+)])           
-      (match s++
-        [(heap-model (b:buf h:heap f:pointer))
-         (equal? (nth b 0) hl)]))))
-
-
-
-
-; Now trying to get something that would work for ANY state (i.e. a gadget)
-; make the f+ be an arbitrary number (on the stack)
-(define (arbitrary-fp-spec bl)
-  (lambda (s s+)
-      (match s
-        [(heap-model (b:buf h:heap f:pointer))
-         (match s+
-           [(heap-model (b+:buf h+:heap f+:pointer))
-            (let* ([val (nth b bl)])
-              (equal? val f+))])])))
-
-
-; UNSAT with 4, didn't terminate with 5
-(define (arbitrary-fp-gadget)
-  (begin
-    (define b* (heap-model buf 5))
-    (define h* (heap-model heap 9))
-    (define p* (heap-model pointer 2))
-    (define s-* d+3*)
-    ;    (define s* (heap-model (,b* ,h* ,p*)))
-    (define target (heap-model integer 2))
-    (define s* (interpret-action (heap-model (set 3 ,target)) s-*))
-    (define i* (heap-model interaction 5))
-    ;(define i* (find-freelist-head 0 1))
-    (define s+* (interpret-interaction i* s*))
-   #;(define sol (solve (assert ((arbitrary-fp-spec 3) s* s+*))))
-    (define sol (synthesize #:forall (list target)
-                            #:guarantee (assert ((arbitrary-fp-spec 3) s* s+*))))
-    (if (unsat? sol)
-        (displayln "UNSAT")
-        (begin
-          (displayln "SAT")
-          (define s (concretize s* sol))
-          (define i (concretize i* sol))
-          (define s+ (concretize s+* sol))
-          (display "Interaction: ")
-          (displayln i)
-          (displayln "State:")
-          (display-state s)          
-          (displayln "Results in state: ")
-          (display-state s+)))))
-
-;(arbitrary-fp-gadget)
-
 
 ;;;; Resize (merge a certain block with the next block) ;;;
-; Safe resize would look like this:
-; Starting state: hl is allocated, with size n, and block at hl+n+2 has size m 
-; end state:  hl has size n+m
-; TODO: will need an add operation in buf for m+n
-
-; Unsafe resize (that is not guarantee to result in a valid state could just be
 ; Starting state: hl is allocated, with size n
 ; end state: hl is allocated, with size m
-(define (resize-spec bl hl)
-    (lambda (s s+)
-      (match s
-        [(heap-model (b:buf h:heap f:pointer))
-         (match s+
-           [(heap-model (b+:buf h+:heap f+:pointer))
-            (let* ([size (nth b bl)]
-                   [val (nth h+ (- hl 1))])
-              (equal? size val))])])))
+(define (resize-spec bl-size bl-block)
+    (lambda (p s+)
+      (let* ([s (cdr p)]
+             [size (nth (state->buf s) bl-size)]
+             [hl (nth (state->buf s) bl-block)]
+             [val (nth (state->heap s+) (- hl 1))])
+        (equal? size val))))
 
-
-
-; Found (set 1 5); (write 3 1) in 38s (with s-* = d+3*, resize-spec 3 6)
-(define (resize-gadget)
+(define (resize-query)
   (begin
-    (define b* (heap-model buf 5))
-    (define h* (heap-model heap 9))
-    (define p* (heap-model pointer 2))
-    (define s-* d+3*)
-;    (define s-* (heap-model (,b* ,h* ,p*)))
-    (define target (heap-model integer 2))
-    (define s* (interpret-action (heap-model (set 3 ,target)) s-*))
+    (define target (heap-model integer 1))
+    (define s-* (state-buf-set 1 6 dc))
+    (define s* (state-buf-set 3 target s-*))
+    (define gadget (synthesize-interaction-gadget 4 s* (resize-spec 3 1)))
+    (displayln "Gadget:")
+    (displayln gadget)))
+    
+  
+(define (resize-gadget-syn)
+  (begin
+    (define s--* dc)
+    (define s-* (state-buf-set 1 6 s--*))
+    (define target* (heap-model integer 2))
+    (define s* (state-buf-set 3 target* s-*))
     (define i* (heap-model interaction 4))
-    ;(define i* (find-freelist-head 0 1))
+    (define p* (cons i* s*))
     (define s+* (interpret-interaction i* s*))
-   #;(define sol (solve (assert ((arbitrary-fp-spec 3) s* s+*))))
-    (define sol (synthesize #:forall (list target)
-                            #:guarantee (assert ((resize-spec 3 6) s* s+*))))
+    (define sol (synthesize #:forall (list target*)
+                            #:guarantee (assert ((resize-spec 3 1) p* s+*))))
     (if (unsat? sol)
         (displayln "UNSAT")
         (begin
           (displayln "SAT")
-          (define s- (concretize s-* sol))
+          (define s-- (concretize s--* sol))
+          (define target 42)
+          (define s- (state-buf-set 1 6 s--))
+          (define s (state-buf-set 3 target s-))
           (define i (concretize i* sol))
-          (define s+ (concretize s+* sol))
+          (define s+ (interpret-interaction i s))
           (displayln "Interaction: ")
-          (display "set buf[3] to any integer, then ")
+          (display "set buf[3] to any integer (here 42) and buf[1] to the target block, then ")
           (displayln i)
           (displayln "State:")
-          (display-state s-)))))
+          (display-state s--)
+          (displayln "Results in State:")
+          (display-state s+)))))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Trying to find a next-alloc gadget
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;;;; Forces next alloc to return a specific pointer ;;;
+(define (next-alloc-spec bl-target)
+  (lambda (p s+)
+    (let* ([s (cdr p)]
+           [target (nth (state->buf s) bl-target)])
+         (equal? (state->pointer s+) target))))
+
+(define (next-alloc-query)
+  (begin
+    (define target (heap-model integer 2))
+    (define s* (state-buf-set 0 target dc))
+    (define gadget (synthesize-interaction-gadget 4 s* (next-alloc-spec 0)))
+    (displayln "Gadget:")
+    (displayln gadget)))
+
+; WARNING: this is very slow at |i*| < 6
+(define (next-alloc-gadget-syn)
+  (begin
+    (define s-* (clear-buf d+3*))
+    (define target* (heap-model integer 2))
+    (define s* (state-buf-set 0 target* s-*))
+    (define i* (heap-model interaction 5))
+    (define p* (cons i* s*))
+    (define s+* (interpret-interaction i* s*))
+    (define sol (synthesize
+                   #:forall (list target*)
+                   #:guarantee (assert ((next-alloc-spec 0) p* s+*))))
+    (if (unsat? sol)
+        (displayln "UNSAT")
+        (begin
+          (displayln "SAT")
+          (define target 4)
+          (define s- (concretize s-* sol))
+          (define i (concretize i* sol))
+          (display "Interaction: ")
+          (display "Set b[1] to ")
+          (display target)
+          (display ", then")
+          (displayln i)
+          (define s (state-buf-set 0 target s-))
+          (displayln  "Done s")
+          (define s+ (interpret-interaction i s))
+          (displayln "in initial state:")
+          (display-state s-)
+          (display "Results in state: ")
+          (display-state s+)))))
+
+; Try to find a simpler gadget where the head of the freelist is already known
+(define (insert-in-freelist-query)
+  (begin
+    (define target (heap-model integer 2))
+    (define s-* (state-buf-set 3 (state->pointer dc) dc))
+    (define s* (state-buf-set 1 target s-*))
+    (define gadget (synthesize-interaction-gadget 4 s* (next-alloc-spec 1)))
+    (displayln "Gadget:")
+    (displayln gadget)))
+
+
+(define (insert-in-freelist-gadget-syn)
+  (begin
+    (define s--* (clear-buf d+3*))
+    (define target* (heap-model integer 2))
+    (define s-* (state-buf-set 1 target* s--*))
+    (define s* (state-buf-set 0 (state->pointer s-*) s-*))
+    (define i* (heap-model interaction 4))
+    (define p* (cons i* s*))
+    (define s+* (interpret-interaction i* s*))
+    (define sol (synthesize
+                   #:forall (list target*)
+                   #:guarantee (assert ((next-alloc-spec 1) p* s+*))))
+    (if (unsat? sol)
+        (displayln "UNSAT")
+        (begin
+          (displayln "SAT")
+          (define target 4)
+          (define s-- (concretize s--* sol))
+          (define i (concretize i* sol))
+          (display "Interaction: ")
+          (display "Set b[1] to ")
+          (display target)
+          (display " and b[0] to fp, then")
+          (displayln i)
+          (define s- (state-buf-set 1 target s--))
+          (define s (state-buf-set 0 (state->pointer s-) s-))
+          (define s+ (interpret-interaction i s))
+          (displayln "in initial state:")
+          (display-state s--)
+          (display "Results in state: ")
+          (display-state s+)))))
+
+
+; Then, try to find a gadget that discovers the head of the freelist
+(define (find-freelist-head-spec bl0)
+  (lambda (p s+)
+    (let* ([s (cdr p)]
+           [val (nth (state->buf s+) bl0)])
+       (equal? (state->pointer s+) val))))
+
+(define (find-freelist-head-query)
+  (begin
+    (define fp* (heap-model pointer 2))
+    (define s* (state-fp-set fp* dc))
+    (define gadget (synthesize-interaction-gadget 5 s* (find-freelist-head-spec 2)))
+    (displayln "Gadget:")
+    (displayln gadget)))
+
+(define (find-freelist-head-gadget-syn)
+  (begin
+    (define fp* (heap-model pointer 2))
+    (define s-* dc)
+    (define s* (state-fp-set fp* s-*))
+    (define i* (heap-model interaction 5))
+    (define p* (cons i* s*))
+    (define s+* (interpret-interaction i* s*))
+    (define sol (synthesize
+                 #:forall (list fp*)
+                 #:guarantee (assert ((find-freelist-head-spec 2) p* s+*))))
+    (if (unsat? sol)
+        (displayln "UNSAT")
+        (begin
+          (displayln "SAT")
+          (define fp 2)
+          (define s- (concretize s-* sol))
+          (define s (state-fp-set fp s-))
+          (define i (concretize i* sol))
+          (define s+ (interpret-interaction i s))
+          (display "For any fp (here ")
+          (display fp)
+          (displayln "), State:")
+          (display-state s)
+          (display "Interaction: ")
+          (displayln i)
+          (displayln "Results in state: ")
+          (display-state s+)))))
+    
+
+
+; Can now compose the result of find-freelist-head and insert-in-freelist to form next-alloc (of SEEC size 7)
+(define (next-alloc bl-target bl0 bl1)
+  (heap-model (cons (alloc ,bl0)
+                    (cons (copy ,bl0 ,bl1)
+                          (cons (free ,bl0) ; at this point, head of the free list is in bl1
+                                (cons (write ,bl-target ,bl1)
+                                      (cons (alloc ,bl0) nil)))))))
+
+(define (next-alloc-gadget-verify)
+  (begin
+    (define s-* dc)
+    (define target* (heap-model integer 2))
+    (define s* (state-buf-set 0 target* s-*))
+    (define i* (next-alloc 0 1 2))
+    (define p* (cons i* s*))
+    (define s+* (interpret-interaction i* s*))
+    (define sol (verify (assert ((next-alloc-spec 0) p* s+*))))
+    (if (unsat? sol)
+        (displayln "UNSAT")
+        (begin
+          (displayln "SAT")          
+          (define target (concretize target* sol))
+          (define s- (concretize s-* sol))
+          (define i (concretize i* sol))
+          (display "Interaction: ")
+          (display "Set b[1] to ")
+          (display target)
+          (display ", then")
+          (displayln i)
+          (define s (state-buf-set 0 target s-))
+          (displayln  "Done s")
+          (define s+ (interpret-interaction i s))
+          (displayln "in initial state:")
+          (display-state s-)
+          (display "Results in state: ")
+          (display-state s+)))))
+
+
+
+
+
+
+
+
+
