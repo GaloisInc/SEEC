@@ -514,6 +514,7 @@
                                                           ((language-evaluate source) p1))]
                     [(b2 nondet2) (capture-nondeterminism #:nondet nondet
                                                           ((language-evaluate target) p2))])
+
         (let* ([behavior-relation  (compiler-behavior-relation comp)]
                [equality           (behavior-relation b1 b2)]
                [language-witnesses (list (language-witness e1 c1 p1 b1) (language-witness e2 c2 p2 b2))]
@@ -984,14 +985,14 @@
       #:context-bound (or/c #f integer?)
       #:context any/c
       #:context-constraint (-> any/c boolean?)
-
+      #:expression-witness-only boolean?
       #:fresh-witness boolean?
       #:debug boolean?
       #:forall any/c
       #:forall-extra any/c
       #:count integer?
       )
-      (or/c #f (listof language-witness?))
+      (or/c #f (listof any/c))
        )
   (λ (lang
       spec                 ; (-> program? behavior? boolean?)
@@ -1017,7 +1018,9 @@
       #:context-bound      [bound-c #f] ; (or/c #f natural?)
       #:context            [ctx (make-symbolic-var (language-context lang) bound-c)]
       #:context-constraint [ctx-constraint (λ (x) #t)] ; (-> context? boolean?)
-
+      #:expression-witness-only [expr-only #f]
+      ; if this is true, return lists of expressions rather than of language witness.
+      ; this may be useful if the user wants to generate a fresh context by themselves
       #:fresh-witness      [fresh #t]
                            ; if `#t`, will generate a fresh context satisfying
                            ; `valid-program` and `ctx-constraint` to witness the
@@ -1068,24 +1071,27 @@
         ; synthesize a new context satisfying the relevant constraints
         (cond
           [(equal? exprs #f) #f]
-          [else (map (λ (e-ctx-concrete)
-                 (let* ([e-concrete  (car e-ctx-concrete)]
-                        [ctx-witness (if fresh
-                                         (synthesize-fresh-context lang
-                                            #:expr e-concrete
-                                            #:context-bound bound-c
-                                            #:context-constraint ctx-constraint
-                                            #:valid-constraint valid-program
-                                            )
-                                         (cdr e-ctx-concrete)
-                                         )]; ctx-witness should be completely concrete
-                        [p-witness ((language-link lang) ctx-witness e-concrete)]
-                        [b-witness ((language-evaluate lang) p-witness)]
-                        )
-                   (language-witness e-concrete
-                                     ctx-witness
-                                     p-witness
-                                     b-witness)))
+          [else
+              (map (λ (e-ctx-concrete)
+                     (if expr-only
+                         (car e-ctx-concrete)
+                         (let* ([e-concrete  (car e-ctx-concrete)]
+                                [ctx-witness (if fresh
+                                                 (synthesize-fresh-context lang
+                                                                           #:expr e-concrete
+                                                                           #:context-bound bound-c
+                                                                           #:context-constraint ctx-constraint
+                                                                           #:valid-constraint valid-program
+                                                                           )
+                                                 (cdr e-ctx-concrete)
+                                                 )]; ctx-witness should be completely concrete
+                                [p-witness ((language-link lang) ctx-witness e-concrete)]
+                                [b-witness ((language-evaluate lang) p-witness)]
+                                )
+                           (language-witness e-concrete
+                                             ctx-witness
+                                             p-witness
+                                             b-witness))))
                exprs)])
           ))))
 
