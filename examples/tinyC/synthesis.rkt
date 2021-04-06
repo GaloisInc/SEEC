@@ -105,14 +105,14 @@
 ; Should synthesize 42 -- the fixed password value
 
 (define (synthesize-input-password-2)
-  (define-symbolic* x integer?)
-  (define-symbolic* y integer?)
-  (define input (list->seec (list x y)))
+  #;(define-symbolic* x integer?)
+  #;(define-symbolic* y integer?)
+  #;(define input (list->seec (list x y)))
   ; Note that when using an input, symbolic execution does not immediately terminate
   #;(define input (cond
                   [(havoc!) (seec-singleton x)]
                   [else     (list->seec (list x y))]))
-  #;(define input (tinyA list<integer> 3))
+  (define input (tinyA list<integer> 3))
   (parameterize ([debug? #t])
     (let ([g (find-ctx-gadget tinyA-lang
                                ; Synthesize an input that gains authorization
@@ -121,8 +121,24 @@
                                #:context (tinyA (nil (cons ,input nil)))
                                )])
       (display-gadget g displayln))))
-#;(synthesize-input-password-2)
+#;(time (synthesize-input-password-2))
 ; Should find x=y
+
+
+#|
+(define symbolic-mem
+  (cond
+    [(havoc!) (list->seec (list (tinyC (200 3)) (tinyC (200 2))))]
+    [else     (list->seec (list (tinyC (200 2))))]
+    ))
+#;(render-value/window symbolic-mem)
+(displayln (tinyA:lookup-mem 200 symbolic-mem))
+(for/all ([x (tinyA:lookup-mem 200 symbolic-mem)])
+  (displayln x))
+(for/all ([x (tinyA:lookup-mem 200 symbolic-mem) #:exhaustive])
+  (displayln x))
+|#
+
 
 (define (synthesize-input-password-3)
   (define-symbolic* x integer?)

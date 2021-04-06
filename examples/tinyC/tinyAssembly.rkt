@@ -44,6 +44,8 @@
          (prefix-out tinyA: (combine-out
             store-mem
             store-mem-sorted
+            lookup-mem
+            naive-lookup-mem
             declaration->pc
             declaration->frame
             (struct-out state)
@@ -122,11 +124,14 @@
 ; The input-buffer is a (racket) list of 'intlist's that are fed to calls to
 ; INPUT. This is a simple interaction model that cannot react dynamically to the
 ; program execution.
-(struct state (global-store pc sp memory input-buffer trace)
-  #:transparent)
+;
+; Note: making this struct `transparent` leads to less reliable union splitting
+; behavior.
+(struct state (global-store pc sp memory input-buffer trace))
 
 (define update-state
-  (λ (st #:increment-pc [inc-pc #f]
+  (λ (st #:increment-pc [inc-pc #f] ; If the pc has already been abstracted
+                                    ; over, we don't want to use increment-pc
          #:pc           [pc (if inc-pc
                                 (+ 1 (state-pc st))
                                 (state-pc st))]
@@ -179,13 +184,29 @@
 ; 'M', return 0. (Assume all memory is initialized to 0.)
 (define/contract (lookup-mem l mem)
   (-> tinyA-loc? tinyA-memory? tinyA-object?)
-  (match mem
+  (for*/all ([l l #:exhaustive]
+             [mem mem]) ; Both these for/all clauses are important to make sure
+                        ; the output of this function is a concise union, and not too large
+    #;(debug-display "(lookup-mem ~a)" l)
+    (match mem
     [(tinyA nil) 0]
     [(tinyA (cons (l+:loc obj+:object) m+:memory))
-     (if (equal? l l+)
-         obj+
-         (lookup-mem l m+))]
-    ))
+     (for/all ([l+ l+ #:exhaustive])
+       (if (equal? l l+)
+           obj+
+           (lookup-mem l m+)))]
+     )))
+
+(define/contract (naive-lookup-mem l mem)
+  (-> tinyA-loc? tinyA-memory? tinyA-object?)
+    (match mem
+    [(tinyA nil) 0]
+    [(tinyA (cons (l+:loc obj+:object) m+:memory))
+       (if (equal? l l+)
+           obj+
+           (naive-lookup-mem l m+))]
+     ))
+
 
 ; If l↦v occurs in mem for a value v, return v, otherwise return *fail*
 (define/contract (loc->val l mem)
@@ -237,9 +258,7 @@
 
 (define/contract (state->instruction st)
   (-> state? (failure/c tinyA-statement?))
-  (for/all ([pc (state-pc st)])
-    (pc->instruction pc (state-memory st)))
-  #;(pc->instruction (state-pc st) (state-memory st)))
+  (pc->instruction (state-pc st) (state-memory st)))
 
 
 ; Fetch the procedure name that encompasses the current PC. If the PC does not
@@ -315,6 +334,9 @@
 ; Unsorted simpler version, possibly better for symbolic analysis
 (define/contract (push-objs l objs mem)
   (-> tinyA-loc? (listof tinyA-object?) tinyA-memory? tinyA-memory?)
+  (for*/all ([objs objs]
+             [mem mem])
+  #;(debug-display "(push-objs ~a ~a)" l objs)
   (cond
     [(empty? objs) mem]
     [else
@@ -347,7 +369,7 @@
                                  (push-objs l objs mem+))]
           )]
        ))]
-    ))
+    )))
 
 
 ; Update the value at memory location 'l', returning the updated memory. If 'l'
@@ -464,36 +486,44 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; The true value represents a HALT
-(define/contract (eval-statement-1 insn st)
-  (-> tinyA-statement? state? (failure/c (or/c #t state?)))
+(define/contract (eval-statement-1 #;insn st)
+  (-> #;tinyA-statement? state? (failure/c (or/c #t state?)))
 
-  (for/all ([insn insn])
-  (debug-display "(eval-statement-1 ~a)" insn)
+  ; Use for/all here first abstracts the pc
+  (for*/all ([pc (state-pc st) #:exhaustive]
+             [insn (pc->instruction pc (state-memory st))]
+             )
+  (debug-display "(eval-statement-1 ~a ~a)" pc insn)
 
   (match insn
 
     [(tinyA HALT) #t]
 
     [(tinyA SKIP)
-     (update-state st #:increment-pc #t)]
+     (update-state st ;#:increment-pc #t
+                   #:pc (+ pc 1)
+                   )]
 
     [(tinyA (OUTPUT e:expr))
      (do (<- v (eval-expr e st))
          (update-state st
-                       #:increment-pc #t
+;                       #:increment-pc #t
+                       #:pc (+ pc 1)
                        #:cons-trace v)
        )]
 
     [(tinyA (INPUT e:expr))
-     (let ([input (state-input-buffer st)])
+     (for/all ([input (state-input-buffer st)])
        (cond
          [(and (list? input) (not (empty? input)))
           (do (<- l (eval-expr e st)) ; e should evaluate to a location
               (<- m+ (push-objs l (seec->list (first input)) (state-memory st)))
+              #;(render-value/window m+)
               (update-state st
                             #:memory m+
                             #:input-buffer (rest input)
-                            #:increment-pc #t
+;                            #:increment-pc #t
+                            #:pc (+ pc 1)
                             ))]
          [else *fail*]
          ))]
@@ -501,14 +531,17 @@
     [(tinyA (JMPZ e:expr l:loc))
      (match (eval-expr e st)
        [(tinyA 0) (update-state st #:pc l)]
-       [_         (update-state st #:increment-pc #t)]
+       [_         (update-state st ;#:increment-pc #t
+                                #:pc (+ pc 1)
+                                )]
        )]
 
     [(tinyA (ASSIGN lv:lval e:expr))
      (do (<- l (eval-lval lv st))
          (<- v (eval-expr e  st))
          (update-state st
-                       #:increment-pc #t
+;                       #:increment-pc #t
+                       #:pc (+ pc 1)
                        #:memory (store-mem l v (state-memory st))
                        ))]
 
@@ -521,21 +554,30 @@
      (do (<- vs (eval-exprs (seec->list es) st))
          ; lookup the target procedure's address and layout
          (<- d2 (proc-name->declaration p (state-global-store st)))
+         (debug-display "Got d2: ~a" d2)
          (let* ([sp1 (state-sp st)]
-                [pc1 (state-pc st)]
-                [m1  (state-memory st)]
+                [x   (debug-display "Got sp1: ~a" sp1)]
+                [pc1 pc #;(state-pc st)]
+                [x   (debug-display "Got pc1: ~a" pc1)]
+                #;[m1  (state-memory st)]
+                #;[x   (debug-display "m1: ~a" m1)]
+                #;[x   (tinyC:display-memory m1)]
                 [F2  (declaration->frame d2)]
+                [x   (debug-display "Got F2: ~a" F2)]
                 [pc2 (declaration->pc d2)]
+                [x   (debug-display "Got pc2: ~a" pc2)]
                 ; Compute the new stack pointer by subtracting the size of the
                 ; frame F2 from the current stack pointer, with two additional
                 ; slots for return address and saved (current) stack pointer
                 [sp2 (- sp1 (frame-size F2) 2)]
+                [x   (debug-display "Got sp2: ~a" sp2)]
                 ; Set up the new stack frame by initializing the local variables and pushing
                 ; call arguments, return address, and stack pointer into the new frame
                 [m2+  (push-objs (- sp1 (length vs) 2)
                                  (append vs (list sp1 (+ 1 pc1)))
                                  (state-memory st))]
                 [m2   (init-frame-arrays F2 sp2 m2+)]
+                #;[x    (tinyC:display-memory m2)]
                 )
            (update-state st
                          #:pc pc2
@@ -543,20 +585,26 @@
                          #:memory m2)))]
 
     [(tinyA RETURN)
+     (for/all ([sp1 (state-sp st) #:exhaustive]) ; This for/all helps concretize
+                                                ; pc2, which depends on sp
+       (debug-display "Got sp1: ~a" sp1)
          ; Get the current frame layout
-     (do (<- F1 (state->frame st))
+     (do (<- F1 (pc->frame pc (state-memory st) (state-global-store st)))
+         (debug-display "Got F1: ~a" F1)
          ; Locate the return address on the stack by adding the frame size to
          ; the current stack pointer and adding 1
-         (<- pc2 (lookup-mem (+ (state-sp st) (frame-size F1) 1) (state-memory st)))
+         (debug-display "Looking for pc2 at location: ~a" (+ sp1 (frame-size F1) 1))
+         (<- pc2 (lookup-mem (+ sp1 (frame-size F1) 1) (state-memory st)))
+         (debug-display "Got pc2: ~a" pc2)
          ; Locate the old stack pointer value by adding the frame size of the
          ; current stack pointer
-         (<- sp2 (lookup-mem (+ (state-sp st) (frame-size F1)) (state-memory st)))
+         (debug-display "Looking for sp2 at location: ~a" (+ sp1 (frame-size F1)))
+         (<- sp2 (lookup-mem (+ sp1 (frame-size F1)) (state-memory st)))
+         (debug-display "Got sp2: ~a" sp2)
          ; No garbage collection
          (update-state st
                        #:pc pc2
-                       #:sp sp2))]
-
-    [_ *fail*]
+                       #:sp sp2)))]
 
     )))
 
@@ -573,14 +621,7 @@
 
   (for/all ([st st])
 
-    (for*/all ([pc (state-pc st)]
-               [mem (state-memory st)]
-               [insn (pc->instruction pc mem)])
-      #;(debug-display "pc: ~a" pc)
-      #;(render-value/window pc)
-
-  (do insn+ <- insn
-      st+   <- (eval-statement-1 insn+ st)
+  (do st+   <- (eval-statement-1 st)
       (cond
         [(equal? st+ #t) ; This means the instruction halted with HALT
          st]
@@ -588,7 +629,7 @@
          *fail*] ; Fuel ran out. Return st here instead?
         [else
          (eval-statement (decrement-fuel fuel) st+)]
-        )))))
+        ))))
 
 
 

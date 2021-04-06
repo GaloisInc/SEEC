@@ -245,7 +245,8 @@
 ; INPUT. This is a simple interaction model that cannot react dynamically to the
 ; program execution.
 (struct state (statement context input-buffer trace fresh-var)
-  #:transparent)
+  ;#:transparent
+  )
 (define/contract (state->context st)
   (-> state? tinyC-context?)
   (state-context st))
@@ -390,7 +391,7 @@
     ))
 
 
-(define/contract/debug (pp-expr e)
+(define/contract (pp-expr e)
   (-> syntax-expr? racket:string?)
   (match e
     [(syntax x:integer)
@@ -486,7 +487,7 @@
   (-> tinyC-statement? (listof racket:string?))
   (let* ([stmts   (statement->list stmt)])
     (flatten (map pp-single-statement stmts))))
-(define/contract/debug #:suffix (pp-statements stmts)
+(define/contract (pp-statements stmts)
   (-> (listof tinyC-statement?) (listof racket:string?))
   (flatten (map pp-statement stmts)))
 
@@ -512,7 +513,7 @@
        (seec->list locals)))
 
 ; Again produce a list of strings, for indent management
-(define/contract/debug #:suffix (pp-declaration decl)
+(define/contract (pp-declaration decl)
   (-> tinyC-declaration? (listof racket:string?))
   (match decl
     [(tinyC (p:proc-name params:list<param-decl> locals:list<local-decl> body:list<statement>))
@@ -523,11 +524,11 @@
              )]
     ))
 
-(define/contract/debug #:suffix (display-declaration decl)
+(define/contract (display-declaration decl)
   (-> tinyC-declaration? any/c)
   (displayln (string-join (pp-declaration decl)
                           (format "~n"))))
-(define/contract/debug #:suffix (display-program prog)
+(define/contract (display-program prog)
   (-> tinyC-prog? any/c)
   (andmap display-declaration (seec->list prog)))
 
@@ -678,13 +679,16 @@
 ; ident does not occur in memory.
 (define (lookup-mem-mapping x m)
   (-> tinyC-loc-ident? tinyC-memory? (failure/c tinyC-object?))
+  (for*/all ([x x #:exhaustive]
+             [m m])
     (match m
       [(tinyC nil) *fail*] ; Should this be undef or not actually defined?
       [(tinyC (cons (y:loc-ident obj:object) m+:memory))
-       (if (equal? x y)
-           obj
-           (lookup-mem-mapping x m+))]
-      ))
+       (for/all ([y y #:exhaustive])
+         (if (equal? x y)
+             obj
+             (lookup-mem-mapping x m+)))]
+      )))
 
 ; Dereference a location by looking up the label in the memory
 ; and indexing the object at the appropriate offset
@@ -696,9 +700,10 @@
      (match (lookup-mem-mapping x m)
        [(tinyC arr:list<object>) (seec-ith o arr)]
        [(tinyC obj:object)       ; either val or undef
-                                (if (equal? o 0)
-                                    obj
-                                    *fail*)]
+        (for/all ([o o #:exhaustive])
+          (if (equal? o 0)
+              obj
+              *fail*))]
        [_                       *fail*]
        )]
     ))
@@ -1210,9 +1215,11 @@
     [(tinyC (SEQ stmt1:statement stmt2:statement))
      (do (<- st1 (update-state st #:statement stmt1))
          (<- st1+ (eval-statement-1 g stmt1 st1))
+         (for*/all ([st1+ st1+]
+                    [stmt1+ (state->statement st1+)])
          (update-state st1+ #:trace (state->trace st1+)
-                            #:statement (tinyC (SEQ ,(state->statement st1+) ,stmt2))
-                            ))]
+                            #:statement (tinyC (SEQ ,stmt1+ ,stmt2))
+                            )))]
 
 
     )))

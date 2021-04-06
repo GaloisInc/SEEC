@@ -1,10 +1,13 @@
 #lang seec
 
-(require seec/private/util)
+(require seec/private/util
+         seec/private/monad)
 (require "tinyC.rkt"
          "tinyAssembly.rkt"
          "tinyC-tinyAssembly-compiler.rkt"
          )
+(require rosette/lib/value-browser) ; render-value/window
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; A simple password checker ;
@@ -73,6 +76,52 @@
                                           ;  ^ password ^ guess
 ; Produces a trace of 0, indicating failure
 
+(define (run-password-checker-n correct-password input)
+  (tinyA:run password-checker
+             (list correct-password) ; The argument to main
+             (list (list->seec input)))) ; The input to INPUT
+
+
+(define (experiment-symbolic)
+  (define symbolic-pc (cond
+                        [(havoc!) 99]
+                        [else 103]))
+  (displayln symbolic-pc)
+  (displayln (union? symbolic-pc))
+
+  (define password-checker-program
+    (match ((compiler-compile tinyC-compiler) (list->seec password-checker))
+      ([tinyA (_:global-store _:stack-pointer mem:memory)]
+       mem)))
+  (display-memory password-checker-program)
+
+  (define-symbolic* key integer?)
+  (define symbolic-mem (seec-cons (tinyC (,key 5)) password-checker-program))
+  #;(define symbolic-mem
+    (cond
+      [(havoc!) password-checker-program]
+      [else     (seec-cons (tinyC (99 5)) password-checker-program)]
+      ))
+  (displayln (union? symbolic-mem))
+  #;(displayln symbolic-mem)
+  (for/all ([mem0 symbolic-mem])
+    (display-memory mem0))
+
+  (debug? #t)
+  (define symbolic-insn (tinyA:naive-lookup-mem symbolic-pc symbolic-mem))
+  (render-value/window symbolic-insn)
+  (for/all ([res symbolic-insn])
+    (displayln res))
+
+
+  #;(for/all ([mem0 (tinyA:lookup-mem symbolic-pc password-checker-program)])
+    (displayln mem0))
+
+  #;(for/all ([mem0 (tinyA:naive-lookup-mem symbolic-pc password-checker-program)])
+    (displayln mem0))
+
+  )
+#;(experiment-symbolic)
 
 (max-fuel 20)
 
@@ -88,15 +137,16 @@
 (define synthesize-tinyC-changed-behavior
   (λ (prog
       #:args   args
-      #:input  input
+      #:input  [input (list)]
+      #:seec-input [seec-input (list->seec input)]
       )
     (let ([g (find-changed-behavior
                 tinyC-compiler
                 (list->seec prog)
                 #:source-context (tinyC (,(list->seec args)
-                                         (cons ,(list->seec input) nil)))
+                                         (cons ,seec-input nil)))
                 #:target-context (tinyA (,(list->seec args)
-                                         (cons ,(list->seec input) nil)))
+                                         (cons ,seec-input nil)))
                 )])
       (display-changed-behavior g
                                 #:display-source-expression tinyC:display-program
@@ -122,19 +172,44 @@
                                      #:input (list x y)
                                      ))
 
+(define (synthesize-changed-behavior-n n)
+  (define-symbolic* password integer?)
+  (define input-seec-list (tinyC list<integer> (+ n 1)))
+  (synthesize-tinyC-changed-behavior password-checker
+                                     #:args  (list password)
+                                     #:seec-input input-seec-list
+                                     ))
+
+
+(define (test-symbolic-run-tinyC n)
+  (define-symbolic* password integer?)
+  (debug? #t)
+  (define input-seec-list (tinyC list<integer> (+ n 1)))
+  (let ([g (find-ctx-gadget tinyC-lang
+                            (λ (p tr) (and (not (equal? tr seec-empty))
+                                           (not (equal? tr *fail*))))
+                            #:expr (list->seec password-checker)
+                            #:context (tinyC ((cons ,password nil)
+                                              (cons ,input-seec-list nil)))
+                            #:forall (list))])
+        (display-gadget g
+                        #:display-expression tinyC:display-program
+                        #:display-context display-env-password-checker))
+  )
 
 (define synthesize-tinyC-gadget
   (λ (prog
       #:spec   spec
       #:args   args
-      #:input  input
+      #:input  [input (list)]
+      #:seec-input [seec-input (list->seec input)]
       #:forall [vars (list)]
       )
     (let ([g (find-ctx-gadget tinyA-lang
                               spec
                               #:expr ((compiler-compile tinyC-compiler) (list->seec prog))
                               #:context (tinyA (,(list->seec args)
-                                                (cons ,(list->seec input) nil)))
+                                                (cons ,seec-input nil)))
                               #:forall vars
                               )])
       (display-gadget g #:display-expression display-tinyA-lang-expression
@@ -169,6 +244,21 @@
                            #:forall password
                            ))
 
+(define (synthesize-password-gadget-n n)
+  (define-symbolic* password integer?)
+  (define input-seec-list (tinyA list<integer> (+ n 1)))
+  (synthesize-tinyC-gadget password-checker
+                           ; Synthesize a context that causes password-checker
+                           ; to set auth to true
+                           #:spec (λ (p tr) (not (equal? tr seec-empty)))
+                           #:args  (list password)
+;                           #:input (seec->list input-seec-list)
+                           #:seec-input input-seec-list
+                           #:forall password
+                           ))
+#;(synthesize-password-gadget-n 2)
+
+
 
 (define (synthesize-password-gadget-2+ target-value)
   (define-symbolic* password integer?)
@@ -197,8 +287,31 @@
                            ))
 
 
+(define (symbolic-list-length-le max)
+  (cond
+    [(or (<= max 0)
+         (havoc!))
+     (list)]
+    [else
+     (begin (define-symbolic* x integer?)
+            (define xs (symbolic-list-length-le (- max 1)))
+            (cons x xs))]
+    ))
 
+(define (synthesize-password-gadget-n+ len target-value)
+  (define-symbolic* password integer?)
+  (debug? #f)
+  (define input-seec-list (tinyA list<integer> (+ len 1))) ; This works if the `state` struct is opaque
+  (synthesize-tinyC-gadget password-checker
+                           ; Synthesize a context that causes password-checker
+                           ; to set auth to true
+                           #:spec (λ (p tr) (equal? tr (seec-singleton target-value)))
+                           #:args  (list password)
+                           #:seec-input input-seec-list
+                           #:forall password
+                           ))
 
+#;(time (synthesize-password-gadget-n+ 3 200))
 
 
 

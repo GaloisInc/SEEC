@@ -22,7 +22,7 @@
 ; Simple programs ;
 ;;;;;;;;;;;;;;;;;;;
 
-(define assign-output-decl (make-declaration (string "main")
+(define assign-output-decl (tinyC:make-declaration (string "main")
                                          (list (tinyC ("x0" int)))
                                          (list (tinyC ("x1" (* int))))
                                          (list (tinyC (ASSIGN "x1" (& "x0")))
@@ -34,11 +34,11 @@
 ;;
 
 (define simple-call-example
-  (list (make-declaration (string "main")
+  (list (tinyC:make-declaration (string "main")
                           (list (tinyC ("x" int)))
                           (list )
                           (list (tinyC (CALL "foo" (cons "x" nil)))))
-        (make-declaration (string "foo")
+        (tinyC:make-declaration (string "foo")
                           (list (tinyC ("y" int)))
                           (list )
                           (list (tinyC (OUTPUT "y"))))
@@ -52,7 +52,7 @@
 ; Factorial ;
 ;;;;;;;;;;;;;
 
-(define fac (make-declaration
+(define fac (tinyC:make-declaration
                  (string "fac")
                  (list (tinyC ("n" int))
                        (tinyC ("o" (* int)))
@@ -65,7 +65,7 @@
                                       (ASSIGN (* "o") (* "n" "prev"))
                                       ))))
                  ))
-(define fac-main (make-declaration
+(define fac-main (tinyC:make-declaration
                   (string "main")
                   (list (tinyC ("i" int)))
                   (list (tinyC ("result" int)))
@@ -81,7 +81,7 @@
 ; Loop ;
 ;;;;;;;;
 
-    (define loop (make-declaration
+    (define loop (tinyC:make-declaration
                   (string "main")
                   (list )
                   (list (tinyC ("i"   int))
@@ -135,7 +135,7 @@ void guarded_fun(int auth) {
 }
 |#
 (define password-checker-main
-  (make-declaration (string "main")
+  (tinyC:make-declaration (string "main")
                     (list) ; No input to main
                     (list (tinyC ("candidate" int)) ; If 'candidate' is first in
                                                     ; the list, we can overwrite
@@ -153,7 +153,7 @@ void guarded_fun(int auth) {
                                        (cons "auth" nil)))
                           )))
 (define password-checker-body
-  (make-declaration (string "guarded-fun")
+  (tinyC:make-declaration (string "guarded-fun")
                     (list (tinyC ("auth" int)))
                     (list )
                     (list (tinyC (OUTPUT "auth"))) ; ...
@@ -163,7 +163,7 @@ void guarded_fun(int auth) {
                                password-checker-body))
 
 (define password-checker-main-with-arg
-  (make-declaration (string "main")
+  (tinyC:make-declaration (string "main")
                     (list (tinyC ("password" int))) ; The password is an input to main, instead of being hard-coded
                     (list (tinyC ("candidate" int)) ; If 'candidate' is first in
                                                     ; the list, we can overwrite
