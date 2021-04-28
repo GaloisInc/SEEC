@@ -110,13 +110,17 @@
       l
       (let  ([tl (tail l)])
           (skip (- n 1) tl))))
-    
+
+
 
 (define (append s1 s2)
   (match s1
     [(heap-model nil) s2]
     [(heap-model (cons hd:any tl:any))
      (heap-model (cons ,hd ,(append tl s2)))]))
+
+(define (drop-nth n l)
+  (append (first-nth n l) (skip (+ n 1) l)))
 
 ; fails if out of bound
 ;(define/debug #:suffix (nth s i)
@@ -135,6 +139,12 @@
       (nth s i)
       *fail*))
 
+(define (map f l)
+  (match l
+    [(heap-model nil)
+     l]
+    [(heap-model (cons hd:any l+:any))
+     (heap-model (cons ,(f hd) ,(map f l+)))]))
 
 ; add v at the end of list s
 (define (enqueue s v)
@@ -143,6 +153,8 @@
        (heap-model (cons ,v nil))]
       [(heap-model (cons hd:any s+:any))
        (heap-model (cons ,hd ,(enqueue s+ v)))]))
+
+
 
 
 ; replace the ith element in l with v
@@ -193,6 +205,9 @@
     [(heap-model (cons v:any vs+:list<any>))
      (format "~a, ~a" (f v) (print-list f vs+))]))
 
+; return the address of the nth block
+(define (block-addr n)
+  (+ (* n 4) 2))
 
      
 ; write value at the ith position of cell

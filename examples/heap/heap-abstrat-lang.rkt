@@ -36,15 +36,19 @@
   (interaction ::= list<action>)
   )
 
+(define (abs-select s a1 a2)
+  (match s
+    [(abstract-model a)
+     a1]
+    [(abstract-model b)
+     a2]))
+
+    
 (define (block-nth p n)
   (match p
     [(abstract-model (a-cell:any b-cell:any))
-     (match n
-       [(abstract-model a)
-        a-cell]
-       [(abstract-model b)
-        b-cell])]))
-
+     (abs-select n a-cell b-cell)]))
+    
 (define (block-replace p n val)
   (match p
     [(abstract-model (a-cell:any b-cell:any))
@@ -121,7 +125,6 @@
 
 (define/debug #:suffix (abs-alloc b h bl)
   (begin
-    (displayln "abs-alloc")
     (let* ([b+ (replace b bl (abstract-model (P ,(length h) a)))]
            [h+ (append h (abstract-model (cons (0 0) nil)))])
       (abs-state b+ h+))))
@@ -180,6 +183,15 @@
      (abs-interpret-interaction i+ (abs-interpret-action a s))]
     [(abstract-model nil)
      s]))
+
+
+(define-language abstract-lang
+  #:grammar abstract-model
+  #:expression interaction #:size 4
+  #:context state #:size 10
+  #:link cons
+  #:evaluate (uncurry abs-interpret-interaction))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Pretty-printing
@@ -247,6 +259,9 @@
     (displayln "HEAP:")
     (display-abs-heap (abs-state->heap s))))
 
+
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; TESTING abstract-model
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -256,6 +271,7 @@
 
 ;(debug? #t)
 (define ad+  (abs-interpret-action aa0 ad))
+
 
 (define ad++ (abs-interpret-action aa1 ad+))
 
