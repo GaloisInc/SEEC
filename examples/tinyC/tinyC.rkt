@@ -55,6 +55,7 @@
          lid->loc
 
          max-fuel
+         indent-string
 
          ; For functions that could potentially overlap with e.g. tinyAssembly,
          ; add a distinguishing prefix
@@ -105,7 +106,7 @@
          )
 
 
-(use-contracts-globally #f)
+(use-contracts-globally #t)
 
 (define-grammar syntax
 
@@ -253,7 +254,9 @@
 (define/contract state->statement
   (-> state? tinyC-statement?)
   state-statement)
-(define state->trace state-trace)
+(define/contract state->trace 
+  (-> state? tinyC-trace?)
+  state-trace)
 (define/contract (fresh-var st)
   (-> state? (cons/c integer? state?))
   (let* ([x (state-fresh-var st)]
@@ -277,7 +280,16 @@
 ; default to that of the previous state. The fresh variable argument is always
 ; preserved. To update the fresh variable argument, you must call `fresh-var`
 ; above.
-(define update-state
+(define/contract update-state
+  (->* (state?)
+       (#:trace        tinyC-trace?
+        #:statements   (or/c #f (listof tinyC-statement?))
+        #:statement    tinyC-statement?
+        #:memory       (or/c #f tinyC-memory?)
+        #:input-buffer (listof (curry seec-list-of? integer?))
+        #:context      tinyC-context?
+        )
+       state?)
   (λ (st
       #:trace      [tr   (state->trace st)]
       #:statements [stmts #f] ; (or/c #f (listof tinyC-statement?))
@@ -362,15 +374,13 @@
      ]))
 
 
-(define (display-state st)
-  (cond
-    [(failure? st) (displayln st)]
-    [else
-     (display-context (state->context st))
-     (printf "==Next statement== ~a~n" (state->statement st)) 
-     (printf "==Trace== ~a~n" (state->trace st))
-     (printf "==Fresh Var== ~a~n~n" (state-fresh-var st))
-     ]))
+(define/contract (display-state st)
+  (-> state? any/c)
+  (display-context (state->context st))
+  (printf "==Next statement== ~a~n" (state->statement st)) 
+  (printf "==Trace== ~a~n" (state->trace st))
+  (printf "==Fresh Var== ~a~n~n" (state-fresh-var st))
+  )
 
 (define (indent-string str)
   (racket:string-append "  " str))
@@ -381,7 +391,7 @@
                #:after-last ")"))
 (define (pp-intlist vals)
   #;(format "~a" (seec->list vals))
-  (pp-list-with-commas (map (λ (v) (format "~a" v)))))
+  (pp-list-with-commas (map (λ (v) (format "~a" v)) (seec->list vals))))
 
 (define (display-env env)
   (match env
@@ -775,6 +785,25 @@
           )])]
 
     [else *fail*]))
+
+(define/contract (set-lval-list-mem addr offset vs m)
+  (-> tinyC-loc-ident? tinyC-offset? (curry seec-list-of? tinyC-val?) tinyC-memory? (failure/c tinyC-memory?))
+  (match vs
+    [(tinyC nil) m]
+    [(tinyC (cons v:val vs+:list<val>))
+         ; First store v at offset 'offset'
+     (do m+ <- (store-mem (tinyC (,addr ,offset)) v m)
+         ; Then store vs+ starting at offset '1+offset'
+         (set-lval-list-mem addr (+ 1 offset) vs+ m+))
+     ]))
+
+(define/contract (set-lval-list l vs ctx)
+  (-> tinyC-val? (curry seec-list-of? tinyC-val?) tinyC-context? (failure/c tinyC-context?))
+  (match l
+    [(tinyC (addr:loc-ident o:offset))
+     (do m+ <- (set-lval-list-mem addr o vs (context->memory ctx))
+         (update-context-memory ctx m+))]
+    [_ *fail*]))
     
 
 ; Unitialized values are represented by 'undef' values
@@ -1133,7 +1162,7 @@
     [(tinyC (OUTPUT e:expr))
      (do (<- ctx (state->context st))
          (<- v (eval-expr e (ctx->top-frame ctx) (ctx->mem ctx)))
-         (update-state st #:trace (seec-singleton v)
+         (update-state st #:trace (seec-append (state->trace st) (seec-singleton v))
                           #:statement (tinyC SKIP))
        )]
 
@@ -1146,15 +1175,15 @@
        (cond
          [(and (list? input)
                (not (empty? input)))
-          (do (<- v (eval-expr e F m))
-              (<- ctx+ (set-lval v (car input) ctx))
+          (do (<- l (eval-expr e F m))
+              (<- ctx+ (set-lval-list l (first input) ctx))
               (update-state st
                             #:statement (tinyC SKIP)
                             #:context ctx+
-                            #:input-buffer (cdr input)
+                            #:input-buffer (rest input)
                             ))]
-            [else *fail*]
-            ))]
+         [else *fail*]
+         ))]
 
     ;; Procedure calls ;;
 

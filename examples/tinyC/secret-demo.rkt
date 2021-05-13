@@ -197,7 +197,7 @@
                         #:display-context display-env-password-checker))
   )
 
-(define synthesize-tinyC-gadget
+(define synthesize-tinyA-gadget
   (λ (prog
       #:spec   spec
       #:args   args

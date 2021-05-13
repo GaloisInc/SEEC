@@ -49,14 +49,22 @@
             declaration->pc
             declaration->frame
             (struct-out state)
+            update-state
             load-compiled-program
+            eval-statement-1
             eval-statement
+            eval-expr
             frame-size
+            pc->instruction
+            proc-name->declaration
+
+            HALT?
+            INPUT?
             ))
          )
 
 ; Can turn off contracts for definitions defined in this module
-(use-contracts-globally #f)
+(use-contracts-globally #t)
 
 (define-grammar tinyA #:extends syntax
 
@@ -117,6 +125,30 @@
 
   )
 
+
+(define (pp-frame-elem elem)
+  (match elem
+    [(tinyA (x:var o:offset))
+     (format "~a @ ~a" x o)]
+    [(tinyA (x:var o:offset n:natural))
+     (format "~a[~a] @ ~a" x n o)]
+    ))
+(define (pp-frame F)
+  (map pp-frame-elem (seec->list F)))
+; Produce a list of strings
+(define (pp-declaration decl)
+  (match decl
+    [(tinyA (p:proc-name pc:program-counter F:frame))
+     (append (list (format "~a [~a]: " pc (string->racket p)))
+             (map indent-string (pp-frame F))
+             )]
+    ))
+(define (display-declaration decl)
+  (displayln (string-join (pp-declaration decl)
+                          (format "~n"))))
+(define (display-global-store g)
+  (andmap display-declaration (seec->list g)))
+
 ;;;;;;;;;;;
 ;; State ;;
 ;;;;;;;;;;;
@@ -137,10 +169,10 @@
                                 (state-pc st))]
          #:sp           [sp (state-sp st)]
          #:memory       [mem (state-memory st)]
-         #:cons-trace   [v #f]
+         #:snoc-trace   [v #f]
          #:input-buffer [buf (state-input-buffer st)]
          #:trace        [tr  (if v
-                                 (seec-cons v (state-trace st))
+                                 (seec-append (state-trace st) (seec-singleton v))
                                  (state-trace st))]
          )
     (state (state-global-store st) pc sp mem buf tr)))
@@ -163,6 +195,8 @@
   (printf "== PC: ~a~n" (state-pc st))
   (printf "== SP: ~a~n" (state-sp st))
   (printf "== Trace: ~a~n" (state-trace st))
+
+  (printf "== Input stream: ~a~n" (state-input-buffer st))
 
   (printf "~n==Memory==~n")
   (tinyC:display-memory (state-memory st))
@@ -293,6 +327,14 @@
     [(tinyA (cons (y:var o:offset len:natural) F+:frame))
      (+ 1 len (frame-size F+))]
     ))
+
+
+(define (HALT? insn)
+  (equal? insn (tinyA HALT)))
+(define (INPUT? insn)
+  (match insn
+    [(tinyA (INPUT expr)) #t]
+    [_                    #f]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;
 ;; Writing to memory ;;
@@ -509,16 +551,22 @@
          (update-state st
 ;                       #:increment-pc #t
                        #:pc (+ pc 1)
-                       #:cons-trace v)
+                       #:snoc-trace v)
        )]
 
     [(tinyA (INPUT e:expr))
      (for/all ([input (state-input-buffer st)])
+       #;(debug-display "Got input: ~a" input)
+
        (cond
          [(and (list? input) (not (empty? input)))
+          #;(debug (thunk (display-state st)))
           (do (<- l (eval-expr e st)) ; e should evaluate to a location
+              #;(debug-display "~a evaluates to ~a" e l)
               (<- m+ (push-objs l (seec->list (first input)) (state-memory st)))
-              #;(render-value/window m+)
+              #;(debug (thunk (display-state st)))
+              #;(debug-display "New memory:")
+              #;(debug (thunk (tinyC:display-memory m+)))
               (update-state st
                             #:memory m+
                             #:input-buffer (rest input)
@@ -654,6 +702,7 @@
 (define-grammar tinyA+ #:extends tinyA
   (expr ::= (global-store stack-pointer memory)) ; the memory fragment associated with a compiled program
   (vallist ::= list<val>)
+  (vallistlist ::= list<vallist>)
   ; The context consists of (1) the arguments to be passed to 'main'; and (2) a
   ; list of lists of values that provide input to the INPUT command
   (ctx  ::= (vallist list<vallist>))
@@ -663,7 +712,13 @@
 (define (display-tinyA-lang-expression expr)
   (match expr
     [(tinyA (g:global-store sp:stack-pointer mem:memory))
-     (tinyC:display-memory mem)]
+     (displayln "=global store=")
+     (display-global-store g)
+     (displayln "=stack pointer=")
+     (displayln sp)
+     (displayln "=memory=")
+     (tinyC:display-memory mem)
+     ]
     ))
 
 (define (display-tinyA-lang-context ctx)

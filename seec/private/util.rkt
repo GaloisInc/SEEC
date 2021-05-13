@@ -145,6 +145,7 @@
            ...
            )
        )]
+
     [(_ #:suffix (name args ...) contract-expr body-expr)
      (let* ([name-as-string (syntax->string #'name)])
        #`(define/contract (name args ...)
@@ -165,11 +166,18 @@
   (use-contracts-globally #f)
   (define/contract (foo x) (-> any/c boolean?) 5)
   (foo 3) ; Should return 5
+
+  (define/contract foo+ (-> any/c boolean?) (λ (x) 5))
+  (foo+ 3) ; Should return 5
+
   
   (use-contracts-globally #t)
   (foo 3) ; Should return 5
   (define/contract (bar x) (-> any/c boolean?) 5)
   #;(bar 3) ; Should throw an exception
+
+  (define/contract bar+ (-> any/c boolean?) (λ (x) 5))
+  #;(bar+ 3) ; Should throw an exception
 
 
   (define/debug (foobar x y) 10)

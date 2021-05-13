@@ -112,6 +112,38 @@
                    (list )
                    (list ))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;
+; stack overflow attack ;
+;;;;;;;;;;;;;;;;;;;;;;;;;
+
+  (define smash-main (tinyC:make-declaration
+                      (string "main")
+                      (list (tinyC ("o" int))
+                            (tinyC ("v" int)))
+                      (list )
+                      (list (tinyC (CALL "vulnerable" (cons "o" (cons "v" nil)))))
+                      ))
+  (define smash-vulnerable (tinyC:make-declaration
+                            (string "vulnerable")
+                            (list (tinyC ("o" int))
+                                  (tinyC ("v" int)))
+                            (list (tinyC ("p" (array int 1))))
+                            (list (tinyC (ASSIGN "p" (+ "p" "o")))
+                                  (tinyC (ASSIGN (* "p") "v")))
+                            ))
+  (define smash-evil (tinyC:make-declaration
+                      (string "evil")
+                      (list )
+                      (list )
+                      (list (tinyC (OUTPUT 1)))
+                      ))
+  (define smash (list smash-main smash-vulnerable smash-evil))
+
+  (define (run-smash o v)
+    (tinyC:run smash (list o v)
+                     (list )))
+#;(tinyC:display-state (run-smash 4 105))
+
 ;;;;;;;;;
 ; INPUT ;
 ;;;;;;;;;
