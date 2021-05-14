@@ -125,7 +125,7 @@
 
 (define/debug #:suffix (abs-alloc b h bl)
   (begin
-    (let* ([b+ (replace b bl (abstract-model (P ,(length h) a)))]
+    (let* ([b+ (replace b bl (abstract-model (P ,(s-length h) a)))]
            [h+ (append h (abstract-model (cons (0 0) nil)))])
       (abs-state b+ h+))))
   
@@ -189,7 +189,7 @@
   #:grammar abstract-model
   #:expression interaction #:size 4
   #:context state #:size 10
-  #:link cons
+  #:link (lambda (s i) (cons i s))
   #:evaluate (uncurry abs-interpret-interaction))
 
 
@@ -211,21 +211,25 @@
 
 (define (print-abs-pointer p)
   (match p
-    [(abstract-model (P n:natural s:selector))
+    [(abstract-model (P n:integer s:selector))
      (format "P ~a ~a" n (print-abs-selector s))]
     [(abstract-model N)
-     "null"]))
+     "null"]
+    [(abstract-model any)
+      "?pointer?"]))
                  
 (define (print-abs-value v)
   (match v
-    [(abstract-model p:pointer)
-     (print-abs-pointer p)]
+    [(abstract-model (P n:any s:selector))
+     (print-abs-pointer v)]
+    [(abstract-model N)
+     (print-abs-pointer v)]
     [(abstract-model nv:nnvalue)
      (print-abs-nnvalue nv)]))
 
 (define (print-abs-block p)
   (match p
-    [(abstract-model (a:value b:value))
+    [(abstract-model (a:any b:any))
      (format "(~a, ~a)" (print-abs-value a) (print-abs-value b))]))
 
 (define (display-abs-buf b)
@@ -233,7 +237,7 @@
     (match b
       [(abstract-model nil)
        (displayln "")]
-      [(abstract-model (cons h:value b+:buf))
+      [(abstract-model (cons h:any b+:any))
        (displayln (format "~a > ~a"
                           (~a addr #:width 2)
                           (print-abs-value h)))
@@ -253,11 +257,13 @@
   (display-abs-heap+ h 0))
 
 (define (display-abs-state s)
-  (begin
-    (displayln "BUFFER:")
-    (display-abs-buf (abs-state->buf s))
-    (displayln "HEAP:")
-    (display-abs-heap (abs-state->heap s))))
+  (match s
+    [(abstract-model (b:any h:any))
+     (begin
+       (displayln "BUFFER:")
+       (display-abs-buf b)
+       (displayln "HEAP:")
+       (display-abs-heap h))]))
 
 
 
@@ -283,4 +289,17 @@
 (define ad+4** (abs-interpret-action af0 ad+3**))
 
 
+
+(define abuf (abstract-model (cons (P 0 a) (cons (P 1 b) (cons 4 (cons 5 nil))))))
+(define aheap (abstract-model (cons (6 (P 1 a)) (cons ((P 0 a) 7) nil))))
+(define astate (abstract-model (,abuf ,aheap)))
+
+
+(define asmallbuf (abstract-model (cons (P 0 a) (cons -1 (cons 0 (cons 1 nil))))))
+(define asmallheap (abstract-model (cons ((P 0 b) 2) nil)))
+(define asmallstate (abstract-model (,asmallbuf ,asmallheap)))
+
+(define ademobuf (abstract-model (cons N (cons (P 0 a) (cons 0 (cons 0 nil))))))
+(define ademoheap (abstract-model (cons (0 0) nil)))
+(define ademostate (abstract-model (,ademobuf ,ademoheap)))
 

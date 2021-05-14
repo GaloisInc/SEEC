@@ -79,11 +79,11 @@
 
 
 ;; lifted list operations
-(define (length s)
+(define (s-length s)
   (match s
     [(heap-model nil) 0]
     [(heap-model (cons any h:any))
-     (+ 1 (length h))]))
+     (+ 1 (s-length h))]))
 
 (define (head s)
   (match s
@@ -134,7 +134,7 @@
 
 (define (opt-nth s i)
   (if (and (<= 0 i)
-           (< i (length s)))
+           (< i (s-length s)))
            
       (nth s i)
       *fail*))
@@ -209,7 +209,32 @@
 (define (block-addr n)
   (+ (* n 4) 2))
 
-     
+
+; return #t if h doesn't contain any allocated blocks
+(define (empty-heap? h)
+  (match h
+    [(heap-model nil)
+     #t]
+    [(heap-model (cons v-alloc:natural (cons v-size:natural h+:heap)))
+     (if (equal? v-alloc 0)
+         (empty-heap? (skip v-size h+))
+         #f)]
+    [(heap-model any)
+     #f]))
+
+; return #t if the heap consists of allocated and unallocated blocks of size 2
+(define (valid-heap? h)
+  (match h
+    [(heap-model nil)
+     #t]
+    [(heap-model (cons v-alloc:natural (cons 2:natural (cons any (cons any h+:heap)))))
+     (if (or (equal? v-alloc 0)
+             (equal? v-alloc 1))
+         (valid-heap? h+)
+         #f)]
+    [(heap-model any)
+     #f]))
+
 ; write value at the ith position of cell
 (define (write hp i v)
   ;(-> any/c natural-number/c any/c any/c)
@@ -244,14 +269,14 @@
 
 ; check if p is a valid pointer in s->heap
 (define (state-safe-write i s)
-  (< i (length (state->heap s))))
+  (< i (s-length (state->heap s))))
 
 
 ; check if the size of the buf and heap of the state are exactly bs and hs.
 (define (state-size bs hs)
   (lambda (s)
-    (and (equal? (length (state->buf s)) bs)
-         (equal? (length (state->heap s)) hs))))
+    (and (equal? (s-length (state->buf s)) bs)
+         (equal? (s-length (state->heap s)) hs))))
 
 (define (state-con-size bs hs)
   (lambda (s)
@@ -371,7 +396,7 @@
 
 
 
-(define (interpret-action a s)
+(define/debug (interpret-action a s)
  (for/all ([a a])
 ;            [s s])
     (debug-display "~a" a)
@@ -439,14 +464,17 @@
     [(heap-model (cons a:saction setup+:setup))
      (interpret-setup setup+ (interpret-saction a s))]))
 
+(define heap-lang-link
+  (lambda (state inte)
+           (match state
+             [(heap-model (b:buf h:heap p:pointer))
+              (cons inte (make-state b h p))])))
+
 (define-language heap-lang
   #:grammar heap-model
   #:expression interaction #:size 4
   #:context state-con #:size 10
-  #:link (lambda (state inte)
-           (match state
-             [(heap-model (b:buf h:heap p:pointer))
-              (cons inte (make-state b h p))]))
+  #:link heap-lang-link
   #:evaluate (uncurry interpret-interaction))
               
 
