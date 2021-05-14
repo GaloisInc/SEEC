@@ -360,6 +360,19 @@
 ; returns new free pointer X new heap
 (define (interpret-alloc-free h n)
   (let* ([newf  (nth h n)] ; get the tail of the free-list
+         [h+ (replace h (- n 2) (heap-model 1))]  ; alloc the head of the free-list
+         [h++ (replace h+ n (heap-model 0))] ; set the payload to 0
+         [h+3 (replace h++ (+ n 1) (heap-model 0))])
+          (match newf
+            [(heap-model nf:natural)
+             (do h+4 <- (replace h+3 (+ nf 1) (heap-model null)) ; change the new head's backward pointer to be null
+                 (cons newf h+4))]
+            [(heap-model null)
+             (cons newf h+3)])))
+
+;old version of interpret-alloc-free which doesn't reset the payload to 0, found this bug with abstract-state
+(define (interpret-alloc-free-old h n)
+  (let* ([newf  (nth h n)] ; get the tail of the free-list
          [h+ (replace h (- n 2) (heap-model 1))]) ; alloc the head of the free-list
           (match newf
             [(heap-model nf:natural)
@@ -367,6 +380,7 @@
                  (cons newf h++))]
             [(heap-model null)
              (cons newf h+)])))
+
 
 
 ; free block at p in h, adding it to the free-list headed at f

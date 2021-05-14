@@ -52,7 +52,7 @@
 ; generate a permutation from 0 ... n into 0 ... m U -1
 ; Note: use fl version to also generate the free list
 (define/debug (generate-permutation n m)
-  (define/debug (generate-permutation+ n sel)
+  (define/debug #:suffix (generate-permutation+ n sel)
     (if (equal? n 0)
         (if (empty? sel)
             (list )
@@ -67,7 +67,7 @@
       (let* ([sel (list-up-to (- m 1))])
         (generate-permutation+ n sel))))
 
-; Trying to generate permutation without failing branches
+; Alternative version of generate-permutation which prunes branches earlier at the cost of computation
 ; Assume  0 < m <= n
 (define/debug (generate-permutation2 n m)
   (define/debug (generate-permutation2+ n sel)
@@ -105,6 +105,7 @@
         (generate-permutation-fl+ n sel #f (list )))))
 
 
+; Alternative definition of generate-permutation-fl which prunes branches earlier at the cost of more computation. 
 (define/debug (generate-permutation-fl2 n m)
   (define/debug #:suffix (generate-permutation-fl2+ n sel fh acc)
     (begin
@@ -443,7 +444,9 @@
        [(heap-model i:nnvalue)
         (equal? ai i)]
        [(heap-model any)
-        #f])]))
+        #f])]
+    [(abstract-model any) ; e.g. P -1 a
+     #f]))
          
 
 
@@ -454,9 +457,9 @@
        (match b
          [(heap-model nil) #t]
          [(heap-model any) #f])]
-      [(abstract-model (cons av:value ab+:buf))
+      [(abstract-model (cons av:any ab+:any))
        (match b
-         [(heap-model (cons v:value b+:buf))
+         [(heap-model (cons v:any b+:any))
           (and (bounded-equiv-val ah h n av v)
                (bounded-equiv-buf ah h n ab+ b+))]
          [(heap-model nil) #f])]))
@@ -465,7 +468,7 @@
 (define/debug (bounded-equiv-state n)
   (lambda (as s)
     (match as
-      [(abstract-model (ab:buf ah:heap))
+      [(abstract-model (ab:any ah:any))
        (and
         (valid-heap? (state->heap s))
         (bounded-equiv-buf ah (state->heap s) n ab (state->buf s)))])))
@@ -760,13 +763,46 @@
            (displayln "which are equivalent?")
            (displayln ((bounded-equiv-state 3) as+ s+)))))))
 
+(define (manual-test4i)
+  (begin
+    (define as ademostate)
+    (let*-values
+     ([(s* nondet*) (capture-nondeterminism #:nondet #t (make-state-struct (compile-abs-into-heap-fl 2 as)))])
+     (define i* (heap-model interaction 4))
+     (define s+* (interpret-interaction i* s*))
+     (define as+* (abs-interpret-interaction i* as))
+     (define sol (verify (assert ((bounded-equiv-state 3) as+* s+*))))
+     (if (unsat? sol)
+         (displayln "unsat")
+         (begin
+           (displayln "sat")
+           (define i (concretize i* sol))
+           (define s (concretize s* sol))
+           (define nondet (concretize nondet* sol))
+           (define s+ (interpret-action i s))
+           (define as+ (abs-interpret-interaction i as))
+           (displayln "Over state")
+           (display-abs-state as)
+           (displayln "compiled as state")
+           (display-state s)
+           (display "Interaction ")
+           (displayln i)
+           (displayln "Results in abstract.state :")
+           (display-abs-state as+)
+           (displayln "and heap.state :")
+           (display-state s+)
+           (displayln "which are equivalent?")
+           (displayln ((bounded-equiv-state 3) as+ s+)))))))
+
+
 ; like manual-test4 but using a schematic abstract state as
+; find (alloc 0) with interpret-alloc-free-old, (free 1) with interp-alloc-free
 (define (manual-test5)
   (begin
-    (define ab0 (abstract-model value 1))
-    (define ab1 (abstract-model value 1))
-    (define ab2 (abstract-model value 1))
-    (define ab3 (abstract-model value 1))
+    (define ab0 (abstract-model value 2))
+    (define ab1 (abstract-model value 2))
+    (define ab2 (abstract-model value 2))
+    (define ab3 (abstract-model value 2))
     (define ab* (abstract-model (cons ,ab0 (cons ,ab1 (cons ,ab2 (cons ,ab3 nil))))))
     (define ablock (abstract-model block 3))
     (define ah* (abstract-model (cons ,ablock nil)))
@@ -799,8 +835,8 @@
            (displayln "which are equivalent?")
            (displayln ((bounded-equiv-state 3) as+ s+)))))))
 
-; Cannot break this property
-(define (manual-test5s)
+; should be unsat
+(define (manual-test-compile)
   (begin
     (define as ademostate)
     (let*-values
@@ -818,8 +854,8 @@
             (displayln "is equiv?")
             (displayln ((bounded-equiv-state 3) as s)))))))
 
-; Cannot break this property
-(define (manual-test5fl)
+; should be unsat
+(define (manual-test-compile-fl)
   (begin
     (define as ademostate)
     (let*-values
@@ -836,6 +872,45 @@
             (display-state s)
             (displayln "is equiv?")
             (displayln ((bounded-equiv-state 3) as s)))))))
+
+; like manual-test5 except with interaction
+(define (manual-test5i)
+  (begin
+    (define ab0 (abstract-model value 2))
+    (define ab1 (abstract-model value 2))
+    (define ab2 (abstract-model value 2))
+    (define ab3 (abstract-model value 2))
+    (define ab* (abstract-model (cons ,ab0 (cons ,ab1 (cons ,ab2 (cons ,ab3 nil))))))
+    (define ablock (abstract-model block 3))
+    (define ah* (abstract-model (cons ,ablock nil)))
+    (define as* (abstract-model (,ab* ,ah*)))
+    (let*-values
+     ([(s* nondet*) (capture-nondeterminism #:nondet #t (make-state-struct (compile-abs-into-heap-fl 2 as*)))])
+     (define i* (heap-model interaction 4))
+     (define s+* (interpret-interaction i* s*))
+     (define as+* (abs-interpret-interaction i* as*))
+     (define sol (verify (assert ((bounded-equiv-state 3) as+* s+*))))
+     (if (unsat? sol)
+         (displayln "unsat")
+         (begin
+           (displayln "sat")
+           (define as (concretize as* sol))
+           (define i (concretize i* sol))
+           (define s (concretize s* sol))
+           (define s+ (interpret-interaction i s))
+           (define as+ (abs-interpret-interaction i as))
+           (displayln "Over state")
+           (display-abs-state as)
+           (displayln "compiled as state")
+           (display-state s)
+           (display "Interaction ")
+           (displayln i)
+           (displayln "Results in abstract.state :")
+           (display-abs-state as+)
+           (displayln "and heap.state :")
+           (display-state s+)
+           (displayln "which are equivalent?")
+           (displayln ((bounded-equiv-state 3) as+ s+)))))))
 
 
 
