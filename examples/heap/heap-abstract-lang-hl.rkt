@@ -7,12 +7,13 @@
                   raise-argument-error
                   raise-arguments-error))
 (require (file "lib.rkt"))
-(require (file "heap-lang.rkt"))
+(require (file "heap-lang-hl.rkt"))
 (provide (all-defined-out))
 
-
+; heap-loc version
 ; Making a higher-abstraction model which described the content of a heap
 ; and which can be compiled (non-deterministically) into a multiple equivalent heaps
+; TODO: Need to update the pointers when freeing a block
 
 (define-grammar abstract-model
   (pointer ::= (P natural selector) N)
@@ -24,14 +25,17 @@
   (buf ::= list<value>)
   (heap ::= list<block>)
   (state ::= (buf heap))
+  (heap-loc ::= pointer)
   (action ::=
-    (read buf-loc buf-loc) ; place the element at pointer (1)buf-loc in heap into the buffer at (2)buf-loc
-    (write buf-loc buf-loc); place the element at (1)buf-loc in buffer into the heap pointer (2)buf-loc
+    (read heap-loc buf-loc) ; place the element at pointer (1)buf-loc in heap into the buffer at (2)buf-loc
+    (write buf-loc heap-loc); place the element at (1)buf-loc in buffer into the heap pointer (2)buf-loc
     (copy buf-loc buf-loc) ; overwrite (2) with value of (1)
     (incr buf-loc) ; add 1 to value at buf-loc
     (decr buf-loc) ; remove 1 to value at buf-loc
-    (free buf-loc) ; free the object at the pointer held in buf-loc in buffer
+    (free heap-loc) ; free the object at the pointer held in buf-loc in buffer
     (alloc buf-loc)) ; alloc an object with n blocks, placing its pointer in buffer at buf-loc
+  (s-action ::=
+            (set buf-loc value))
   (interaction ::= list<action>)
   )
 
@@ -109,18 +113,16 @@
     [(abstract-model (b:buf h:heap))
      (abstract-model (,(abs-shift-buf n b) ,(abs-shift-heap n h)))]))
 
-; free the block pointed at by bl in b
-(define (abs-free b h bl)
-  (let* ([p (nth b bl)]) ; get the pointer
-    (match p
+; free the block at hl
+(define (abs-free b h hl)
+    (match hl
       [(abstract-model (P n:natural m:selector))
-       (let* ([b+ (replace b bl (abstract-model N))]
-              [h+ (drop-nth n h)]
-              [b++ (abs-shift-buf n b+)]
+       (let* ([h+ (drop-nth n h)]
+              [b++ (abs-shift-buf n b)]
               [h++ (abs-shift-heap n h+)])
         (abs-state b++ h++))]
       [any
-       (assert #f)])))
+       (assert #f)]))
 
 (define/debug #:suffix (abs-alloc b h bl)
   (begin
@@ -155,6 +157,7 @@
     [(abstract-model (P n:natural b))
      (abstract-model (P ,n a))]))
 
+
 (define/debug #:suffix (abs-interpret-action a s)
  (for/all ([a a])
 ;            [s s])
@@ -175,20 +178,28 @@
                [val+ (abs-decr val)]
                [b+ (replace b bl val+)])
           (abs-state b+ h))]
-       [(abstract-model (free bl:buf-loc))
-        (abs-free b h bl)]
+       [(abstract-model (free hl:heap-loc))
+        (abs-free b h hl)]
        [(abstract-model (alloc bl:buf-loc))
         (abs-alloc b h bl)]
-       [(abstract-model (read bhl:buf-loc bl:buf-loc))
-        (let* ([loc (nth b bhl)] ; get the pointer
-               [val (abs-read-heap h loc)] ; get the value at the location
+       [(abstract-model (read hl:heap-loc bl:buf-loc))
+        (let* ([val (abs-read-heap h hl)] ; get the value at the location
                [b+ (replace b bl val)]) ; place the value in the buffer
              (abs-state b+ h))]
-       [(abstract-model (write bl:buf-loc bhl:buf-loc))
+       [(abstract-model (write bl:buf-loc hl:heap-loc))
         (let* ([val (nth b bl)]
-               [loc (nth b bhl)]
-               [h+ (abs-write-heap h loc val)])
+               [h+ (abs-write-heap h hl val)])
           (abs-state b h+))]))))
+
+(define/debug #:suffix (abs-interpret-saction a s)
+ (for/all ([a a])
+;            [s s])
+    (let ([b (abs-state->buf s)]
+          [h (abs-state->heap s)])
+     (match a
+       [(abstract-model (set bl:buf-loc v:value))
+        (let* ([b+ (replace b bl v)])
+          (abs-state b+ h))]))))
 
 
 (define (abs-interpret-interaction i s)
@@ -289,20 +300,6 @@
 
 (define ad (abs-init-state 4))
 
-;(debug? #t)
-(define ad+  (abs-interpret-action aa0 ad))
-
-
-(define ad++ (abs-interpret-action aa1 ad+))
-
-
-(define ad+3* (abs-interpret-action af0 ad++))
-(define ad+3** (abs-interpret-action af1 ad++))
-(define ad+4* (abs-interpret-action af1 ad+3*))
-(define ad+5* (abs-interpret-action aa0 ad+4*))
-(define ad+4** (abs-interpret-action af0 ad+3**))
-
-
 
 (define abuf (abstract-model (cons (P 0 a) (cons (P 1 b) (cons 4 (cons 5 nil))))))
 (define aheap (abstract-model (cons (6 (P 1 a)) (cons ((P 0 a) 7) nil))))
@@ -316,4 +313,31 @@
 (define ademobuf (abstract-model (cons N (cons (P 0 a) (cons 0 (cons 0 nil))))))
 (define ademoheap (abstract-model (cons (0 0) nil)))
 (define ademostate (abstract-model (,ademobuf ,ademoheap)))
+
+;(debug? #t)
+
+(define ad+  (abs-interpret-action aa0 ad))
+
+
+(define ad++ (abs-interpret-action aa1 ad+))
+
+(define abss0 (abstract-model (set 0 N)))
+(define absf0 (abstract-model (free (P 0 a))))
+(define abss1 (abstract-model (set 1 N)))
+(define absf1 (abstract-model (free (P 1 a))))
+
+(define ad+3* (abs-interpret-action absf0 (abs-interpret-saction abss0 ad++)))
+(define ad+3** (abs-interpret-action absf1 (abs-interpret-saction abss1 ad++)))
+
+(define ad+4* (abs-interpret-action absf0 (abs-interpret-saction abss1 ad+3*)))
+ 
+
+
+
+(define ad+5* (abs-interpret-action aa0 ad+4*))
+
+(define ad+4** (abs-interpret-action absf0 (abs-interpret-saction abss0 ad+3**)))
+
+
+
 

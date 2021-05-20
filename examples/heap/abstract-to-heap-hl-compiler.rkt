@@ -7,8 +7,8 @@
                   raise-argument-error
                   raise-arguments-error))
 (require (file "lib.rkt"))
-(require (file "heap-lang.rkt"))
-(require (file "heap-abstrat-lang.rkt"))
+(require (file "heap-lang-hl.rkt"))
+(require (file "heap-abstract-lang-hl.rkt"))
 (provide (all-defined-out))
 
 ; returns (list 0 ... n)
@@ -243,6 +243,27 @@
   (compile-abs-heap-fl+ ah p p (heap-model null) 0 (heap-model null)))
 
 
+; from Pointers to heap-loc through a permutation
+(define (compile-pointer-to-heap-loc v p)
+  (match v
+    [(abstract-model (P n:natural s:selector))
+     (let* ([n+ (index-of p n)]
+            [n++ (+ (* n+ 4) (abs-select s 2 3))])
+       (heap-model ,n++))]
+    [(abstract-model N)
+     (heap-model null)]))
+
+; compile an abstract-hl.action to a heap-hl.action
+(define (compile-abs-action a p)
+  (match a
+    [(abstract-model (read h:heap-loc b:buf-loc))
+     (heap-model (read ,(compile-pointer-to-heap-loc h p) ,b))]
+    [(abstract-model (write b:buf-loc h:heap-loc))
+     (heap-model (write ,b ,(compile-pointer-to-heap-loc h p)))]
+    [(abstract-model (free h:heap-loc))
+     (heap-model (free ,(compile-pointer-to-heap-loc h p)))]
+    [ any
+      a]))
 
 (define/debug (compile-abs-buf ab p)
   (match ab
@@ -873,50 +894,14 @@
             (displayln "is equiv?")
             (displayln ((bounded-equiv-state 3) as s)))))))
 
-; like manual-test5 except with interaction -- this shouldn't be needed because we can find a state just before exploit
-(define (manual-test5i)
-  (begin
-    (define ab0 (abstract-model value 2))
-    (define ab1 (abstract-model value 2))
-    (define ab2 (abstract-model value 2))
-    (define ab3 (abstract-model value 2))
-    (define ab* (abstract-model (cons ,ab0 (cons ,ab1 (cons ,ab2 (cons ,ab3 nil))))))
-    (define ablock (abstract-model block 3))
-    (define ah* (abstract-model (cons ,ablock nil)))
-    (define as* (abstract-model (,ab* ,ah*)))
-    (let*-values
-     ([(s* nondet*) (capture-nondeterminism #:nondet #t (make-state-struct (compile-abs-into-heap-fl 2 as*)))])
-     (define i* (heap-model interaction 4))
-     (define s+* (interpret-interaction i* s*))
-     (define as+* (abs-interpret-interaction i* as*))
-     (define sol (verify (assert ((bounded-equiv-state 3) as+* s+*))))
-     (if (unsat? sol)
-         (displayln "unsat")
-         (begin
-           (displayln "sat")
-           (define as (concretize as* sol))
-           (define i (concretize i* sol))
-           (define s (concretize s* sol))
-           (define s+ (interpret-interaction i s))
-           (define as+ (abs-interpret-interaction i as))
-           (displayln "Over state")
-           (display-abs-state as)
-           (displayln "compiled as state")
-           (display-state s)
-           (display "Interaction ")
-           (displayln i)
-           (displayln "Results in abstract.state :")
-           (display-abs-state as+)
-           (displayln "and heap.state :")
-           (display-state s+)
-           (displayln "which are equivalent?")
-           (displayln ((bounded-equiv-state 3) as+ s+)))))))
 
 
+(define i-test1 (abstract-model (cons (copy 1 3) (cons (free (P 0 a)) nil))))  ; access to a block which has been freed
+(define i-test1a (abstract-model (copy 1 3)))
+(define i-test1b (abstract-model (set 1 N)))
+(define i-test1c (abstract-model (free (P 0 a))))
+(define as+t1
+  (abs-interpret-action i-test1c
+                        (abs-interpret-saction i-test1b
+                                               (abs-interpret-action i-test1a ademostate))))
 
-(define i-test0 (heap-model (cons (decr 1) (cons (free 2) nil)))) ; from demo0
-(define i-test1 (heap-model (cons (copy 1 3) (cons (free 3) nil))))  ; access to a block which has been freed
-
-(define a-test0 (heap-model (write 1 3)))
-
-(define as+t1 (abs-interpret-interaction i-test1 ademostate))
