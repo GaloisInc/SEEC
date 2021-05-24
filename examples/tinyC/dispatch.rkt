@@ -5,17 +5,33 @@
          "tinyC-test.rkt"
          "tinyAssembly.rkt"
          "tinyC-tinyAssembly-compiler.rkt")
+(require (only-in racket/base
+                  values))
+
 (require rosette/lib/value-browser) ; debugging
 
 (module+ test (require rackunit
                        rackunit/text-ui
                        racket/contract
                        ))
+(require (only-in racket/string ; formatting
+                  string-join
+                  ))
+(require rosette/lib/value-browser) ; debugging
+
 
 
 (use-contracts-globally #t)
 
-
+#|
+    100 |-> ("main" (ASSIGN "max-iterations" 3))
+    101 |-> ("main" (JMPZ (< 0 "max-iterations") 106))
+    102 |-> ("main" (INPUT (& "x")))
+    103 |-> ("main" (OUTPUT "x"))
+    104 |-> ("main" (ASSIGN "max-iterations" (- "max-iterations" 1)))
+    105 |-> ("main" (JMPZ 0 101))
+    106 |-> ("main" HALT)
+|#
 
 
 
@@ -252,25 +268,38 @@
              [input (tinyA:state-input-buffer st)]
              )
 
+  (debug-display "eval-statement-wait pc: ~a [~a]" pc insn)
+
   (cond
     [(not (list? input))
      *fail*]
 
     ; execution halted safely
-    [(tinyA:HALT? insn) st]
+    [(tinyA:HALT? insn)
+     (debug-display "halted on HALT")
+     st]
 
     ; execution paused waiting for input
     [(and (tinyA:INPUT? insn)
           (empty? input))
+     (debug-display "halted on INPUT")
      st]
     ; fuel ran out
-    [(<= fuel 0) *fail*]
+    [(<= fuel 0)
+     (debug-display "fuel ran out")
+     *fail*]
 
     ; otherwise, take a step and continue
     [else 
      (do st+ <- (tinyA:eval-statement-1 st)
          (eval-statement-wait (decrement-fuel fuel) st+))]
     )))
+
+#;(define/contract (eval-statement-wait fuel st)
+  (-> (or/c #f integer?) tinyA:state? (failure/c tinyA:state?))
+  (debug-display "(eval-statement-wait ~a)" fuel)
+  )
+
 
 
 ; I'm using find-gadget rather than find-ctx-gadget here because we want to
@@ -368,6 +397,8 @@
     (cond
       [(> count 0)
        (let ([symbolic-obj (tinyA object 2)])
+         #;(for/all ([obj symbolic-obj])
+           (debug-display "Adding mapping ~a |-> ~a" l obj))
          (seec-cons (tinyA (,l ,symbolic-obj))
                     (push-objs-symbolic (+ 1 l) (- count 1) mem)))]
       [else mem]
@@ -388,102 +419,28 @@
 
 
 
-(define (synthesize-dispatch-gadgets)
+  ; The pc is a symbolic union of the initial pc, the pc of any HALT
+  ; instructions, and the pc of any INPUT instructions
+  (define/contract (potential-pc-from-memory prog)
+    (-> tinyA-memory? (failure/c tinyA-program-counter?))
+    (match prog
+      [(tinyA (cons (l:loc (f:proc-name HALT)) m+:memory))
+       (if (havoc!)
+           l
+           (potential-pc-from-memory m+))]
+      [(tinyA (cons (l:loc (f:proc-name (INPUT _:expr))) m+:memory))
+       (if (havoc!)
+           l
+           (potential-pc-from-memory m+))]
+      [(tinyA (cons (l:loc (f:proc-name _:statement)) m+:memory))
+       (potential-pc-from-memory m+)]
+      [_ *fail*]
+      ))
 
-
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; 1. Current invariant is concrete; later we hope to synthesize it ;;
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  #;(define (invariant-holds st)
-    (for/all ([current-max-iterations
-               (tinyA:eval-expr (tinyA "max-iterations") st)
-               #:exhaustive]) ; We need this for/all otherwise we will have a contradictory assumption??
-      
-    (> current-max-iterations 0)
-         )) ; Change to be more abstract
-
-  ; This version of invariant-holds can be derived automatically from
-  ; conditional jump statements in the program. In this program there is only one,
-  ; namely [JMPZ (< 0 "max-iterations") 106]
-  (define (invariant-holds st)
-    (equal? (tinyA:eval-expr (tinyA (< 0 "max-iterations")) st)
-            1)
-    #;(for/all ([guard (tinyA:eval-expr (tinyA (< 0 "max-iterations")) st)
-                     #:exhaustive])
-      (equal? guard 1)))
-
-  ; We make this more concrete because we know this function doesn't take any
-  ; arguments
-  (define max-width 2)
-  (define input-stream-length 2)
-  (define prelude-context   (seec->list (symbolic-input-stream max-width input-stream-length)))
-  (define loop-body-context (seec->list (symbolic-input-stream max-width input-stream-length)))
-  (define break-context     (seec->list (symbolic-input-stream max-width input-stream-length)))
 
   (define pc0 100)
   (define sp0 100)
-  (define-values (compiled-echo-program compiled-echo-program-mem)
-    (tinyC->tinyA-program (list->seec echo-program) pc0))
-  
 
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; 2. (symbolic) prelude context with no input ;;
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  (define state-after-prelude
-    (let ([init-st (tinyA:load-compiled-program compiled-echo-program
-                                                compiled-echo-program-mem
-                                                sp0
-                                                prelude-context
-                                                (list)
-                                                )
-                   ])
-      (eval-statement-wait (max-fuel) init-st)))
-
-
-  ;; synthesize a prelude-context such that the invariant holds
-  (define (test-prelude)
-    (define sol
-      (synthesize #:forall (list)
-                  #:assume (assert #t)
-                  #:guarantee (assert (invariant-holds state-after-prelude)
-                  )))
-    (if (unsat? sol)
-        (displayln "Synthesis failed")
-        (begin
-          (displayln "Synthesis succeeded")
-
-          (define prelude-context-concrete (concretize prelude-context sol))
-          (displayln (format "Prelude context: ~a" prelude-context-concrete))
-          (concretize state-after-prelude sol)
-          ))
-    )
-  (define state-after-prelude+ (test-prelude))
-  (display-state state-after-prelude+)
-
-  
-#|
-Produced prelude context ((0,2))
-
-state-after-prelude+:
-
-== PC: 102
-== SP: 98
-== Trace: (0)
-== Input stream: ()
-
-==Memory==
-    99 |-> 1
-    98 |-> 0
-    99 |-> 2
-    99 |-> 3
-    100 |-> ("main" (ASSIGN "max-iterations" 3))
-    101 |-> ("main" (JMPZ (< 0 "max-iterations") 106))
-    102 |-> ("main" (INPUT (& "x")))
-    103 |-> ("main" (OUTPUT "x"))
-    104 |-> ("main" (ASSIGN "max-iterations" (- "max-iterations" 1)))
-    105 |-> ("main" (JMPZ 0 101))
-    106 |-> ("main" HALT)
-|#
 
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -512,9 +469,19 @@ state-after-prelude+:
 
   ; If you do prepare-invariant-state with the symbolic state-after-prelude, it
   ; takes more than an hour; with the concrete state-after-prelude+, 4 min
-  (define (prepare-invariant-state)
-    (do st <- state-after-prelude ;+
-        (for/all ([sp (tinyA:state-sp st) #:exhaustive])
+  #;(define (prepare-invariant-state)
+    (do st <- state-after-prelude+ ; TODO
+        #;(for/all ([st st]) (cond
+                             [(tinyA:state? st) (debug-display "pc: ~a" (tinyA:state-pc st))
+                                                (debug-display "sp: ~a~n" (tinyA:state-sp st))]
+                             [else (displayln st)]))
+        (for/all ([pc (tinyA:state-pc st) #:exhaustive])
+          (debug-display "pc: ~a" pc))
+        (for/all ([sp (tinyA:state-sp st) #:exhaustive]) ; this might not be
+                                                         ; necessary because the
+                                                         ; sp shouldn't change
+                                                         ; for this program
+
           #;(displayln "Preparing an invariant state from the following state:")
           #;(display-state st)
           ; The sp now should be concrete. If not, fail
@@ -533,7 +500,150 @@ state-after-prelude+:
                )
              ]
             ))))
+  ;
+  ; The sp should be the same as the the initial state assuming that INPUT can't
+  ; reach it and there are no calls or returns.
+  ;
+  ; If the sp can become symbolic through calls to input and/or other DOP
+  ; attacks, what then?
+  ;
+  ; If the sp is symbolic and there are calls/returns, may be a control flow problem
+  (define (prepare-invariant-state)
+    (match compiled-echo
+      [(tinyA (g:global-store sp:stack-pointer echo-prog-in-memory:memory))
 
+       (do pc+ <- (potential-pc-from-memory echo-prog-in-memory)
+           ; We don't have to add the initial pc back in because unless it's an
+           ; INPUT or HALT, we won't halt on it
+           pc <- pc+
+           ;pc  <- (if (havoc!) pc0 pc+) ; make sure to add the initial pc back in
+           ;pc   <- 102
+           
+           ; How many symbolic variables do we need? Currently just ones in the
+           ; current stack frame. Might need to be extended if (1) we have a
+           ; call stack with calls and returns; or (2) if the prelude needs to
+           ; write additional objects to memory
+           fsize <- (tinyA:frame-size (tinyA:pc->frame pc echo-prog-in-memory g))
+           #;(debug-display "fsize: ~a" fsize)
+           mem+  <- (push-objs-symbolic (- sp fsize) fsize echo-prog-in-memory)
+
+           #;(display-memory mem+)
+
+#|
+           (debug-display "~nTesting")
+           (displayln mem+)
+           (debug-display "Local display-memory")
+           (local-display-memory mem+)
+           (debug-display "pp-memory")
+           (displayln (pp-memory mem+))
+           (debug-display "pp-map")
+           (displayln (pp-map mem+))
+           (debug-display "map without pp-mapping")
+           (displayln (map (λ (x) x) (seec->list mem+)))
+|#
+           #;(debug-display "Regular display-memory")
+           #;(display-memory mem+)
+
+           (tinyA:initial-state #:global-store g
+                                #:pc pc
+                                #:sp (- sp fsize)
+                                #:memory mem+
+                                )
+           )]
+      ))
+
+#;(define (test-bugs)
+  (define foo (tinyA object 1))
+  (render-value/window foo)
+
+  #;(define mem (list->seec (list (tinyA (1 ,foo)))))
+  #;(define should-be-foo (tinyA:lookup-mem 1 mem))
+  #;(render-value/window should-be-foo)
+  #;(displayln (equal? foo should-be-foo))
+  
+  (define st (prepare-invariant-state))
+  (for/all ([val (tinyA:lookup-mem 98 (tinyA:state-memory st))])
+    (displayln val))
+  (displayln "Done")
+  )
+#;(parameterize ([debug? #t])
+  (time (test-bugs)))
+
+
+(define (pp-mapping pair)
+  #;(format "~a" pair)
+  (match pair
+    [(tinyC (x:any y:any))
+     #;(render-value/window x)
+     (for/all ([x x])
+     #;(format "~a" pair)
+     (format "    ~a  ~a" x y))]
+    ))
+(define (pp-map m)
+  (map pp-mapping (seec->list m)))
+
+(define (pp-memory m)
+    (string-join (pp-map m)
+                 (format "~n")))
+(define (local-display-memory m)
+  (for/all ([m m]) (displayln (pp-memory m))))
+
+
+
+
+
+(define (synthesize-dispatch-gadgets)
+
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; 1. Current invariant is concrete; later we hope to synthesize it ;;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  #;(define (invariant-holds st)
+    (for/all ([current-max-iterations
+               (tinyA:eval-expr (tinyA "max-iterations") st)
+               #:exhaustive]) ; We need this for/all otherwise we will have a contradictory assumption??
+      
+    (> current-max-iterations 0)
+         )) ; Change to be more abstract
+
+  ; This version of invariant-holds can be derived automatically from
+  ; conditional jump statements in the program. In this program there is only one,
+  ; namely [JMPZ (< 0 "max-iterations") 106]
+  (define-symbolic* invariant-pc integer?)
+  (define (invariant-holds st)
+    (and #;(equal? (tinyA:eval-expr (tinyA (< 0 "max-iterations")) st)
+                 1)
+         (equal? (tinyA:state-pc st)
+                 invariant-pc
+                 #;102))
+    #;(for/all ([guard (tinyA:eval-expr (tinyA (< 0 "max-iterations")) st)
+                     #:exhaustive])
+      (equal? guard 1)))
+
+  ; We make this more concrete because we know this function doesn't take any
+  ; arguments
+  (define max-width 2)
+  (define input-stream-length 2)
+  (define prelude-context   (seec->list (symbolic-input-stream max-width input-stream-length)))
+  (define loop-body-context (seec->list (symbolic-input-stream max-width input-stream-length)))
+  (define break-context     (seec->list (symbolic-input-stream max-width input-stream-length)))
+
+  (define-values (compiled-echo-program compiled-echo-program-mem)
+    (tinyC->tinyA-program (list->seec echo-program) pc0))
+  
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; 2. (symbolic) prelude context with no input ;;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  (define state-after-prelude
+    (let ([init-st (tinyA:load-compiled-program compiled-echo-program
+                                                compiled-echo-program-mem
+                                                sp0
+                                                prelude-context
+                                                (list)
+                                                )
+                   ])
+      (eval-statement-wait (max-fuel) init-st)))
 
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -542,7 +652,11 @@ state-after-prelude+:
   ;; also satisfies the invariant, and further makes progress (loop-body-spec)
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
+  ; Is state-before-body a big union? or a big symbolic term?
   (define state-before-body (prepare-invariant-state))
+  (debug-display "state before body:")
+  (display-state state-before-body)
   (define state-after-body (do st <- state-before-body
                                (evaluate-prepared-state st loop-body-context)))
 
@@ -554,7 +668,67 @@ state-after-prelude+:
             ))
 
 
-  (define (test-body)
+
+
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; 5. synthesize break-context such that, for all (symbolic)
+  ;; state-before-break that satisfy the invariant, the state-after-body
+  ;; no longer satisfies the invariant
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+  (define state-before-break (prepare-invariant-state))
+  (define state-after-break (do st <- state-before-break
+                               (evaluate-prepared-state st break-context)))
+
+
+
+  ;; synthesize a prelude-context such that the invariant holds
+  (define (test-prelude)
+    (define sol
+      (synthesize #:forall (list)
+                  #:assume (assert #t)
+                  #:guarantee (assert (invariant-holds state-after-prelude)
+                  )))
+    (if (unsat? sol)
+        (displayln "Synthesis failed")
+        (begin
+          (displayln "Synthesis succeeded")
+
+          (define prelude-context-concrete (concretize prelude-context sol))
+          (displayln (format "Prelude context: ~a" prelude-context-concrete))
+          (concretize state-after-prelude sol)
+          ))
+    )
+  #;(define state-after-prelude+ (test-prelude))
+  #;(display-state state-after-prelude+)
+
+  
+#|
+Produced prelude context ((0,2))
+
+state-after-prelude+:
+
+== PC: 102
+== SP: 98
+== Trace: (0)
+== Input stream: ()
+
+==Memory==
+    99 |-> 1
+    98 |-> 0
+    99 |-> 2
+    99 |-> 3
+    100 |-> ("main" (ASSIGN "max-iterations" 3))
+    101 |-> ("main" (JMPZ (< 0 "max-iterations") 106))
+    102 |-> ("main" (INPUT (& "x")))
+    103 |-> ("main" (OUTPUT "x"))
+    104 |-> ("main" (ASSIGN "max-iterations" (- "max-iterations" 1)))
+    105 |-> ("main" (JMPZ 0 101))
+    106 |-> ("main" HALT)
+|#
+
+  #;(define (test-body)
     (define sol
       (synthesize #:forall    (list state-before-body)
                   #:assume    (assert (invariant-holds state-before-body))
@@ -585,9 +759,9 @@ state-after-prelude+:
              ]
              ))))
 
-  (define state-after-body+ (test-body))
-  (displayln "State after body:")
-  (display-state state-after-body+)
+  #;(define state-after-body+ (test-body))
+  #;(displayln "State after body:")
+  #;(display-state state-after-body+)
 
 
 
@@ -619,18 +793,7 @@ state-after-prelude+:
 |#
 
 
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; 5. synthesize break-context such that, for all (symbolic)
-  ;; state-before-break that satisfy the invariant, the state-after-body
-  ;; no longer satisfies the invariant
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-  (define state-before-break (prepare-invariant-state))
-  (define state-after-break (do st <- state-before-break
-                               (evaluate-prepared-state st break-context)))
-
-
-  (define (test-break)
+  #;(define (test-break)
     (define sol
       (synthesize #:forall    (list state-before-break)
                   #:assume    (assert (invariant-holds state-before-break))
@@ -653,11 +816,9 @@ state-after-prelude+:
                                                        break-context-concrete))
              )))
 
-  (define state-after-break+ (test-break))
-  (displayln "State after break:")
-  (display-state state-after-break+)
-
-
+  #;(define state-after-break+ (test-break))
+  #;(displayln "State after break:")
+  #;(display-state state-after-break+)
 
 #|
 Produced break context (*null* (0,0))
@@ -687,6 +848,42 @@ different context, the (0 0) input would have clinched it...
 
 |#
 
+  (define (test-simultaneously)
+    (define sol
+      (synthesize #:forall (list state-before-body state-before-break)
+                  #:assume (assert (and (invariant-holds state-before-body)
+                                        (invariant-holds state-before-break)
+                                        ))
+                  #:guarantee (assert (and (invariant-holds state-after-prelude)
+                                           (invariant-holds state-after-body)
+                                           (loop-body-spec state-before-body state-after-body)
+                                           (not (invariant-holds state-after-break))
+                                      ))
+                  ))
+    (if (unsat? sol)
+        (displayln "Synthesis failed")
+        (begin
+          (displayln "Synthesis succeeded")
+
+          (define-values (prelude-context-concrete
+                          loop-context-concrete
+                          break-context-concrete)
+            (let ([contexts (concretize (list prelude-context loop-body-context break-context)
+                                        sol)])
+              (values (first contexts)
+                      (second contexts)
+                      (third contexts))))
+          (displayln (format "Prelude context: ~a" prelude-context-concrete))
+          (displayln (format "Loop context: ~a" loop-context-concrete))
+          (displayln (format "Break context: ~a" break-context-concrete))
+
+          ))
+    )
+  (test-simultaneously)
+
+
+
+
 
   )
 (parameterize ([debug? #t])
@@ -713,9 +910,37 @@ different context, the (0 0) input would have clinched it...
 ;   the symbolic invariant state based on the pc and sp of that synthesized preamble context,
 ;   with symbolic variables in the stack
 
-; Variant with symbolic symbolic state: over an hour and not even done with loop context
-; - invariant = loop guard = [max-iterations > 0]
+; Variant with symbolic symbolic state: 2 hours
+; - context max width = 2
+; - invariant = loop guard = [max-iterations > 0 && pc = 201]
 ; - loop body spec = [length (trace st2) = 1+length (trace st1)]
-; - symbolic state created by the symbolic evaluation (not concretized) of executing the preable
-;   context, with additional symbolic variables in the stack
+; - symbolic state created by adding the appropriate number of symbolic
+;   variables to the concrete program context produced by compile-echo
+;
+; This blows up the symbolic execution time because the contexts have max width
+; 2, and we're starting from multiple possible pc states...
 
+; Variant with symbolic symbolic state and max width 1: 4 min
+; - context max width = 1
+; - invariant = loop guard = [max-iterations > 0 && pc = 201]
+; - loop body spec = [length (trace st2) = 1+length (trace st1)]
+; - symbolic state created by adding the appropriate number of symbolic
+;   variables to the concrete program context produced by compile-echo
+
+
+; Variant where all 3 queries are synthesized in a single query: 3 min
+; - context max width = 1
+
+; Variant with symbolic invariant (invariant-holds(st) iff pc(st)=? as opposed to 82): 3 min
+; - context max width = 1
+
+; Variant with symbolic invariant (invariant-holds(st) iff pc(st)=? as opposed to 82): 4.5 hours
+; - context max width = 2
+
+
+; Variant with symbolic invariant (invariant-holds(st) iff pc(st)=? as opposed to 82): 10 min
+; - context max width = 2
+; - starting with only INPUT and HALT instructions, not including initial PC as well
+; Prelude context: ((0 (2)) (0 (2284)))
+; Loop context: ((0 (8367)))
+; Break context: ((0 (0)))

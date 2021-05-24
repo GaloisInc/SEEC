@@ -335,7 +335,8 @@
 (define (pp-mapping pair)
   (match pair
     [(tinyC (x:any y:any))
-     (format "    ~a |-> ~a" x y)]
+     (for/all ([x x])
+     (format "    ~a |-> ~a" x y))]
     ))
 (define (pp-map m)
   (map pp-mapping (seec->list m)))
@@ -344,7 +345,7 @@
     (string-join (pp-map m)
                  (format "~n")))
 (define (display-memory m)
-  (for/all ([m m]) (displayln (pp-memory m))))
+  (displayln (pp-memory m)))
 
 (define (pp-frame F)
   (string-join (pp-map F)

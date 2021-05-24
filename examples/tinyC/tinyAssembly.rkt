@@ -56,7 +56,9 @@
             eval-expr
             frame-size
             pc->instruction
+            pc->frame
             proc-name->declaration
+            initial-state
 
             HALT?
             INPUT?
@@ -221,7 +223,6 @@
   (for*/all ([l l #:exhaustive]
              [mem mem]) ; Both these for/all clauses are important to make sure
                         ; the output of this function is a concise union, and not too large
-    #;(debug-display "(lookup-mem ~a)" l)
     (match mem
     [(tinyA nil) 0]
     [(tinyA (cons (l+:loc obj+:object) m+:memory))
@@ -286,6 +287,8 @@
 ; instruction in memory, return *fail*
 (define/contract (pc->instruction pc mem)
   (-> tinyA-program-counter? tinyA-memory? (failure/c tinyA-statement?))
+  #;(debug-display "(pc->instruction ~a)" pc)
+  #;(debug (thunk (tinyC:display-memory mem)))
   (match (lookup-mem pc mem)
     [(tinyA (_:proc-name stmt:statement)) stmt]
     [_ *fail*]))
@@ -562,7 +565,8 @@
          [(and (list? input) (not (empty? input)))
           #;(debug (thunk (display-state st)))
           (do (<- l (eval-expr e st)) ; e should evaluate to a location
-              #;(debug-display "~a evaluates to ~a" e l)
+              #;(debug-display "~a evaluates to ~a in state..." e l)
+              #;(debug (thunk (display-state st)))
               (<- m+ (push-objs l (seec->list (first input)) (state-memory st)))
               #;(debug (thunk (display-state st)))
               #;(debug-display "New memory:")
