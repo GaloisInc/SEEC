@@ -14,6 +14,24 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+(define synthesize-tinyC-gadget
+  (λ (prog
+      #:spec   spec
+      #:args   args
+      #:input      [input (list)]
+      #:seec-input [seec-input (list->seec input)]
+      #:forall [vars (list)]
+      )
+    (let ([g (find-ctx-gadget tinyA-lang
+                              spec
+                              #:expr ((compiler-compile tinyC-compiler) (list->seec prog))
+                              #:context (tinyA (,(list->seec args)
+                                                (cons ,seec-input nil)))
+                              #:forall vars
+                              )])
+      (display-gadget g #:display-expression display-tinyA-lang-expression
+                        #:display-context display-tinyA-lang-context
+                        ))))
 
 
 (define main-declaration

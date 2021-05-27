@@ -21,7 +21,7 @@
          syntax-simple-type?
          syntax-expr?
          syntax-binop?
-         syntax-lval?
+         ;syntax-lval?
          syntax-var?
          syntax-proc-name?
 
@@ -108,6 +108,7 @@
 
 (use-contracts-globally #t)
 
+
 (define-grammar syntax
 
   ; A type 'ty' is either a simple type 'py' or an array type
@@ -128,15 +129,17 @@
       ; A variable
       var
       ; Take the address of the l-value 'lv'
-      (& lval)
+      (& expr)
       ; Apply a binary operation
       (binop expr expr)
+      ; index into an array
+      (expr[expr])
       )
   (binop ::= + - * / = <)
 
   ; An l-value is either a variable 'x' or the location
   ; pointed to by another l-value 
-  (lval  ::= var (* lval))
+  ;(lval  ::= var (* lval))
   (var   ::= string)
 
   (proc-name ::= string)
@@ -158,7 +161,7 @@
   ; Statements
   (statement   ::= 
       ; Assign the result of evaluating 'ex' to the l-value of 'lv'
-      (ASSIGN lval expr)
+      (ASSIGN expr expr)
       ; Invoke 'm' with the results of evaluating 'ex ...' as arguments
       (CALL proc-name list<expr>)
       ; Return to the previous call frame
@@ -237,6 +240,7 @@
                   (tinyC (SEQ ,s1 ,s2)))]
     ))
     
+
 
 ;;;;;;;;;;;;
 ;; States ;;
@@ -413,14 +417,14 @@
      (format "* ~a" (pp-expr e+))]
     [(syntax x:var)
      (string->racket x)]
-    [(syntax (& lv:lval))
-     (format "& ~a" (pp-expr lv))]
+    [(syntax (& e:expr))
+     (format "& ~a" (pp-expr e))]
     [(syntax (op:binop e1:expr e2:expr))
      (format "~a ~a ~a" (pp-expr e1) op (pp-expr e2))]
     ))
 
 (define-grammar listifyC #:extends tinyC
-  (single-stmt ::= (ASSIGN lval expr)
+  (single-stmt ::= (ASSIGN expr expr)
                    (CALL proc-name list<expr>)
                    RETURN
                    (IF expr list<single-stmt> list<single-stmt>)
@@ -453,7 +457,7 @@
 (define/contract (pp-single-statement stmt)
   (-> listifyC-single-stmt? (listof racket:string?))
   (match stmt
-    [(listifyC (ASSIGN x:lval e:expr))
+    [(listifyC (ASSIGN x:expr e:expr))
      (list (format "~a = ~a;" (pp-expr x) (pp-expr e)))]
     [(listifyC (CALL p:proc-name es:list<expr>))
      (list (format "~a~a;" (string->racket p)
@@ -868,9 +872,29 @@
     [else ((binop->racket op) v1 v2)]
     ))
 
+; Evaluate an expression's address
+(define/contract (eval-address e F m)
+  (-> syntax-expr? tinyC-frame? tinyC-memory? (failure/c tinyC-val?))
+  (match e
+
+    [(tinyC x:var) (lookup-var x F)]
+
+    [(tinyC (* e+:expr))
+     (eval-expr e+ F m)]
+
+    [(tinyC (arr:expr [idx:expr]))
+     (match (cons (eval-address arr F m) (eval-expr idx F m))
+       [(cons (tinyC (l:loc-ident o:offset)) (tinyC i:integer))
+        (tinyC (,l ,(+ o i)))]
+       [_ *fail*]
+       )]
+    [_ *fail*]
+
+    ))
+
 
 ; Evalue an l-value
-(define/contract (eval-lval lv F m)
+#;(define/contract (eval-lval lv F m)
   (-> syntax-lval? tinyC-frame? tinyC-memory? (failure/c tinyC-val?))
   (match lv
     [(tinyC x:var) (lookup-var x F)]
@@ -888,6 +912,8 @@
        [_ *fail*]
        )]
     ))
+
+
 
 ; Evaluate an expression given a frame and memory
 (define/contract (eval-expr e F m)
@@ -914,8 +940,8 @@
           )]
        [_ *fail*])]
 
-    [(tinyC (& lv:lval)) ; Is this right?
-     (eval-lval lv F m)
+    [(tinyC (& e+:expr))
+     (eval-address e+ F m)
      ]
 
     [(tinyC (op:binop e1:expr e2:expr))
@@ -923,6 +949,12 @@
          (<- v2 (eval-expr e2 F m))
          (eval-binop op v1 v2))
      ]
+
+    [(tinyC (arr:expr [idx:expr]))
+     (match (cons (eval-address arr F m) (eval-expr idx))
+       [(cons (tinyC (l:loc-ident o:offset)) (tinyC i:integer))
+        (lookup-mem (tinyC (,l ,(+ o i))) m)]
+       )]
     ))
 
 
@@ -1146,11 +1178,11 @@
     [(tinyC SKIP) ; SKIP cannot take a step
      *fail*]
 
-    [(tinyC (ASSIGN lv:lval e:expr))
+    [(tinyC (ASSIGN lv:expr e:expr))
      (let* ([ctx (state->context st)]
             [F (ctx->top-frame ctx)]
             [m (ctx->mem ctx)])
-       (do (<- l    (eval-lval lv F m))
+       (do (<- l    (eval-address lv F m))
            (<- v    (eval-expr e F m))
            (<- ctx+ (set-lval l v ctx))
            (update-state st
@@ -1337,3 +1369,4 @@
 ; ∃ ctx ∀ e, e = simple-call-example -> behavior(ctx[e]) = behav
 ;
 ; Perhaps just switch context and expressions
+

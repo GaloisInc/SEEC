@@ -73,7 +73,7 @@
   ; Statements
   (statement   ::= 
       ; Assign the result of evaluating 'ex' to the l-value of 'lv'
-      (ASSIGN lval expr)
+      (ASSIGN expr expr)
       ; Invoke 'm' with the results of evaluating 'ex ...' as arguments
       (CALL proc-name list<expr>)
       ; Return to the previous call frame
@@ -466,7 +466,7 @@
          (lookup-var x sp F+))]
     ))
 
-(define/contract (eval-lval-F lv sp F mem)
+#;(define/contract (eval-lval-F lv sp F mem)
   (-> syntax-lval? tinyA-stack-pointer? tinyA-frame? tinyA-memory?
       (failure/c tinyA-val?))
   (match lv
@@ -477,10 +477,36 @@
          (loc->val l mem))]
     ))
 ; Produce the value associated with the lvalue
-(define/contract (eval-lval lv st)
+#;(define/contract (eval-lval lv st)
   (-> syntax-lval? state? (failure/c tinyA-val?))
   (do (<- F (state->frame st))
       (eval-lval-F lv (state-sp st) F (state-memory st))))
+
+(define/contract (eval-address-F e sp F mem)
+  (-> syntax-expr? tinyA-stack-pointer? tinyA-frame? tinyA-memory?
+      (failure/c tinyA-val?))
+  (match e
+    [(tinyA x:var)
+     (lookup-var x sp F)]
+
+    [(tinyA (* e+:expr))
+     (do (<- l (eval-address-F e+ sp F mem))
+         (loc->val l mem))]
+
+    [(tinyA (arr:expr [idx:expr]))
+     (match (cons (eval-address-F arr F mem)
+                  (eval-expr-F idx F mem))
+       [(cons (tinyA l:loc) (tinyA o:offset))
+        (+ l o)]
+       )]
+
+    ))
+; Produce the value associated with the lvalue
+(define/contract (eval-address e st)
+  (-> syntax-expr? state? (failure/c tinyA-val?))
+  (do (<- F (state->frame st))
+      (eval-address-F e (state-sp st) F (state-memory st))))
+
 
 
 (define/contract (eval-expr-F e sp F mem)
@@ -495,12 +521,18 @@
     [(tinyA x:var)
      (do (<- l (lookup-var x sp F))
          (loc->val l mem))]
-    [(tinyA (& lv:lval))
-     (eval-lval-F lv sp F mem)]
+    [(tinyA (& e+:expr))
+     (eval-address-F e+ sp F mem)]
     [(tinyA (op:binop e1:expr e2:expr))
      (do (<- v1 (eval-expr-F e1 sp F mem))
          (<- v2 (eval-expr-F e2 sp F mem))
        ((binop->racket op) v1 v2))]
+    [(tinyA (arr:expr[idx:expr]))
+     (match (cons (eval-address-F arr F mem)
+                  (eval-expr-F idx F mem))
+       [(cons (tinyA l:loc) (tinyA o:offset))
+        (loc->val (+ l o) mem)]
+       )]
     ))
 ; Note that the helper function eval-expr-F exists because (state->frame st)
 ; does a lookup to find the corresponding frame in the global store, and we
@@ -588,8 +620,8 @@
                                 )]
        )]
 
-    [(tinyA (ASSIGN lv:lval e:expr))
-     (do (<- l (eval-lval lv st))
+    [(tinyA (ASSIGN x:expr e:expr))
+     (do (<- l (eval-address x st))
          (<- v (eval-expr e  st))
          (update-state st
 ;                       #:increment-pc #t

@@ -192,7 +192,7 @@
     [(tinyC l:loc)     #t]
     ))
 (define (trace-relation t-src t-target)
-  (and (= (seec-length t-src) (seec-length t-target)) ; If you don't include
+  (and (equal? (seec-length t-src) (seec-length t-target)) ; If you don't include
                                                       ; this check, andmap will
                                                       ; throw an exception
        (andmap val-relation (seec->list t-src) (seec->list t-target))))
