@@ -244,7 +244,7 @@
 
 
 ; If l↦v occurs in mem for a value v, return v, otherwise return *fail*
-(define/contract (loc->val l mem)
+(define/contract/debug (loc->val l mem)
   (-> tinyA-loc? tinyA-memory? (failure/c tinyA-val?))
   (match (lookup-mem l mem)
     [(tinyA v:val) v]
@@ -452,7 +452,7 @@
 
 ; Compute the address of the variable 'x' from the stack frame layout and the
 ; current stack pointer
-(define/contract (lookup-var x sp F)
+(define/contract/debug #:suffix (lookup-var x sp F)
   (-> syntax-var? tinyA-stack-pointer? tinyA-frame? (failure/c tinyA-loc?))
   (match F
     [(tinyA nil) *fail*]
@@ -494,8 +494,8 @@
          (loc->val l mem))]
 
     [(tinyA (arr:expr [idx:expr]))
-     (match (cons (eval-address-F arr F mem)
-                  (eval-expr-F idx F mem))
+     (match (cons (eval-address-F arr sp F mem)
+                  (eval-expr-F idx sp F mem))
        [(cons (tinyA l:loc) (tinyA o:offset))
         (+ l o)]
        )]
@@ -509,7 +509,7 @@
 
 
 
-(define/contract (eval-expr-F e sp F mem)
+(define/contract/debug (eval-expr-F e sp F mem)
   (-> syntax-expr? tinyA-stack-pointer? tinyA-frame? tinyA-memory?
       (failure/c tinyA-val?))
   (match e
@@ -528,8 +528,8 @@
          (<- v2 (eval-expr-F e2 sp F mem))
        ((binop->racket op) v1 v2))]
     [(tinyA (arr:expr[idx:expr]))
-     (match (cons (eval-address-F arr F mem)
-                  (eval-expr-F idx F mem))
+     (match (cons (eval-address-F arr sp F mem)
+                  (eval-expr-F idx sp F mem))
        [(cons (tinyA l:loc) (tinyA o:offset))
         (loc->val (+ l o) mem)]
        )]
@@ -726,11 +726,13 @@
       )
   (do (<- decl (proc-name->declaration (string "main") G))
       (<- mem+ (push-objs (- sp (length vals)) vals mem))
-      (<- sp+  (- sp (frame-size (declaration->frame decl))))
+      (<- F    (declaration->frame decl))
+      (<- sp+  (- sp (frame-size F)))
+      (<- mem++ (init-frame-arrays F sp+ mem+))
       (initial-state #:global-store G
                      #:pc           (declaration->pc decl)
                      #:sp           sp+
-                     #:memory       mem+
+                     #:memory       mem++
                      #:input-buffer buf)
       ))
 

@@ -256,10 +256,13 @@ void guarded_fun(int auth) {
     (run-tests seec-utils-tests))
 
 
+
   (define mem-example (list->seec (list (tinyC (100 0))
                                         (tinyC (101 1))
                                         (tinyC (102 2))
                                         (tinyC (103 (102 0)))
+                                        (tinyC (104 (105 0)))
+                                        (tinyC (105 ,(list->seec (list 500 501 502 503))))
                                         )))
 
 
@@ -284,17 +287,22 @@ void guarded_fun(int auth) {
                                                    (tinyC (101 1))
                                                    (tinyC (102 2))
                                                    (tinyC (103 (102 0)))
+                                                   (tinyC (104 (105 0)))
+                                                   (tinyC (105 ,(list->seec (list 500 501 502 503))))
                                                    )))
                    ; l doesn't occur in m
-                   (check-equal? (tinyC:store-mem (lid->loc 104) 20 mem-example)
+                   (check-equal? (tinyC:store-mem (lid->loc 110) 20 mem-example)
                                  *fail*)
                    )
        ))
   (run-tests mem-tests)
 
+
   (define/contract F-example tinyC-frame?
     (list->seec (list (tinyC ("x0" (100 0)))
-                      (tinyC ("x1" (103 0))))))
+                      (tinyC ("x1" (103 0)))
+                      (tinyC ("x2" (104 0)))
+                      )))
   (define F2-example
     (list->seec (list (tinyC ("x2" (100 0)))
                       (tinyC ("x1" (101 0))))))
@@ -344,6 +352,21 @@ void guarded_fun(int auth) {
           (check-equal? (tinyC:eval-expr (tinyC (& "x1")) F-example mem-example)
                         (tinyC (103 0))))
 
+
+        ; F containts Var "x2" ↦ (104,0)
+        ; m contains  104 ↦ (105, 0)
+        ;             105 ↦ (500 501 502 503)
+        (test-case "array indexing"
+          (parameterize ([debug? #f])
+            (check-equal? (tinyC:eval-expr (tinyC ("x2"[1])) F-example mem-example)
+                        (tinyC 501))))
+
+
+        (test-case "array indexing address"
+          (parameterize ([debug? #f])
+            (check-equal? (tinyC:eval-expr (tinyC (& ("x2"[1]))) F-example mem-example)
+                        (tinyC (105 1)))))
+
         (test-case "op"
           ; Check that multiplication can be distinguished from unary * operation
           (check-equal? (tinyC:eval-expr (tinyC (* "x0" "x0")) F-example mem-example)
@@ -383,6 +406,8 @@ void guarded_fun(int auth) {
                         (list->seec (list (tinyC (101 1))
                                           (tinyC (102 2))
                                           (tinyC (103 (102 0)))
+                                          (tinyC (104 (105 0)))
+                                          (tinyC (105 ,(list->seec (list 500 501 502 503))))
                                           ))))
 
 
@@ -390,6 +415,7 @@ void guarded_fun(int auth) {
           (check-equal? (tinyC:pop-stack F-example mem-example)
                         (list->seec (list (tinyC (101 1))
                                           (tinyC (102 2))
+                                          (tinyC (105 ,(list->seec (list 500 501 502 503))))
                                           ))))
         )
 
@@ -512,6 +538,7 @@ void guarded_fun(int auth) {
              (check-equal? (tinyC:context->memory (tinyC:state->context st+))
                            (list->seec (list (tinyC (101 1))
                                              (tinyC (102 2))
+                                             (tinyC (105 ,(list->seec (list 500 501 502 503))))
                                              )))
              ))
 
@@ -601,7 +628,8 @@ void guarded_fun(int auth) {
                                                  (seec-singleton loop)))
                     (seec-singleton 20)))
 
-
     )
+
   (evaluation-tests)
+
   )

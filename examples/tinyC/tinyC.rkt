@@ -91,6 +91,7 @@
             display-program
             display-env
             make-declaration
+            list->statement
 
             context->memory
             context->top-frame
@@ -421,6 +422,8 @@
      (format "& ~a" (pp-expr e))]
     [(syntax (op:binop e1:expr e2:expr))
      (format "~a ~a ~a" (pp-expr e1) op (pp-expr e2))]
+    [(syntax (arr:expr[i:expr]))
+     (format "~a[~a]" (pp-expr arr) (pp-expr i))]
     ))
 
 (define-grammar listifyC #:extends tinyC
@@ -513,6 +516,8 @@
 (define/contract (pp-decl local-decl)
   (-> tinyC-local-decl? racket:string?)
   (match local-decl
+    [(tinyC (x:var (array tp:type len:natural)))
+     (format "~a ~a[~a]" tp (string->racket x) len)]
     [(tinyC (x:var tp:type))
      (format "~a ~a" tp (string->racket x))]))
 
@@ -707,7 +712,7 @@
 
 ; Dereference a location by looking up the label in the memory
 ; and indexing the object at the appropriate offset
-(define/contract (lookup-mem l m)
+(define/contract/debug #:suffix (lookup-mem l m)
   (-> tinyC-loc? tinyC-memory? (failure/c tinyC-object?))
 
   (match l
@@ -873,7 +878,7 @@
     ))
 
 ; Evaluate an expression's address
-(define/contract (eval-address e F m)
+(define/contract/debug #:suffix (eval-address e F m)
   (-> syntax-expr? tinyC-frame? tinyC-memory? (failure/c tinyC-val?))
   (match e
 
@@ -882,12 +887,21 @@
     [(tinyC (* e+:expr))
      (eval-expr e+ F m)]
 
-    [(tinyC (arr:expr [idx:expr]))
+    #;[(tinyC (arr:expr [idx:expr]))
      (match (cons (eval-address arr F m) (eval-expr idx F m))
        [(cons (tinyC (l:loc-ident o:offset)) (tinyC i:integer))
         (tinyC (,l ,(+ o i)))]
        [_ *fail*]
        )]
+
+    [(tinyC (arr:expr [idx:expr]))
+     (match (cons (eval-address arr F m) (eval-expr idx F m))
+       [(cons (tinyC arr-loc:loc) (tinyC i:integer))
+        (match (lookup-mem arr-loc m)
+          [(tinyC (arr-addr:loc-ident o:offset))
+           (tinyC (,arr-addr ,(+ o i)))
+        ])])]
+
     [_ *fail*]
 
     ))
@@ -916,7 +930,7 @@
 
 
 ; Evaluate an expression given a frame and memory
-(define/contract (eval-expr e F m)
+(define/contract/debug #:suffix (eval-expr e F m)
   (-> syntax-expr? tinyC-frame? tinyC-memory? (failure/c tinyC-val?))
   (match e
     [(tinyC n:integer) n]
@@ -950,11 +964,18 @@
          (eval-binop op v1 v2))
      ]
 
+
     [(tinyC (arr:expr [idx:expr]))
-     (match (cons (eval-address arr F m) (eval-expr idx))
-       [(cons (tinyC (l:loc-ident o:offset)) (tinyC i:integer))
-        (lookup-mem (tinyC (,l ,(+ o i))) m)]
-       )]
+     (match (cons (eval-address arr F m) (eval-expr idx F m))
+       [(cons (tinyC arr-loc:loc) (tinyC i:integer))
+        (match (lookup-mem arr-loc m)
+          [(tinyC (arr-addr:loc-ident o:offset))
+           (match (lookup-mem (tinyC (,arr-addr ,(+ o i))) m)
+             [(tinyC v:val) v]
+             [_ *fail*]
+             )]
+          )])]
+            
     ))
 
 
@@ -1172,7 +1193,10 @@
   (-> tinyC-global-store? tinyC-statement? state? (failure/c state?))
 
   (for/all ([stmt stmt])
-  (debug-display "(eval-statement-1 ~a)~n" stmt)
+    (match stmt
+      [(tinyC (SEQ _:statement _:statement))
+       (debug-display "SEQ")]
+      [_ (debug-display "(eval-statement-1 ~a)~n" stmt)])
   (match stmt
 
     [(tinyC SKIP) ; SKIP cannot take a step
@@ -1195,6 +1219,7 @@
     [(tinyC (OUTPUT e:expr))
      (do (<- ctx (state->context st))
          (<- v (eval-expr e (ctx->top-frame ctx) (ctx->mem ctx)))
+         (debug-display "Outputting ~a" v)
          (update-state st #:trace (seec-append (state->trace st) (seec-singleton v))
                           #:statement (tinyC SKIP))
        )]
@@ -1215,7 +1240,8 @@
                             #:context ctx+
                             #:input-buffer (rest input)
                             ))]
-         [else *fail*]
+         [else (debug-display "input is in the wrong form")
+               *fail*]
          ))]
 
     ;; Procedure calls ;;
