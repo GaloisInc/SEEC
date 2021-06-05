@@ -86,31 +86,71 @@
     ))
 
 
-(define/contract (declaration->frame-element sp decl)
-  (-> tinyA-stack-pointer?
+(define/contract (declaration->frame-element offset decl)
+  (-> integer?
       (or/c tinyC-local-decl?
             tinyC-param-decl?)
       tinyA-frame-elem?)
   (match decl
     [(tinyC (x:var ty:simple-type))
-     (tinyA (,x ,sp))]
+     (tinyA (,x ,offset))]
     [(tinyC (x:var (array ty:simple-type len:integer)))
-     (tinyA (,x ,sp ,len))]
+     (tinyA (,x ,offset ,len))]
     ))
+
+(define (declaration-length decl)
+  (-> tinyA-stack-pointer?
+      (or/c tinyC-local-decl?
+            tinyC-param-decl?)
+      integer?)
+  (match decl
+    [(tinyC (x:var ty:simple-type))
+     1]
+    [(tinyC (x:var (array ty:simple-type len:integer)))
+     (+ 1 len)]))
+
+(define/contract (declaration-list->frame offset decl-list)
+  (-> integer?
+      (curry seec-list-of? (or/c tinyC-local-decl? tinyC-param-decl?))
+      tinyA-frame?)
+  (match decl-list
+    [(tinyC nil) (tinyA nil)]
+    [(tinyC (cons (x:var ty:simple-type) decl-list+:any))
+     (seec-cons (tinyA (,x ,offset))
+                (declaration-list->frame (+ 1 offset) decl-list+)
+                )]
+    [(tinyC (cons (x:var (array ty:simple-type len:integer)) decl-list+:any))
+     (seec-cons (tinyA (,x ,offset ,len))
+                (declaration-list->frame (+ 1 offset len) decl-list+)
+                )]
+    ))
+
     
 (define/contract (declaration->frame decl)
   (-> tinyC-declaration? tinyA-frame?)
-  (let* ([param-list (seec->list (tinyC:declaration->parameters decl))]
+  (let* #;([param-list (seec->list (tinyC:declaration->parameters decl))]
          [local-list (seec->list (tinyC:declaration->locals decl))]
          ; Allocate local declarations first, then parameter declarations, so
          ; the argument list is close to the new SP
+
+         ; How to arrays get handled?
          [decl-list  (append local-list param-list)]
          [num-decls  (length decl-list)]
-         [frames     (map declaration->frame-element
+         #;[frames     (map declaration->frame-element
                           (range 0 num-decls)
                           decl-list)]
+         [frames     (declaration-list->frame 0 (list->seec decl-list))]
          )
-    (list->seec frames)))
+        ([param-list (tinyC:declaration->parameters decl)]
+         [local-list (tinyC:declaration->locals decl)]
+         ; Allocate local declarations first, then parameter declarations, so
+         ; the argument list is close to the new SP
+
+         ; How to arrays get handled?
+         [decl-list  (seec-append local-list param-list)]
+         [frames     (declaration-list->frame 0 decl-list)]
+         )
+    frames))
 
 ; Compile a prodecure declaration by compiling the procedure's statements
 ; and creating a stack layout. Insert 'return' or 'halt' instructions at
@@ -213,4 +253,84 @@
   ; global stores, stack pointer, and memory together
   #:compile (λ (g-src) (let-values ([(g-target mem) (tinyC->tinyA-program g-src init-pc)])
                          (tinyA (,g-target ,init-sp ,mem))))
+  )
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Synthesis utilities ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; This differs from tinyA-lang in that the behavior is a (failure/c state?)
+; instead of a trace.
+(define-language tinyA-lang-st
+  #:grammar tinyA+
+  #:expression expr #:size 5
+  #:context ctx #:size 3 ; The trace acts as as the argument list
+  ; A whole program is a (failure/c state?)
+  #:link (λ (ctx expr)
+           (match (cons ctx expr)
+             [(cons (tinyA+ (args:vallist input:list<vallist>))
+                    (tinyA (g:global-store sp:stack-pointer m:memory)))
+              (tinyA:load-compiled-program g m sp (seec->list input) (seec->list args))]
+             ))
+  #:evaluate (λ (p) (do st <- p
+                        (tinyA:eval-statement (max-fuel) st)))
+  )
+
+(define synthesize-tinyA-gadget
+  (λ (prog
+      #:spec       spec
+      #:args       args
+      #:input      [input (list)] ; list of lists of integers
+      #:seec-input [seec-input (list->seec (map list->seec input))]
+      #:forall     [vars (list)]
+      )
+    (let ([g (find-ctx-gadget tinyA-lang-st
+                              spec
+                              #:expr ((compiler-compile tinyC-compiler) (list->seec prog))
+                              #:context (tinyA (,(list->seec args)
+                                                ,seec-input nil))
+                              #:forall vars
+                              )])
+      (display-gadget g #:display-expression display-tinyA-lang-expression
+                        #:display-context    display-tinyA-lang-context
+                        #:display-behavior   display-state
+                        ))))
+
+
+
+; Produce a symbolic list<list<integer>> where the length is 'length' and each
+; internal list has length 'width'
+(define (symbolic-input-stream width length)
+  (cond
+    [(or (<= length 0)
+         (havoc!))
+     (tinyA nil)]
+    [else (seec-cons (symbolic-arglist width)
+                     (symbolic-input-stream width (- length 1)))
+          ]
+    ))
+(define (symbolic-arglist n)
+  (tinyA list<integer> (+ 1 n)))
+
+
+
+
+; Synthesize an input to produce a specific trace
+; where tr should be a racket list of integers
+(define (synthesize-trace prog input-len tr)
+
+  ; Fuel bound = size of program. OR: don't execute the target PC along the way?
+  ; Do we need to synthesize loop invariant?
+
+  (synthesize-tinyA-gadget prog
+                           #:spec (λ (init-state result-state)
+                                    (and (tinyA:state? result-state)
+                                         (equal? (seec->list (tinyA:state-trace result-state))
+                                                 tr)))
+                           #:args (list)
+                           #:seec-input (symbolic-input-stream 2 input-len)
+                           )
   )

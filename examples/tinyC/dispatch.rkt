@@ -4,7 +4,8 @@
 (require "tinyC.rkt"
          "tinyC-test.rkt"
          "tinyAssembly.rkt"
-         "tinyC-tinyAssembly-compiler.rkt")
+         "tinyC-tinyAssembly-compiler.rkt"
+         "dispatch-query.rkt")
 (require (only-in racket/base
                   values))
 
@@ -35,42 +36,7 @@
 
 
 
-; This differs from tinyA-lang in that the behavior is a (failure/c state?)
-; instead of a trace.
-(define-language tinyA-lang-st
-  #:grammar tinyA+
-  #:expression expr #:size 5
-  #:context ctx #:size 3 ; The trace acts as as the argument list
-  ; A whole program is a (failure/c state?)
-  #:link (λ (ctx expr)
-           (match (cons ctx expr)
-             [(cons (tinyA+ (args:vallist input:list<vallist>))
-                    (tinyA (g:global-store sp:stack-pointer m:memory)))
-              (tinyA:load-compiled-program g m sp (seec->list input) (seec->list args))]
-             ))
-  #:evaluate (λ (p) (do st <- p
-                        (tinyA:eval-statement (max-fuel) st)))
-  )
 
-(define synthesize-tinyA-gadget
-  (λ (prog
-      #:spec       spec
-      #:args       args
-      #:input      [input (list)] ; list of lists of integers
-      #:seec-input [seec-input (list->seec (map list->seec input))]
-      #:forall     [vars (list)]
-      )
-    (let ([g (find-ctx-gadget tinyA-lang-st
-                              spec
-                              #:expr ((compiler-compile tinyC-compiler) (list->seec prog))
-                              #:context (tinyA (,(list->seec args)
-                                                ,seec-input nil))
-                              #:forall vars
-                              )])
-      (display-gadget g #:display-expression display-tinyA-lang-expression
-                        #:display-context    display-tinyA-lang-context
-                        #:display-behavior   display-state
-                        ))))
 
 
 ; Echo program:
@@ -187,48 +153,7 @@
   (display-state compiled-echo-null-input))
 #;(null-input-test)
 
-(define (symbolic-arglist n)
-  (tinyA list<integer> (+ 1 n)))
-; Produce a symbolic list<list<integer>> where the length is 'length' and each
-; internal list has length 'width'
-(define (symbolic-input-stream width length)
-  (cond
-    [(or (<= length 0)
-         (havoc!))
-     (tinyA nil)]
-    [else (seec-cons (symbolic-arglist width)
-                     (symbolic-input-stream width (- length 1)))
-          ]
-    ))
 
-; Synthesize an input to produce a specific trace
-; tr should be a racket list of integers
-(define (synthesize-trace input-len tr)
-
-  (define (prelude-spec target-pc init-st result-st)
-    (and (tinyA:state? result-st)
-         (equal? (tinyA:state-pc result-st) target-pc)))
-  (define (body-spec target-pc init-st result-st)
-    ; A whole program is a (failure/c state?)
-    (and (tinyA:state? init-st)
-         (tinyA:state? result-st)
-         (equal? (tinyA:state-pc init-st)  target-pc)
-         (equal? (tinyA:state-pc result-st) target-pc)))
-
-  ; Fuel bound = size of program. OR: don't execute the target PC along the way?
-  ; Do we need to synthesize loop invariant?
-
-  (synthesize-tinyA-gadget echo-program
-                           #:spec (λ (init-state result-state)
-                                    (and (tinyA:state? result-state)
-                                         (equal? (seec->list (tinyA:state-trace result-state))
-                                                 tr)))
-                           #:args (list)
-                           #:seec-input (symbolic-input-stream 2 input-len)
-                           )
-
-
-  )
 
 #;(time (parameterize ([debug? #t])
         (synthesize-trace 3 (list 3))))
@@ -256,49 +181,6 @@
 ; 
 ; You could imagine changing the behavioral goal to print 2 things, which should do 2 iterations of the loop
 
-; Define a function that evaluates a state until either (1) HALT is reached; or
-; (2) an INPUT is reached where no input is provided via the context.
-(define/contract (eval-statement-wait fuel st)
-  (-> (or/c #f integer?) tinyA:state? (failure/c tinyA:state?))
-  (debug-display "(eval-statement-wait ~a)" fuel)
-
-  (for*/all ([st st]
-             [pc (tinyA:state-pc st) #:exhaustive]
-             [insn (tinyA:pc->instruction pc (tinyA:state-memory st))]
-             [input (tinyA:state-input-buffer st)]
-             )
-
-  (debug-display "eval-statement-wait pc: ~a [~a]" pc insn)
-
-  (cond
-    [(not (list? input))
-     *fail*]
-
-    ; execution halted safely
-    [(tinyA:HALT? insn)
-     (debug-display "halted on HALT")
-     st]
-
-    ; execution paused waiting for input
-    [(and (tinyA:INPUT? insn)
-          (empty? input))
-     (debug-display "halted on INPUT")
-     st]
-    ; fuel ran out
-    [(<= fuel 0)
-     (debug-display "fuel ran out")
-     *fail*]
-
-    ; otherwise, take a step and continue
-    [else 
-     (do st+ <- (tinyA:eval-statement-1 st)
-         (eval-statement-wait (decrement-fuel fuel) st+))]
-    )))
-
-#;(define/contract (eval-statement-wait fuel st)
-  (-> (or/c #f integer?) tinyA:state? (failure/c tinyA:state?))
-  (debug-display "(eval-statement-wait ~a)" fuel)
-  )
 
 
 
@@ -383,63 +265,10 @@
              (tinyA:eval-expr e2 st))]
     ))
 
-  (define/contract (state->pc-declaration st)
-    (-> tinyA:state? (failure/c tinyA-declaration?))
-    (match (tinyA:lookup-mem (tinyA:state-pc st) (tinyA:state-memory st))
-      [(tinyA (f:proc-name _:statement))
-       (tinyA:proc-name->declaration f (tinyA:state-global-store st))]
-      [_ *fail*]
-      ))
-
-
-  ; Push 'count' symbolic arguments onto memory at locations `l`, `l+1`, ..., `l+count-1`
-  (define (push-objs-symbolic l count mem)
-    (cond
-      [(> count 0)
-       (let ([symbolic-obj (tinyA object 2)])
-         #;(for/all ([obj symbolic-obj])
-           (debug-display "Adding mapping ~a |-> ~a" l obj))
-         (seec-cons (tinyA (,l ,symbolic-obj))
-                    (push-objs-symbolic (+ 1 l) (- count 1) mem)))]
-      [else mem]
-      ))
-
-
-  (define (append-input-stream st new-input)
-    (tinyA:update-state st
-                        #:input-buffer (append (tinyA:state-input-buffer st)
-                                               new-input)))
-
-  ; new-input should be a racket list of seec-lists (the input stream)
-  (define/contract (evaluate-prepared-state st new-input)
-    (-> tinyA:state? (listof (curry seec-list-of? integer?)) (failure/c tinyA:state?))
-    (eval-statement-wait (max-fuel)
-                         (append-input-stream st new-input)
-                         ))
 
 
 
-  ; The pc is a symbolic union of the initial pc, the pc of any HALT
-  ; instructions, and the pc of any INPUT instructions
-  (define/contract (potential-pc-from-memory prog)
-    (-> tinyA-memory? (failure/c tinyA-program-counter?))
-    (match prog
-      [(tinyA (cons (l:loc (f:proc-name HALT)) m+:memory))
-       (if (havoc!)
-           l
-           (potential-pc-from-memory m+))]
-      [(tinyA (cons (l:loc (f:proc-name (INPUT _:expr))) m+:memory))
-       (if (havoc!)
-           l
-           (potential-pc-from-memory m+))]
-      [(tinyA (cons (l:loc (f:proc-name _:statement)) m+:memory))
-       (potential-pc-from-memory m+)]
-      [_ *fail*]
-      ))
 
-
-  (define pc0 100)
-  (define sp0 100)
 
 
 
@@ -494,63 +323,13 @@
              ; and program counter from state-after-prelude
              (match compiled-echo
                [(tinyA (_:global-store _:stack-pointer echo-prog-in-memory:memory))
-                (do mem <- (push-objs-symbolic sp (- sp0 sp) echo-prog-in-memory)
+                (do mem <- (push-objs-symbolic sp (- init-sp sp) echo-prog-in-memory)
                     #;(displayln "Prepared symbolic memory")
                     (tinyA:update-state st #:memory mem))]
                )
              ]
             ))))
   ;
-  ; The sp should be the same as the the initial state assuming that INPUT can't
-  ; reach it and there are no calls or returns.
-  ;
-  ; If the sp can become symbolic through calls to input and/or other DOP
-  ; attacks, what then?
-  ;
-  ; If the sp is symbolic and there are calls/returns, may be a control flow problem
-  (define (prepare-invariant-state)
-    (match compiled-echo
-      [(tinyA (g:global-store sp:stack-pointer echo-prog-in-memory:memory))
-
-       (do pc+ <- (potential-pc-from-memory echo-prog-in-memory)
-           ; We don't have to add the initial pc back in because unless it's an
-           ; INPUT or HALT, we won't halt on it
-           pc <- pc+
-           ;pc  <- (if (havoc!) pc0 pc+) ; make sure to add the initial pc back in
-           ;pc   <- 102
-           
-           ; How many symbolic variables do we need? Currently just ones in the
-           ; current stack frame. Might need to be extended if (1) we have a
-           ; call stack with calls and returns; or (2) if the prelude needs to
-           ; write additional objects to memory
-           fsize <- (tinyA:frame-size (tinyA:pc->frame pc echo-prog-in-memory g))
-           #;(debug-display "fsize: ~a" fsize)
-           mem+  <- (push-objs-symbolic (- sp fsize) fsize echo-prog-in-memory)
-
-           #;(display-memory mem+)
-
-#|
-           (debug-display "~nTesting")
-           (displayln mem+)
-           (debug-display "Local display-memory")
-           (local-display-memory mem+)
-           (debug-display "pp-memory")
-           (displayln (pp-memory mem+))
-           (debug-display "pp-map")
-           (displayln (pp-map mem+))
-           (debug-display "map without pp-mapping")
-           (displayln (map (λ (x) x) (seec->list mem+)))
-|#
-           #;(debug-display "Regular display-memory")
-           #;(display-memory mem+)
-
-           (tinyA:initial-state #:global-store g
-                                #:pc pc
-                                #:sp (- sp fsize)
-                                #:memory mem+
-                                )
-           )]
-      ))
 
 #;(define (test-bugs)
   (define foo (tinyA object 1))
@@ -568,27 +347,6 @@
   )
 #;(parameterize ([debug? #t])
   (time (test-bugs)))
-
-
-(define (pp-mapping pair)
-  #;(format "~a" pair)
-  (match pair
-    [(tinyC (x:any y:any))
-     #;(render-value/window x)
-     (for/all ([x x])
-     #;(format "~a" pair)
-     (format "    ~a  ~a" x y))]
-    ))
-(define (pp-map m)
-  (map pp-mapping (seec->list m)))
-
-(define (pp-memory m)
-    (string-join (pp-map m)
-                 (format "~n")))
-(define (local-display-memory m)
-  (for/all ([m m]) (displayln (pp-memory m))))
-
-
 
 
 
@@ -629,7 +387,7 @@
   (define break-context     (seec->list (symbolic-input-stream max-width input-stream-length)))
 
   (define-values (compiled-echo-program compiled-echo-program-mem)
-    (tinyC->tinyA-program (list->seec echo-program) pc0))
+    (tinyC->tinyA-program (list->seec echo-program) init-pc))
   
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -638,7 +396,7 @@
   (define state-after-prelude
     (let ([init-st (tinyA:load-compiled-program compiled-echo-program
                                                 compiled-echo-program-mem
-                                                sp0
+                                                init-sp
                                                 prelude-context
                                                 (list)
                                                 )
@@ -654,7 +412,7 @@
 
 
   ; Is state-before-body a big union? or a big symbolic term?
-  (define state-before-body (prepare-invariant-state))
+  (define state-before-body (prepare-invariant-state compiled-echo))
   (debug-display "state before body:")
   (display-state state-before-body)
   (define state-after-body (do st <- state-before-body
@@ -677,7 +435,7 @@
   ;; no longer satisfies the invariant
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  (define state-before-break (prepare-invariant-state))
+  (define state-before-break (prepare-invariant-state compiled-echo))
   (define state-after-break (do st <- state-before-break
                                (evaluate-prepared-state st break-context)))
 

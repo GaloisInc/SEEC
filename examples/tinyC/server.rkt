@@ -4,8 +4,13 @@
 (require "tinyC.rkt"
          "tinyC-test.rkt"
          "tinyAssembly.rkt"
-         "tinyC-tinyAssembly-compiler.rkt")
+         "tinyC-tinyAssembly-compiler.rkt"
+         "dispatch-query.rkt")
 (require rosette/lib/value-browser) ; debugging
+
+(require (only-in racket/base
+                  values))
+
 
 (module+ test (require rackunit
                        rackunit/text-ui
@@ -191,6 +196,7 @@ void main(int MAXCONN) {
                server-loop-body)
         ))
 
+
 (define server-declaration (tinyC:make-declaration
                             (string "main")
                             ; function arguments
@@ -203,8 +209,34 @@ void main(int MAXCONN) {
                                   )
                             server-body))
 (define server-program (list server-declaration))
+(define compiled-server
+  ((compiler-compile tinyC-compiler) (list->seec server-program)))
 
-#;(tinyC:display-program (list->seec server-program))
+
+
+
+(define server-extra-function
+  (list (tinyC:make-declaration (string "server")
+                                 ; function arguments
+                                (list (tinyC ("MAXCONN" int))
+                                      )
+                                ; local declarations
+                                (list (tinyC ("stack" (array int ,MAXLEN)))
+                                      (tinyC ("head"  int))
+                                      (tinyC ("buf"   (array int 2)))
+                                      )
+                                server-body
+                                )
+        (tinyC:make-declaration (string "main")
+                                (list (tinyC ("MAXCONN" int))
+                                      )
+                                (list) ; no local declaration
+                                (list (tinyC (CALL "server" (cons "MAXCONN" nil))))
+                                )))
+
+(tinyC:display-program (list->seec server-program))
+(display-tinyA-lang-expression compiled-server)
+
 
 
 (module+ test
@@ -221,7 +253,7 @@ void main(int MAXCONN) {
  
 
   
-  (define server-test
+  (define server-test-1
     (parameterize ([debug? #f]
                    [max-fuel 1000])
     (tinyC:run server-program
@@ -237,18 +269,152 @@ void main(int MAXCONN) {
                      (list->seec (list 0))     ; QUIT
                      )
                )))
-  (check-equal? (tinyC:state->trace server-test)
+  (check-equal? (tinyC:state->trace server-test-1)
                 (list->seec (list 1 2 200 1 100 0))
                 )
-  )
 
-#;(parameterize ([debug? #t])
-  (define server-test-quit
-    (tinyA:run server-program
+
+  (parameterize ([debug? #f]
+               [max-fuel 1000]
+               )
+    (define server-test-2
+      (tinyA:run server-extra-function
                (list 10)
-               (list (list->seec (list 1 0))
-                     (list->seec (list 2))
+               (list (list->seec (list 1 555)); PUSH
+                     (list->seec (list 2))  ; POP
+                     (list->seec (list 0))  ; QUIT
                      )
                ))
-  (display-state server-test-quit)
+    (check-equal? (tinyA:state-trace server-test-2)
+                  (list->seec (list 555))
+                  ))
+
+
+  (parameterize ([debug? #f]
+                 [max-fuel 1000]
+                 )
+    (define server-test-3
+      (tinyA:run server-extra-function
+               (list 10)
+               (list (list->seec (list 1 100)) ; PUSH 100
+                     (list->seec (list 3))     ; SIZE
+                     (list->seec (list 1 200)) ; PUSH 200
+                     (list->seec (list 3))     ; SIZE
+                     (list->seec (list 2))     ; POP
+                     (list->seec (list 3))     ; SIZE
+                     (list->seec (list 2))     ; POP
+                     (list->seec (list 3))     ; SIZE
+                     (list->seec (list 0))     ; QUIT
+                     )
+               ))
+  (check-equal? (tinyA:state-trace server-test-3)
+                (list->seec (list 1 2 200 1 100 0))
+                )
+
+
+  (define server-test-4
+      (tinyA:run server-program
+               (list 10)
+               (list (list->seec (list 1 100)) ; PUSH 100
+                     (list->seec (list 3))     ; SIZE
+                     (list->seec (list 1 200)) ; PUSH 200
+                     (list->seec (list 3))     ; SIZE
+                     (list->seec (list 2))     ; POP
+                     (list->seec (list 3))     ; SIZE
+                     (list->seec (list 2))     ; POP
+                     (list->seec (list 3))     ; SIZE
+                     (list->seec (list 0))     ; QUIT
+                     )
+               ))
+  (check-equal? (tinyA:state-trace server-test-4)
+                (list->seec (list 1 2 200 1 100 0))
+                )
+
+  ))
+
+(define (synthesize-dispatch-gadgets)
+
+  #;(define-symbolic* invariant-pc integer?)
+  (define invariant-pc 101)
+  (define (invariant-holds st)
+    (equal? (tinyA:state-pc st) invariant-pc))
+
+  (define max-width 2)
+  (define input-stream-length 2)
+  #;(define prelude-context   (seec->list (symbolic-input-stream max-width input-stream-length)))
+  (define prelude-context (list))
+  #;(define loop-body-context (seec->list (symbolic-input-stream max-width input-stream-length)))
+  (define loop-body-context (list (list->seec (list 1 100)) ; PUSH
+                                  (list->seec (list 2))     ; POP
+                                  ))
+  #;(define break-context     (seec->list (symbolic-input-stream max-width input-stream-length)))
+  (define break-context (list (list->seec (list 0))))
+
+  (define-values (compiled-server-program compiled-server-program-mem)
+    (tinyC->tinyA-program (list->seec server-program) init-pc))
+
+
+  (define state-after-prelude
+    (let ([init-st (tinyA:load-compiled-program compiled-server-program
+                                                compiled-server-program-mem
+                                                init-sp
+                                                prelude-context
+                                                (list 10) ; max number of iterations--is this symbolic?
+                                                )
+                   ])
+      (eval-statement-wait (max-fuel) init-st)))
+
+  (define state-before-body (prepare-invariant-state compiled-server))
+  (debug-display "state before body:")
+  (display-state state-before-body)
+  (define state-after-body (do st <- state-before-body
+                               (evaluate-prepared-state st loop-body-context)))
+
+  ; Current loop spec: output any trace
+  (define (loop-body-spec st1 st2)
+    (equal? (seec-length (tinyA:state-trace st2))
+            (+ 1 (seec-length (tinyA:state-trace st1)))
+            ))
+
+  (define state-before-break (prepare-invariant-state compiled-server))
+  (define state-after-break (do st <- state-before-break
+                               (evaluate-prepared-state st break-context)))
+
+  (define (test-simultaneously)
+    (define sol
+      (synthesize #:forall (list state-before-body state-before-break)
+                  #:assume (assert (and (invariant-holds state-before-body)
+                                        (invariant-holds state-before-break)
+                                        ))
+                  #:guarantee (assert (and (invariant-holds state-after-prelude)
+                                           (invariant-holds state-after-body)
+                                           (loop-body-spec state-before-body state-after-body)
+                                           (not (invariant-holds state-after-break))
+                                      ))
+                  ))
+    (if (unsat? sol)
+        (displayln "Synthesis failed")
+        (begin
+          (displayln "Synthesis succeeded")
+
+          (define-values (prelude-context-concrete
+                          loop-context-concrete
+                          break-context-concrete)
+            (let ([contexts (concretize (list prelude-context loop-body-context break-context)
+                                        sol)])
+              (values (first contexts)
+                      (second contexts)
+                      (third contexts))))
+          (displayln (format "Prelude context: ~a" prelude-context-concrete))
+          (displayln (format "Loop context: ~a" loop-context-concrete))
+          (displayln (format "Break context: ~a" break-context-concrete))
+
+          ))
+    )
+  (test-simultaneously)
+
+
   )
+
+(parameterize ([debug? #t])
+  (time (synthesize-dispatch-gadgets)))

@@ -49,6 +49,10 @@
                                       (list)))
                   (seec-singleton 6)))
 
+  ; Eval-expr
+  (parameterize ([debug? #f])
+    (check-equal? (tinyA:eval-expr (tinyA ("x"[1])) state-example)
+
   ;;;;;;;;;;;;;;;;;;;;
   ; Password checker ;
   ;;;;;;;;;;;;;;;;;;;;
