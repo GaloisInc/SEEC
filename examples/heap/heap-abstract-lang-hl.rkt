@@ -13,8 +13,6 @@
 ; heap-loc version
 ; Making a higher-abstraction model which described the content of a heap
 ; and which can be compiled (non-deterministically) into a multiple equivalent heaps
-; TODO: Need to update the pointers when freeing a block
-
 (define-grammar abstract-model
   (pointer ::= (P natural selector) N)
   (selector ::= a b)
@@ -80,8 +78,33 @@
     [(abstract-model (any h:heap))
      h]))
 
-; decrease all pointers bigger (or equal to n)
+; decrease all pointers bigger
 (define (abs-shift-pointer n p)
+  (match p
+    [(abstract-model (P m:natural s:selector))
+     (if (< n m)
+         (abstract-model (P ,(- m 1) ,s))
+         (if (equal? n m)
+             (abstract-model N)
+             p))]
+    [(abstract-model N)
+     p]))
+
+; mark dangling pointer as -1
+(define (abs-shift-pointer-dangling n p)
+  (match p
+    [(abstract-model (P m:natural s:selector))
+     (if (< n m)
+         (abstract-model (P ,(- m 1) ,s))
+         (if (equal? n m)
+             (abstract-model (P -1 ,s))
+             p))]
+    [(abstract-model N)
+     p]))
+
+
+; this version has a bug, decreased pointers equal to n which results in wrongly adjusting pointers
+(define (abs-shift-pointer-bug n p)
   (match p
     [(abstract-model (P m:natural s:selector))
      (if (<= n m)
@@ -212,10 +235,51 @@
 
 (define-language abstract-lang
   #:grammar abstract-model
-  #:expression interaction #:size 4
-  #:context state #:size 10
-  #:link (lambda (s i) (cons i s))
+  #:expression state #:size 10
+  #:context interaction #:size 3
+  #:link cons
   #:evaluate (uncurry abs-interpret-interaction))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; PREDICATES over abstract-model
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; abs-dangling? -> true if there are any dangling (-1) pointers in the state
+(define (abs-val-dangling? v)
+  (match v
+    [(abstract-model (P -1 any))
+     #t]
+    [(abstract-model any)
+     #f]))
+
+(define (abs-buf-dangling? b)
+  (match b
+    [(abstract-model nil)
+     #f]
+    [(abstract-model (cons v:any b+:any))
+     (or (abs-val-dangling? v)
+         (abs-buf-dangling? b+))]))
+
+(define (abs-block-dangling? b)
+  (match b
+    [(abstract-model (v1:any v2:any))
+     (or (abs-val-dangling? v1)
+         (abs-val-dangling? v2))]))
+
+(define (abs-heap-dangling? h)
+  (match h
+    [(abstract-model nil)
+     #f]
+    [(abstract-model (cons p:block h+:heap))
+     (or (abs-block-dangling? p)
+         (abs-heap-dangling? h+))]))
+
+(define (abs-state-dangling? s)
+  (match s
+    [(abstract-model (b:any h:any))
+     (or (abs-buf-dangling? b)
+         (abs-heap-dangling? h))]))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -341,3 +405,24 @@
 
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; QUERY over the abstract-model
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; initial state is ademostate
+(define (demo-behavior0 p b)
+  (match p
+    [(cons a s)
+     (equal? s ademostate)]))
+
+; returns a symbolic abstract state and a list of variables
+(define (make-symbolic-abstract-state)
+  (let*
+      ([ab0 (abstract-model value 2)]
+       [ab1 (abstract-model value 2)]
+       [ab2 (abstract-model value 2)]
+       [ab3 (abstract-model value 2)]
+       [ab* (abstract-model (cons ,ab0 (cons ,ab1 (cons ,ab2 (cons ,ab3 nil)))))]
+       [ah* (abstract-model heap 4)]
+       [as* (abstract-model (,ab* ,ah*))])
+    (cons as* (list ab0 ab1 ab2 ab3 ah*))))

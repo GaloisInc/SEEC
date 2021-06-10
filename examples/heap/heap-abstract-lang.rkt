@@ -41,7 +41,6 @@
      a1]
     [(abstract-model b)
      a2]))
-
     
 (define (block-nth p n)
   (match p
@@ -76,8 +75,33 @@
     [(abstract-model (any h:heap))
      h]))
 
-; decrease all pointers bigger (or equal to n)
+; decrease all pointers bigger
 (define (abs-shift-pointer n p)
+  (match p
+    [(abstract-model (P m:natural s:selector))
+     (if (< n m)
+         (abstract-model (P ,(- m 1) ,s))
+         (if (equal? n m)
+             (abstract-model N)
+             p))]
+    [(abstract-model N)
+     p]))
+
+; flag dangling pointers
+(define (abs-shift-pointer-alt n p)
+  (match p
+    [(abstract-model (P m:natural s:selector))
+     (if (< n m)
+         (abstract-model (P ,(- m 1) ,s))
+         (if (equal? n m)
+             (abstract-model (P -1 ,s))
+             p))]
+    [(abstract-model N)
+     p]))
+
+
+; this version has a bug, decreased pointers equal to n which results in wrongly adjusting pointers
+(define (abs-shift-pointer-bug n p)
   (match p
     [(abstract-model (P m:natural s:selector))
      (if (<= n m)
@@ -85,6 +109,7 @@
          p)]
     [(abstract-model N)
      p]))
+
 
 (define (abs-shift-value n v)
   (match v
@@ -110,6 +135,19 @@
      (abstract-model (,(abs-shift-buf n b) ,(abs-shift-heap n h)))]))
 
 ; free the block pointed at by bl in b
+(define (abs-free-fixed b h bl)
+  (let* ([p (nth b bl)]) ; get the pointer
+    (match p
+      [(abstract-model (P n:natural a))
+       (let* ([b+ (replace b bl (abstract-model N))]
+              [h+ (drop-nth n h)]
+              [b++ (abs-shift-buf n b+)]
+              [h++ (abs-shift-heap n h+)])
+        (abs-state b++ h++))]
+      [any
+       (assert #f)])))
+
+; This version of abs-free doesn't force the selector to be "a"
 (define (abs-free b h bl)
   (let* ([p (nth b bl)]) ; get the pointer
     (match p
@@ -121,6 +159,7 @@
         (abs-state b++ h++))]
       [any
        (assert #f)])))
+
 
 (define/debug #:suffix (abs-alloc b h bl)
   (begin
@@ -201,11 +240,50 @@
 
 (define-language abstract-lang
   #:grammar abstract-model
-  #:expression interaction #:size 4
-  #:context state #:size 10
-  #:link (lambda (s i) (cons i s))
-  #:evaluate (uncurry abs-interpret-interaction))
+  #:expression state #:size 10
+  #:context action #:size 3
+  #:link cons
+  #:evaluate (uncurry abs-interpret-action))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; PREDICATES over abstract-model
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; abs-dangling? -> true if there are any dangling (-1) pointers in the state
+(define (abs-val-dangling? v)
+  (match v
+    [(abstract-model (P -1 any))
+     #t]
+    [(abstract-model any)
+     #f]))
+
+(define (abs-buf-dangling? b)
+  (match b
+    [(abstract-model nil)
+     #f]
+    [(abstract-model (cons v:any b+:any))
+     (or (abs-val-dangling? v)
+         (abs-buf-dangling? b+))]))
+
+(define (abs-block-dangling? b)
+  (match b
+    [(abstract-model (v1:any v2:any))
+     (or (abs-val-dangling? v1)
+         (abs-val-dangling? v2))]))
+
+(define (abs-heap-dangling? h)
+  (match h
+    [(abstract-model nil)
+     #f]
+    [(abstract-model (cons p:block h+:heap))
+     (or (abs-block-dangling? p)
+         (abs-heap-dangling? h+))]))
+
+(define (abs-state-dangling? s)
+  (match s
+    [(abstract-model (b:any h:any))
+     (or (abs-buf-dangling? b)
+         (abs-heap-dangling? h))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Pretty-printing
@@ -280,7 +358,16 @@
        (display-abs-heap h))]))
 
 
-
+(define (display-abs-witness witness)
+  (if witness
+      (let* ([lwl-abstract (unpack-language-witness witness)])
+        (displayln "State: ")
+        (display-abs-state (first lwl-abstract))
+        (displayln "steps, under interaction...")
+        (display (second lwl-abstract))
+        (displayln ", to state: ")
+        (display-abs-state (fourth lwl-abstract)))
+      (displayln "No witness found")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; TESTING abstract-model
@@ -317,3 +404,74 @@
 (define ademoheap (abstract-model (cons (0 0) nil)))
 (define ademostate (abstract-model (,ademobuf ,ademoheap)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; QUERY over the abstract-model
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; initial state is ademostate
+(define (demo-behavior0 p b)
+  (match p
+    [(cons a s)
+     (equal? s ademostate)]))
+
+; returns a symbolic abstract state and a list of variables
+(define (make-symbolic-abstract-state)
+  (let*
+      ([ab0 (abstract-model value 2)]
+       [ab1 (abstract-model value 2)]
+       [ab2 (abstract-model value 2)]
+       [ab3 (abstract-model value 2)]
+       [ab* (abstract-model (cons ,ab0 (cons ,ab1 (cons ,ab2 (cons ,ab3 nil)))))]
+       [ah* (abstract-model heap 4)]
+       [as* (abstract-model (,ab* ,ah*))])
+    (cons as* (list ab0 ab1 ab2 ab3 ah*))))
+
+(define (make-small-abstract-state)
+  (let*
+      ([ab0 (abstract-model value 2)]
+       [ab1 (abstract-model value 2)]
+       [ab2 (abstract-model value 2)]
+       [ab3 (abstract-model value 2)]
+       [ab* (abstract-model (cons ,ab0 (cons ,ab1 (cons ,ab2 (cons ,ab3 nil)))))]
+       [ablock (abstract-model block 3)]
+       [ah* (abstract-model (cons ,ablock nil))]
+       [as* (abstract-model (,ab* ,ah*))])
+    (cons as* (list ab0 ab1 ab2 ab3 ah*))))
+
+
+(define (with-abstract-schema q)
+    (let* ([assert-store (asserts)]
+           [as* (make-small-abstract-state)])
+      (let* ([w (q (car as*))])
+        (clear-asserts!)
+        (for-each (lambda (arg) (assert arg)) assert-store)
+        w)))
+
+; resulting state is demostate
+(define (demo-behavior1 p b)
+  (let
+      ([ademostate+ (abs-interpret-action (abstract-model (alloc 0)) ademostate)])
+    (equal? b ademostate+)))
+
+(define (demo-behavior1t p b)
+  #t)
+
+; -- this works but slow, will try again with a sketch
+(define (am-q0) 
+  (display-abs-witness (first (find-gadget abstract-lang demo-behavior0))))
+
+; -- this works! around 7 seconds
+(define (am-q0s)
+  (let* ([sv (make-symbolic-abstract-state)])
+    (display-abs-witness (first (find-gadget abstract-lang demo-behavior0 #:expr (car sv))))))
+
+
+; -- not working yet?
+; -- should be able to find ademostate after (free 1), and then alloc 1
+(define (am-q1) 
+  (display-abs-witness (first (find-gadget abstract-lang demo-behavior1))))
+
+
+(define (am-q1s)
+  (let* ([sv (make-symbolic-abstract-state)])
+    (display-abs-witness (first (find-gadget abstract-lang demo-behavior1 #:expr (car sv))))))

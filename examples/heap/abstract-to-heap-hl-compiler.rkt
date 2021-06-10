@@ -58,7 +58,7 @@
             (list )
             (assert #f))
         (if (nondet!) ; if true, then block is empty [but only if n is still bigger than the sel], otherwise pick from sel
-            (cons -1 (generate-permutation+ (- n 1) sel)) ; generate an empty block TODO: make this a freelist
+            (cons -1 (generate-permutation+ (- n 1) sel)) ; generate an empty block
             (let* ([vl (pick-one-from sel)])
               (cons (car vl) (generate-permutation+ (- n 1) (cdr vl)))))))
   (if (or (< n m)
@@ -68,7 +68,7 @@
         (generate-permutation+ n sel))))
 
 ; Alternative version of generate-permutation which prunes branches earlier at the cost of computation
-; Assume  0 < m <= n
+; Assumes  0 < m <= n
 (define/debug (generate-permutation2 n m)
   (define/debug (generate-permutation2+ n sel)
     (if (equal? n 0)
@@ -83,7 +83,7 @@
         (generate-permutation2+ n sel)))
 
 
-; Version of generate-permutation which also creates a (concecutive free list)
+; Version of generate-permutation which also creates a (consecutive free list)
 ; Freelist blocks contain the previous block in the freelist, at address - (+ n 1).
 ; Since 1 cannot be a previous block, -1 is used to indicate free blocks outside of the freelist
 (define/debug (generate-permutation-fl n m)
@@ -350,98 +350,9 @@
 (define dfl-ad3++ (test-abs-into-heap-fl pfl-test3 ad++)) 
 (define dfl-adbad1++ (test-abs-into-heap-fl pfl-testbad1 ad++)) 
 
-
-
-; decompile an heap-model.state into an abstract-lang.state
-;; In buffer and on the heap, natural in payloads are converted to both pointers and integers in abs
-;(define (lifts-into-abs s)
-;  )
-
-
-; Compare an abstract state and a state
-; two steps: first
-
-; TODO: this is a placeholder
-; abstract.heap -> heap.heap -> list permutations
-(define (equiv-compile-abstract-heap ah h)
-  (list (list 0 1) (list 1 0)))
-
-
-
-;TODO: cons case
-(define (equiv-compile-abstract-heap-real ah h)
-  (match ah
-    [(abstract-model nil)
-     (empty-heap? h) ; no allocated block in h
-     ]
-    [(abstract-model (cons b:block ab+:heap))
-     (match h
-       [(heap-model (cons 1 (cons 2 (cons v1:value (cons v2:value h+:heap)))))
-        (if #t ;(equiv-compile-block b v1 v2)
-            #t 
-            #f )]
-       [(heap-model (cons 0 (cons 2 (cons any (cons any h+:heap)))))
-        (equiv-compile-abstract-heap-real ah h+)]
-       [(heap-model any)
-        #f])]))
-
-
-(define (equiv-compile-abstract-value p av v)
-  (match av
-    [(abstract-model N)
-     (match v
-       [(heap-model null)
-        #t]
-       [(heap-model any)
-        #f])]
-    [(abstract-model (P n:natural s:selector))
-     (match v
-       [(heap-model n+:natural)
-        (let* ([nb (nth p n)]
-               [nloc (block-addr nb)]
-               [nloc+ (abs-select s nloc (+ nloc 1))])
-          (equal? nloc+ n+))]
-       [(heap-model any)
-        #f])]
-    [(abstract-model n:nnvalue)
-     (match v
-       [(heap-model n+:nnvalue)
-        (equal? n n+)]
-       [(heap-model any)
-        #f])]))
-
-; returns #t if pl contains a permutation s.t. ab equiv b
-(define (equiv-compile-abstract-buf pl ab b)
-  (define (equiv-compile-abstract-buf+ p ab b)
-    (match ab
-      [(abstract-model nil)
-       (match b
-         [(heap-model nil) #t]
-         [(heap-model any) #f])]
-      [(abstract-model (cons av:value ab+:buf))
-       (match b
-         [(heap-model (cons v:value b+:buf))
-                      (and (equiv-compile-abstract-value p av v)
-                           (equiv-compile-abstract-buf+ p ab+ b+))]
-         [(heap-model nil) #f])]))
-  (if (empty? pl)
-      #f
-      (or (equiv-compile-abstract-buf+ (car pl) ab b)
-          (equiv-compile-abstract-buf (cdr pl) ab b))))
-
-
-(define (equiv-compile-abstract-state as s)
-  (match s
-    [(heap-model (b:buf h:heap any))
-     (match as
-       [(abstract-model (ab:buf ah:heap))
-        (let* ([pl (equiv-compile-abstract-heap ah h)]) ; p is a list of potential permutations where ah equiv h
-          (equiv-compile-abstract-buf pl ab b))])]))
-
-
 ; Values av and v are equivalent in heap ah and h UP TO n steps
 ; #t if run out of fuel
-(define (bounded-equiv-val ah h n av v)
+(define/debug #:suffix (bounded-equiv-val ah h n av v)
   (match av
     [(abstract-model N)
      (match v
@@ -469,10 +380,8 @@
     [(abstract-model any) ; e.g. P -1 a
      #f]))
          
-
-
 ; buffers ab and b are equivalent in heap ah and h UP TO n steps
-(define (bounded-equiv-buf ah h n ab b)
+(define/debug #:suffix (bounded-equiv-buf ah h n ab b)
     (match ab
       [(abstract-model nil)
        (match b
@@ -511,389 +420,40 @@
 (define demo-fixed-p (make-state-struct dfl-ad-demofixed-p))
 
 
-
 (define-compiler fixed-permutation-to-heap
   #:source abstract-lang
-  #:target heap-lang
+  #:target heap-lang-state
   #:behavior-relation (bounded-equiv-state 3)
-  #:context-relation (lambda (as s) (equal? s (test-abs-into-heap-fl fixed-p as)))
-  #:compile (lambda (e) e))
+  #:context-relation equal?
+  #:compile (lambda (as) (test-abs-into-heap-fl fixed-p as)))
 
 (define-compiler small-fixed-permutation-to-heap
   #:source abstract-lang
-  #:target heap-lang
+  #:target heap-lang-state
   #:behavior-relation (bounded-equiv-state 3)
-  #:context-relation (lambda (as s) (equal? s (test-abs-into-heap-fl smallfixed-p as)))
-  #:compile (lambda (e) e))
+  #:context-relation equal?
+  #:compile (lambda (as) (test-abs-into-heap-fl smallfixed-p as)))
 
 
 (define-compiler abstract-to-heap
   #:source abstract-lang
-  #:target heap-lang
+  #:target heap-lang-state
   #:behavior-relation (bounded-equiv-state 3)
-  #:context-relation (lambda (as s) (equal? s (compile-abs-into-heap-fl 2 as)))
-  #:compile (lambda (e) e))
+  #:context-relation equal?
+  #:compile (lambda (as) (compile-abs-into-heap-fl 2 as)))
 
 (define (atest0) (find-changed-component small-fixed-permutation-to-heap
-                                          #:source-context asmallstate))
+                                          #:source-expr asmallstate))
 
 
 (define (atest1) (find-changed-component fixed-permutation-to-heap
-                                          #:source-context astate))
-(define (atest2) (display-abstract-to-heap
-                  (find-changed-component fixed-permutation-to-heap)))
+                                         #:source-expr astate))
 
-; Test how big fixed-p astate and smallfixed-p are
-; smallfixed : 10 
-; fixed :  > 10
-(define (bench1)
-  (begin
-    (define bs* (heap-model state-con 10))
-    (define as dfl-ad-smallfixed-p)
-    (define sol (solve (assert (equal? bs* as))))
-    (if (unsat? sol)
-        (displayln "unsat")
-        (begin
-          (define bs (concretize bs* sol))          
-          (display-state (make-state-struct bs))))))
-
-; this takes 60ms?
-(define (manual-bench0)
-  (begin
-    (define as dfl-ad-smallfixed-p)
-    (define b0 (heap-model value 1))
-    (define b1 (heap-model value 1))
-    (define b2 (heap-model value 1))
-    (define b3 (heap-model value 1))
-    (define b* (heap-model (cons ,b0 (cons ,b1 (cons ,b2 (cons ,b3 nil))))))
-    (define h0 (heap-model value 1))
-    (define h1 (heap-model value 1))
-    (define h2 (heap-model value 1))
-    (define h3 (heap-model value 1))
-    (define h4 (heap-model value 1))
-    (define h5 (heap-model value 1))
-    (define h6 (heap-model value 1))
-    (define h7 (heap-model value 1))   
-    (define h* (heap-model (cons ,h0 (cons ,h1 (cons ,h2 (cons ,h3 (cons ,h4 (cons ,h5 (cons ,h6 (cons ,h7 nil))))))))))
-    (define p* (heap-model pointer 1))
-    (define s* (heap-model (,b* ,h* ,p*)))
-    (define sol (solve (assert (equal? s* as))))
-    (if (unsat? sol)
-        (displayln "unsat")
-        (begin
-          (define s (concretize s* sol))          
-          (display-state (make-state-struct s))))))
-
-; this takes 1 minutes
-(define (manual-bench1)
-  (begin
-    (define as dfl-ad-smallfixed-p)
-    (define b* (heap-model buf 5))
-    (define h* (heap-model heap 9))
-    (define p* (heap-model pointer 1))
-    (define s* (heap-model (,b* ,h* ,p*)))
-    (define sol (solve (assert (equal? s* as))))
-    (if (unsat? sol)
-        (displayln "unsat")
-        (begin
-          (define s (concretize s* sol))          
-          (display-state (make-state-struct s))))))
-
-
-; should be unsat
-(define (manual-bench2)
-  (begin
-    (define as ademostate)
-    (define s* demo-fixed-p)
-    (define sol (verify (assert ((bounded-equiv-state 3) as s*))))
-    (if (unsat? sol)
-        (displayln "unsat")
-        (displayln "sat"))))
-
-
-; can we find an action that breaks the equivalence between asmallstate and s*
-(define (manual-test0)
-  (begin
-    (define as ademostate)
-    (define s* demo-fixed-p)
-    (define i* (heap-model action 3))
-    (define s+* (interpret-action i* s*))
-    (define as+* (abs-interpret-action i* as))
-    (define sol (verify (assert ((bounded-equiv-state 3) as+* s+*))))
-    (if (unsat? sol)
-        (displayln "unsat")
-        (begin
-          (displayln "sat")
-          (define i (concretize i* sol))
-          (define s+ (interpret-action i s*))
-          (define as+ (abs-interpret-action i as))
-          (displayln "Over state")
-          (display-abs-state as)
-          (display "Action ")
-          (displayln i)
-          (displayln "Results in abstract.state :")
-          (display-abs-state as+)
-          (displayln "and heap.state :")
-          (display-state s+)))))
-
-; same but with interaction
-(define (manual-test1)
-  (begin
-    (define as ademostate)
-    (define s* demo-fixed-p)
-    (define i* (heap-model interaction 4))
-    (define s+* (interpret-interaction i* s*))
-    (define as+* (abs-interpret-interaction i* as))
-    (define sol (verify (assert ((bounded-equiv-state 3) as+* s+*))))
-    (if (unsat? sol)
-        (displayln "unsat")
-        (begin
-          (displayln "sat")
-          (define i (concretize i* sol))
-          (define s+ (interpret-interaction i s*))
-          (define as+ (abs-interpret-interaction i as))
-          (displayln "Over state")
-          (display-abs-state as)
-          (display "Action ")
-          (displayln i)
-          (displayln "Results in abstract.state :")
-          (display-abs-state as+)
-          (displayln "and heap.state :")
-          (display-state s+)))))
-
-(define (manual-test2)
-  (begin
-    (define ab0 (abstract-model value 1))
-    (define ab1 (abstract-model value 1))
-    (define ab2 (abstract-model value 1))
-    (define ab3 (abstract-model value 1))
-    (define ab* (abstract-model (cons ,ab0 (cons ,ab1 (cons ,ab2 (cons ,ab3 nil))))))
-    (define ablock (abstract-model block 3))
-    (define ah* (abstract-model (cons ,ablock nil)))
-    (define as* (abstract-model (,ab* ,ah*)))
-;    (define as* (abstract-model state 6))
-    (define s* (make-state-struct (test-abs-into-heap-fl smallfixed-p as*)))
-    (define i* (heap-model action 3))
-    (define s+* (interpret-action i* s*))
-    (define as+* (abs-interpret-action i* as*))
-    (define sol (verify (assert ((bounded-equiv-state 3) as+* s+*))))
-    (if (unsat? sol)
-        (displayln "unsat")
-        (begin
-          (displayln "sat")
-          (define i (concretize i* sol))
-          (define s (concretize s* sol))
-          (define as (concretize as* sol))
-          (define s+ (interpret-action i s))
-          (define as+ (abs-interpret-action i as))
-          (displayln "Over state")
-          (display-abs-state as)
-          (displayln "which compiled to state")
-          (display-state s)
-          (display "Action ")
-          (displayln i)
-          (displayln "Results in abstract.state :")
-          (display-abs-state as+)
-          (displayln "and heap.state :")
-          (display-state s+)))))
-
-; Same as manual-test2 except with a schema as target instead of computed target, around 10x slower.
-(define (manual-test3)
-  (begin
-    (define ab0 (abstract-model value 1))
-    (define ab1 (abstract-model value 1))
-    (define ab2 (abstract-model value 1))
-    (define ab3 (abstract-model value 1))
-    (define ab* (abstract-model (cons ,ab0 (cons ,ab1 (cons ,ab2 (cons ,ab3 nil))))))
-    (define ablock (abstract-model block 3))
-    (define ah* (abstract-model (cons ,ablock nil)))
-    (define as* (abstract-model (,ab* ,ah*)))    
-    (define b0 (heap-model value 1))
-    (define b1 (heap-model value 1))
-    (define b2 (heap-model value 1))
-    (define b3 (heap-model value 1))
-    (define b* (heap-model (cons ,b0 (cons ,b1 (cons ,b2 (cons ,b3 nil))))))
-    (define h0 (heap-model value 1))
-    (define h1 (heap-model value 1))
-    (define h2 (heap-model value 1))
-    (define h3 (heap-model value 1))
-    (define h4 (heap-model value 1))
-    (define h5 (heap-model value 1))
-    (define h6 (heap-model value 1))
-    (define h7 (heap-model value 1))   
-    (define h* (heap-model (cons ,h0 (cons ,h1 (cons ,h2 (cons ,h3 (cons ,h4 (cons ,h5 (cons ,h6 (cons ,h7 nil))))))))))
-    (define p* (heap-model pointer 1))
-    (define ss* (heap-model (,b* ,h* ,p*)))
-    (assert (equal? ss* (test-abs-into-heap-fl smallfixed-p as*)))
-    (define s* (make-state-struct ss*))
-    (define i* (heap-model action 3))
-    (define s+* (interpret-action i* s*))
-    (define as+* (abs-interpret-action i* as*))
-    (define sol (verify (assert ((bounded-equiv-state 3) as+* s+*))))
-    (if (unsat? sol)
-        (displayln "unsat")
-        (begin
-          (displayln "sat")
-          (define i (concretize i* sol))
-          (define s (concretize s* sol))
-          (define as (concretize as* sol))
-          (define s+ (interpret-action i s))
-          (define as+ (abs-interpret-action i as))
-          (displayln "Over state")
-          (display-abs-state as)
-          (displayln "which compiled to state")
-          (display-state s)
-          (display "Action ")
-          (displayln i)
-          (displayln "Results in abstract.state :")
-          (display-abs-state as+)
-          (displayln "and heap.state :")
-          (display-state s+)))))
-
-; Same as manual-test0 but with any permutation
-; TODO: change to compile-abs-into-head-fl
-; Still debuging generate-permutation
-(define (manual-test4)
-  (begin
-    (define as ademostate)
-    (let*-values
-     ([(s* nondet*) (capture-nondeterminism #:nondet #t (make-state-struct (compile-abs-into-heap-fl 2 as)))])
-     (define i* (heap-model action 3))
-     (define s+* (interpret-action i* s*))
-     (define as+* (abs-interpret-action i* as))
-     (define sol (verify (assert ((bounded-equiv-state 3) as+* s+*))))
-     (if (unsat? sol)
-         (displayln "unsat")
-         (begin
-           (displayln "sat")
-           (define i (concretize i* sol))
-           (define s (concretize s* sol))
-           (define nondet (concretize nondet* sol))
-           (define s+ (interpret-action i s))
-           (define as+ (abs-interpret-action i as))
-           (displayln "Over state")
-           (display-abs-state as)
-           (displayln "compiled as state")
-           (display-state s)
-           (display "Action ")
-           (displayln i)
-           (displayln "Results in abstract.state :")
-           (display-abs-state as+)
-           (displayln "and heap.state :")
-           (display-state s+)
-           (displayln "which are equivalent?")
-           (displayln ((bounded-equiv-state 3) as+ s+)))))))
-
-(define (manual-test4i)
-  (begin
-    (define as ademostate)
-    (let*-values
-     ([(s* nondet*) (capture-nondeterminism #:nondet #t (make-state-struct (compile-abs-into-heap-fl 2 as)))])
-     (define i* (heap-model interaction 4))
-     (define s+* (interpret-interaction i* s*))
-     (define as+* (abs-interpret-interaction i* as))
-     (define sol (verify (assert ((bounded-equiv-state 3) as+* s+*))))
-     (if (unsat? sol)
-         (displayln "unsat")
-         (begin
-           (displayln "sat")
-           (define i (concretize i* sol))
-           (define s (concretize s* sol))
-           (define nondet (concretize nondet* sol))
-           (define s+ (interpret-action i s))
-           (define as+ (abs-interpret-interaction i as))
-           (displayln "Over state")
-           (display-abs-state as)
-           (displayln "compiled as state")
-           (display-state s)
-           (display "Interaction ")
-           (displayln i)
-           (displayln "Results in abstract.state :")
-           (display-abs-state as+)
-           (displayln "and heap.state :")
-           (display-state s+)
-           (displayln "which are equivalent?")
-           (displayln ((bounded-equiv-state 3) as+ s+)))))))
-
-
-; like manual-test4 but using a schematic abstract state as
-; find (alloc 0) with interpret-alloc-free-old, (free 1) with interp-alloc-free
-(define (manual-test5)
-  (begin
-    (define ab0 (abstract-model value 2))
-    (define ab1 (abstract-model value 2))
-    (define ab2 (abstract-model value 2))
-    (define ab3 (abstract-model value 2))
-    (define ab* (abstract-model (cons ,ab0 (cons ,ab1 (cons ,ab2 (cons ,ab3 nil))))))
-    (define ablock (abstract-model block 3))
-    (define ah* (abstract-model (cons ,ablock nil)))
-    (define as* (abstract-model (,ab* ,ah*)))
-    (let*-values
-     ([(s* nondet*) (capture-nondeterminism #:nondet #t (make-state-struct (compile-abs-into-heap-fl 2 as*)))])
-     (define i* (heap-model action 3))
-     (define s+* (interpret-action i* s*))
-     (define as+* (abs-interpret-action i* as*))
-     (define sol (verify (assert ((bounded-equiv-state 3) as+* s+*))))
-     (if (unsat? sol)
-         (displayln "unsat")
-         (begin
-           (displayln "sat")
-           (define as (concretize as* sol))
-           (define i (concretize i* sol))
-           (define s (concretize s* sol))
-           (define s+ (interpret-action i s))
-           (define as+ (abs-interpret-action i as))
-           (displayln "Over state")
-           (display-abs-state as)
-           (displayln "compiled as state")
-           (display-state s)
-           (display "Action ")
-           (displayln i)
-           (displayln "Results in abstract.state :")
-           (display-abs-state as+)
-           (displayln "and heap.state :")
-           (display-state s+)
-           (displayln "which are equivalent?")
-           (displayln ((bounded-equiv-state 3) as+ s+)))))))
-
-; should be unsat
-(define (manual-test-compile)
-  (begin
-    (define as ademostate)
-    (let*-values
-     ([(s* nondet) (capture-nondeterminism #:nondet #t (make-state-struct (compile-abs-into-heap 2 as)))])
-      (define sol (verify (assert ((bounded-equiv-state 3) as s*))))
-      (if (unsat? sol)
-          (displayln "unsat")
-          (begin
-            (displayln "sat")
-            (define s (concretize s* sol))
-            (displayln "State")
-            (display-abs-state as)
-            (displayln "compiled as state")
-            (display-state s)
-            (displayln "is equiv?")
-            (displayln ((bounded-equiv-state 3) as s)))))))
-
-; should be unsat
-(define (manual-test-compile-fl)
-  (begin
-    (define as ademostate)
-    (let*-values
-     ([(s* nondet) (capture-nondeterminism #:nondet #t (make-state-struct (compile-abs-into-heap-fl 2 as)))])
-      (define sol (verify (assert ((bounded-equiv-state 3) as s*))))
-      (if (unsat? sol)
-          (displayln "unsat")
-          (begin
-            (displayln "sat")
-            (define s (concretize s* sol))
-            (displayln "State")
-            (display-abs-state as)
-            (displayln "compiled as state")
-            (display-state s)
-            (displayln "is equiv?")
-            (displayln ((bounded-equiv-state 3) as s)))))))
-
+(define (atest2)
+  (let* ([sv (make-symbolic-abstract-state)])
+    (display-abstract-to-heap
+     (find-changed-component small-fixed-permutation-to-heap
+                             #:source-expr (car sv)))))
 
 
 (define i-test1 (abstract-model (cons (copy 1 3) (cons (free (P 0 a)) nil))))  ; access to a block which has been freed
@@ -905,3 +465,13 @@
                         (abs-interpret-saction i-test1b
                                                (abs-interpret-action i-test1a ademostate))))
 
+; Call query q with an abstract heap schema
+(define (with-heap-schema q)
+  (let* ([assert-store (asserts)]
+         [as* (make-symbolic-abstract-state)])
+    (let*-values ([(p* nondet*) (capture-nondeterminism #:nondet #t (generate-permutation-fl 2 1))])
+      (let* ([s* (test-abs-into-heap-fl p* (car as*))]
+             [w (q s*)])
+        (clear-asserts!)
+        (for-each (lambda (arg) (assert arg)) assert-store)
+        w))))

@@ -14,11 +14,9 @@
 
 ;
 ; Heap allocator model (buf-loc version)
-; Inspired by ARCHEAP
 ; blocks have the form | In use? | size | payload ... |
 ; blocks in the freelist have the form | 0 | size | fw | bw | ... | 
 ; state is initialize with wilderness (in use? = 0, not in the freelist) and freelist = null
-
 (define-grammar heap-model
   (pointer ::= natural null)
   (offset ::= integer)
@@ -244,7 +242,6 @@
 
 ; init a state with buf size b-i and heap size (in cells) h-i
 ; heap has a wilderness (unused block not in free list) of size (h-i*4)-2
-
 ; buf -> natural -> state*
 (define (init-state b h-i)
   (if (< h-i 1)
@@ -360,19 +357,6 @@
 ; returns new free pointer X new heap
 (define (interpret-alloc-free h n)
   (let* ([newf  (nth h n)] ; get the tail of the free-list
-         [h+ (replace h (- n 2) (heap-model 1))]  ; alloc the head of the free-list
-         [h++ (replace h+ n (heap-model 0))] ; set the payload to 0
-         [h+3 (replace h++ (+ n 1) (heap-model 0))])
-          (match newf
-            [(heap-model nf:natural)
-             (do h+4 <- (replace h+3 (+ nf 1) (heap-model null)) ; change the new head's backward pointer to be null
-                 (cons newf h+4))]
-            [(heap-model null)
-             (cons newf h+3)])))
-
-;old version of interpret-alloc-free which doesn't reset the payload to 0, found this bug with abstract-state
-(define (interpret-alloc-free-old h n)
-  (let* ([newf  (nth h n)] ; get the tail of the free-list
          [h+ (replace h (- n 2) (heap-model 1))]) ; alloc the head of the free-list
           (match newf
             [(heap-model nf:natural)
@@ -388,7 +372,6 @@
 ;; (2) add p to the fp list
 ;; (3) set prev-in-use (at p+sz) to 0
 ;;; Returns the updated heap
-
 (define (interpret-free h f p)
   (match p
     [(heap-model n:natural)
@@ -484,13 +467,28 @@
              [(heap-model (b:buf h:heap p:pointer))
               (cons inte (make-state b h p))])))
 
+(define heap-lang-link-state
+  (lambda (inte state)
+           (match state
+             [(heap-model (b:buf h:heap p:pointer))
+              (cons inte (make-state b h p))])))
+
+
 (define-language heap-lang
   #:grammar heap-model
   #:expression interaction #:size 4
   #:context state-con #:size 10
   #:link heap-lang-link
   #:evaluate (uncurry interpret-interaction))
-              
+
+(define-language heap-lang-state
+  #:grammar heap-model
+  #:expression state-con #:size 10
+  #:context action #:size 3
+  #:link heap-lang-link-state
+  #:evaluate (uncurry interpret-action))
+
+
 
 (define (synthesize-interaction-gadget size ctx spec)
   (let* ([sol (find-gadget heap-lang

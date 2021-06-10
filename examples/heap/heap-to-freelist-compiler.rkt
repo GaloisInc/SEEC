@@ -66,11 +66,11 @@
 
 
 (define-compiler heap-to-freelist
-  #:source heap-lang
+  #:source heap-lang-state
   #:target freelist-lang
   #:behavior-relation (lambda (s f) (equal? (compile-heap-to-freelist s) f))
-  #:context-relation (lambda (s f) (equal? (compile-heap-to-freelist (make-state-struct s)) f))
-  #:compile compile-interaction)
+  #:context-relation (lambda (i fi) (equal? (compile-interaction i) fi))
+  #:compile (lambda (s) (compile-heap-to-freelist (make-state-struct s))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -82,11 +82,11 @@
       (let* ([lwl-heap (unpack-language-witness (first witnesses))]
              [lwl-freelist (unpack-language-witness (second witnesses))])
         (displayln "State: ")
-        (display-state (make-state-struct (second lwl-heap)))
+        (display-state (make-state-struct (first lwl-heap)))
         (displayln "... has freelist:")
-        (displayln (second lwl-freelist))
+        (displayln (first lwl-freelist))
         (display "... and steps, under interaction ")
-        (display (first lwl-heap))
+        (display (second lwl-heap))
         (displayln ", to state: ")
         (display-state (fourth lwl-heap))
         (displayln "... with freelist: ")
