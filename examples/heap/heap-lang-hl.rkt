@@ -242,7 +242,6 @@
 
 ; init a state with buf size b-i and heap size (in cells) h-i
 ; heap has a wilderness (unused block not in free list) of size (h-i*4)-2
-
 ; buf -> natural -> state*
 (define (init-state b h-i)
   (if (< h-i 1)
@@ -315,7 +314,7 @@
         (displayln "SAT"))))
 
 
-; calculate the address of a heap-loc in the heap
+; calculates the address of a heap-loc in the heap
 (define (heap-loc-addr hl)
   (match hl
     [(heap-model n:natural)
@@ -385,7 +384,6 @@
 ;; (2) add p to the fp list
 ;; (3) set prev-in-use (at p+sz) to 0
 ;;; Returns the updated heap
-
 (define (interpret-free h f p)
   (match p
     [(heap-model n:natural)

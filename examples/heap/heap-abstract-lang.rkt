@@ -451,16 +451,15 @@
 (define (demo-behavior1 p b)
   (let
       ([ademostate+ (abs-interpret-action (abstract-model (alloc 0)) ademostate)])
-    (equal? b ademostate+)))
+    (equal? b ademostate)))
 
 (define (demo-behavior1t p b)
   #t)
 
-; -- this works but slow, will try again with a sketch
+; -- much slower vs. sketched version (am-q0s)
 (define (am-q0) 
   (display-abs-witness (first (find-gadget abstract-lang demo-behavior0))))
 
-; -- this works! around 7 seconds
 (define (am-q0s)
   (let* ([sv (make-symbolic-abstract-state)])
     (display-abs-witness (first (find-gadget abstract-lang demo-behavior0 #:expr (car sv))))))
