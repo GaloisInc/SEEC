@@ -15,12 +15,13 @@
 (require rosette/lib/value-browser) ; debugging
 
 (provide (all-defined-out))
+(use-contracts-globally #t)
 
 
 (define/contract (tinyA:store-insn pc stmt p mem)
-  (-> tinyA-program-counter? tinyA-statement? syntax-proc-name? tinyA-memory?
-      tinyA-memory?)
-  (tinyA:store-mem-sorted pc (tinyA (,p ,stmt)) mem))
+  (-> tinyA-program-counter? tinyA-statement? syntax-proc-name? tinyA-insn-store?
+      tinyA-insn-store?)
+  (tinyA:store-insn-sorted pc (tinyA (,p ,stmt)) mem))
 
 ; Compile statements into low-level forms. Replace structured control-flow
 ; with jumps
@@ -29,8 +30,8 @@
 ; Return both the updated memory and the PC that points to the next address that
 ; has not yet been written to.
 (define/contract (tinyC->tinyA-statement stmt p init-pc mem)
-  (-> tinyC-statement? syntax-proc-name? tinyA-program-counter? tinyA-memory?
-      (values integer? tinyA-memory?))
+  (-> tinyC-statement? syntax-proc-name? tinyA-program-counter? tinyA-insn-store?
+      (values integer? tinyA-insn-store?))
   (match stmt
     ; Replace if statement with jmpz
     [(tinyC (IF e:expr t:statement f:statement))
@@ -159,7 +160,7 @@
   (-> tinyC-declaration? tinyA-program-counter?
       (values tinyA-declaration?
               tinyA-program-counter?
-              tinyA-memory?))
+              tinyA-insn-store?))
 
   (let* ([F (declaration->frame decl)]
          [p (tinyC:declaration->name decl)]
@@ -181,7 +182,7 @@
 (define/contract (tinyC->tinyA-program P pc)
   (-> tinyC-prog? tinyA-program-counter?
       (values tinyA-global-store?
-              tinyA-memory?))
+              tinyA-insn-store?))
   (match P
     [(tinyC nil)
      (values (tinyA nil) (tinyA nil))]
@@ -199,8 +200,8 @@
       (listof (curry seec-list-of? integer?))
       (listof tinyA-val?)
       (failure/c tinyA:state?))
-  (let-values ([(G mem) (tinyC->tinyA-program P pc0)])
-    (tinyA:load-compiled-program G mem sp0 buf vals)))
+  (let-values ([(G insns) (tinyC->tinyA-program P pc0)])
+    (tinyA:load-compiled-program G insns (tinyA nil) sp0 buf vals)))
 
 
  ; constraint: sp <= pc?
@@ -251,8 +252,8 @@
                        (equal? ctx-src ctx-target))
   ; Expressions in the source are global stores, while in the target they are
   ; global stores, stack pointer, and memory together
-  #:compile (λ (g-src) (let-values ([(g-target mem) (tinyC->tinyA-program g-src init-pc)])
-                         (tinyA (,g-target ,init-sp ,mem))))
+  #:compile (λ (g-src) (let-values ([(g-target insns) (tinyC->tinyA-program g-src init-pc)])
+                         (tinyA (,g-target ,init-sp nil ,insns))))
   )
 
 
@@ -272,8 +273,8 @@
   #:link (λ (ctx expr)
            (match (cons ctx expr)
              [(cons (tinyA+ (args:vallist input:list<vallist>))
-                    (tinyA (g:global-store sp:stack-pointer m:memory)))
-              (tinyA:load-compiled-program g m sp (seec->list input) (seec->list args))]
+                    (tinyA (g:global-store sp:stack-pointer m:memory insns:insn-store)))
+              (tinyA:load-compiled-program g insns m sp (seec->list input) (seec->list args))]
              ))
   #:evaluate (λ (p) (do st <- p
                         (tinyA:eval-statement (max-fuel) st)))

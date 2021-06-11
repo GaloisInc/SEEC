@@ -386,8 +386,9 @@
   (define loop-body-context (seec->list (symbolic-input-stream max-width input-stream-length)))
   (define break-context     (seec->list (symbolic-input-stream max-width input-stream-length)))
 
-  (define-values (compiled-echo-program compiled-echo-program-mem)
+  (define-values (compiled-echo-program compiled-echo-program-insns)
     (tinyC->tinyA-program (list->seec echo-program) init-pc))
+
   
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -395,7 +396,8 @@
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   (define state-after-prelude
     (let ([init-st (tinyA:load-compiled-program compiled-echo-program
-                                                compiled-echo-program-mem
+                                                compiled-echo-program-insns
+                                                (tinyA nil) ; mem
                                                 init-sp
                                                 prelude-context
                                                 (list)
@@ -403,6 +405,7 @@
                    ])
       (eval-statement-wait (max-fuel) init-st)))
 
+  (debug-display "Done evaluating state-after-prelude")
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; 4. synthesize loop-body-context such that, for all (symbolic)
@@ -418,6 +421,7 @@
   (define state-after-body (do st <- state-before-body
                                (evaluate-prepared-state st loop-body-context)))
 
+  (debug-display "Done evaluating state-before-body")
 
   ; Try changing to 2+length(trace st1) instead of 1+length(trace st1)
   (define (loop-body-spec st1 st2)
@@ -439,7 +443,7 @@
   (define state-after-break (do st <- state-before-break
                                (evaluate-prepared-state st break-context)))
 
-
+  (debug-display "Done evaluating state-after-body")
 
   ;; synthesize a prelude-context such that the invariant holds
   (define (test-prelude)
@@ -702,3 +706,5 @@ different context, the (0 0) input would have clinched it...
 ; Prelude context: ((0 (2)) (0 (2284)))
 ; Loop context: ((0 (8367)))
 ; Break context: ((0 (0)))
+
+; After separating out memory from instructions: 25sec

@@ -250,11 +250,12 @@ void main(int MAXCONN) {
                ))
   (display-state server-test-quit)
   )
+
  
 
   
   (define server-test-1
-    (parameterize ([debug? #f]
+    (parameterize ([debug? #t]
                    [max-fuel 1000])
     (tinyC:run server-program
                (list 10)
@@ -274,7 +275,7 @@ void main(int MAXCONN) {
                 )
 
 
-  (parameterize ([debug? #f]
+  (parameterize ([debug? #t]
                [max-fuel 1000]
                )
     (define server-test-2
@@ -290,7 +291,7 @@ void main(int MAXCONN) {
                   ))
 
 
-  (parameterize ([debug? #f]
+  (parameterize ([debug? #t]
                  [max-fuel 1000]
                  )
     (define server-test-3
@@ -309,9 +310,9 @@ void main(int MAXCONN) {
                ))
   (check-equal? (tinyA:state-trace server-test-3)
                 (list->seec (list 1 2 200 1 100 0))
-                )
+                ))
 
-
+  (debug? #t)
   (define server-test-4
       (tinyA:run server-program
                (list 10)
@@ -330,14 +331,28 @@ void main(int MAXCONN) {
                 (list->seec (list 1 2 200 1 100 0))
                 )
 
-  ))
+  #;(define test-state (tinyA:load compiled-server
+                                 init-pc
+                                 init-sp
+                                 (list )   ; input
+                                 (list 10) ; MAXCONN
+                                 ))
+
+
+
+  )
 
 (define (synthesize-dispatch-gadgets)
 
   #;(define-symbolic* invariant-pc integer?)
-  (define invariant-pc 101)
+  (define invariant-pc 102)
   (define (invariant-holds st)
-    (equal? (tinyA:state-pc st) invariant-pc))
+    (and (equal? (tinyA:state-pc st) invariant-pc)
+         (not (equal? (tinyA:eval-expr (tinyA (& "buf")) st)
+                      (tinyA:eval-expr (tinyA (& ("buf"[0]))) st)))
+         (not (equal? (tinyA:eval-expr (tinyA (& "buf")) st)
+                      (tinyA:eval-expr (tinyA (& ("buf"[1]))) st)))
+         ))
 
   (define max-width 2)
   (define input-stream-length 2)
@@ -357,6 +372,7 @@ void main(int MAXCONN) {
   (define state-after-prelude
     (let ([init-st (tinyA:load-compiled-program compiled-server-program
                                                 compiled-server-program-mem
+                                                (tinyA nil) ; mem
                                                 init-sp
                                                 prelude-context
                                                 (list 10) ; max number of iterations--is this symbolic?
@@ -364,11 +380,10 @@ void main(int MAXCONN) {
                    ])
       (eval-statement-wait (max-fuel) init-st)))
 
-  (define state-before-body (prepare-invariant-state compiled-server))
-  (debug-display "state before body:")
-  (display-state state-before-body)
-  (define state-after-body (do st <- state-before-body
-                               (evaluate-prepared-state st loop-body-context)))
+  (displayln "Got state after prelude:")
+  (display-state state-after-prelude)
+
+
 
   ; Current loop spec: output any trace
   (define (loop-body-spec st1 st2)
@@ -376,7 +391,25 @@ void main(int MAXCONN) {
             (+ 1 (seec-length (tinyA:state-trace st1)))
             ))
 
+
+  (define state-before-body (prepare-invariant-state compiled-server))
+  #;(define state-before-body state-after-prelude)
+  #;(debug-display "state before body:")
+  #;(display-state state-before-body)
+  #;(debug-display "invariant holds? ~a" (invariant-holds state-before-body))
+  #;(debug-display "MAXCONN: ~a" (tinyA:eval-expr (tinyA "MAXCONN") state-before-body))
+
+  (define state-after-body (do st <- state-before-body
+                               (evaluate-prepared-state st loop-body-context)))
+  #;(debug-display "state after body:")
+  #;(display-state state-after-body)
+  #;(debug-display "invariant holds? ~a" (invariant-holds state-after-body))
+  #;(debug-display "MAXCONN: ~a" (tinyA:eval-expr (tinyA "MAXCONN") state-after-body))
+  #;(debug-display "loop-body-spec: ~a" (loop-body-spec state-before-body state-after-body))
+
+
   (define state-before-break (prepare-invariant-state compiled-server))
+  #;(define state-before-break state-after-prelude)
   (define state-after-break (do st <- state-before-break
                                (evaluate-prepared-state st break-context)))
 
@@ -384,7 +417,11 @@ void main(int MAXCONN) {
     (define sol
       (synthesize #:forall (list state-before-body state-before-break)
                   #:assume (assert (and (invariant-holds state-before-body)
+                                        (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-body)
+                                           2)
                                         (invariant-holds state-before-break)
+                                        (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-break)
+                                           2)
                                         ))
                   #:guarantee (assert (and (invariant-holds state-after-prelude)
                                            (invariant-holds state-after-body)
@@ -392,6 +429,23 @@ void main(int MAXCONN) {
                                            (not (invariant-holds state-after-break))
                                       ))
                   ))
+
+    ;; Debugging version
+    #;(define sol (synthesize #:forall (list)
+;                            #:assume (assert (invariant-holds state-before-body)
+;                                             (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-body) 2)
+;                                             )
+                            #:guarantee
+                            (assert (and
+                               (invariant-holds state-before-body)
+                               (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-body)
+                                  2)
+                               (not (<= (tinyA:eval-expr (tinyA (& ("buf"[0]))) state-before-body)
+                                        (tinyA:eval-expr (tinyA "buf") state-before-body)
+                                        (tinyA:eval-expr (tinyA (& ("buf"[9]))) state-before-body)))
+                               (not (and (invariant-holds state-after-body)
+                                         (loop-body-spec state-before-body state-after-body)))))
+                            ))
     (if (unsat? sol)
         (displayln "Synthesis failed")
         (begin
@@ -399,22 +453,37 @@ void main(int MAXCONN) {
 
           (define-values (prelude-context-concrete
                           loop-context-concrete
-                          break-context-concrete)
-            (let ([contexts (concretize (list prelude-context loop-body-context break-context)
+                          break-context-concrete
+                          state-before-loop
+                          state-after-loop)
+            (let ([contexts (concretize (list prelude-context loop-body-context break-context state-before-body state-after-body)
                                         sol)])
               (values (first contexts)
                       (second contexts)
-                      (third contexts))))
+                      (third contexts)
+                      (fourth contexts)
+                      (fifth contexts))))
           (displayln (format "Prelude context: ~a" prelude-context-concrete))
           (displayln (format "Loop context: ~a" loop-context-concrete))
           (displayln (format "Break context: ~a" break-context-concrete))
 
+          (displayln "State before loop:")
+          (display-state state-before-loop)
+
+          (displayln (format "MAXCONN before loop: ~a" (tinyA:eval-expr (tinyA "MAXCONN") state-before-loop)))
+          (displayln "")
+
+          (displayln "Got state after loop:")
+          (display-state state-after-loop)
+
           ))
     )
+    
   (test-simultaneously)
 
 
   )
 
-(parameterize ([debug? #t])
+(parameterize ([debug? #t]
+               [max-fuel 1000])
   (time (synthesize-dispatch-gadgets)))

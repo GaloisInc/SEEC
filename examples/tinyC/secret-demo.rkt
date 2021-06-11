@@ -100,7 +100,7 @@
              (list (list->seec input)))) ; The input to INPUT
 
 
-(define (experiment-symbolic)
+#;(define (experiment-symbolic)
   (define symbolic-pc (cond
                         [(havoc!) 99]
                         [else 103]))

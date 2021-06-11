@@ -10,6 +10,7 @@
          simple-call-example
          password-checker
          password-checker-with-arg
+         array-test
          )
 
 (module+ test (require rackunit
@@ -116,6 +117,33 @@
                    (list ))))
 
 
+;;;;;;;;;
+; array ;
+;;;;;;;;;
+
+  (define array-test (tinyC:make-declaration
+               (string "main")
+               (list )
+               (list (tinyC ("arr" (array int 10)))
+                     (tinyC ("x" int))
+                     (tinyC ("p" (* int)))
+                     )
+               (list (tinyC (ASSIGN ("arr"[0]) 100))
+                     (tinyC (ASSIGN ("arr"[1]) 101))
+                     (tinyC (ASSIGN ("arr"[9]) 109))
+                     (tinyC (ASSIGN "x" 500))
+                     (tinyC (OUTPUT "arr")) ; Should output the address?
+                     (tinyC (OUTPUT (* "arr"))) ; Should output 100
+                     (tinyC (OUTPUT ("arr"[0]))) ; Should output 100
+                     (tinyC (OUTPUT (& ("arr"[0])))) ; should output the address
+                     (tinyC (OUTPUT (& ("arr"[1])))) ; should output the address + 1
+                     )))
+
+  (define run-array-test (tinyC:run (list array-test)
+                             (list)
+                             (list)))
+
+  #;(tinyC:display-state run-array-test)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 ; stack overflow attack ;

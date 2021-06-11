@@ -19,7 +19,8 @@
          tinyA-val?
          tinyA-loc?
          tinyA-offset?
-         tinyA-object?
+         #;tinyA-object?
+         tinyA-insn-store?
          tinyA-program-counter?
          tinyA-stack-pointer?
          tinyA-frame?
@@ -43,9 +44,9 @@
          ; "tinyA:" prefix
          (prefix-out tinyA: (combine-out
             store-mem
-            store-mem-sorted
+            store-insn-sorted
             lookup-mem
-            naive-lookup-mem
+            #;naive-lookup-mem
             declaration->pc
             declaration->frame
             (struct-out state)
@@ -103,7 +104,7 @@
 
   ; A memory object is either an integer or a statement tagged with it's
   ; containing procedure 'm'
-  (object       ::= val (proc-name statement))
+  #;(object       ::= val (proc-name statement))
   ; The program counter 'pc' and stack pointer 'sp' are natural numbers
   (program-counter ::= loc)
   (stack-pointer   ::= loc)
@@ -116,7 +117,11 @@
 
   ; A memory 'M' is a map from locations to objects
   (memory       ::= list<mem-mapping>)
-  (mem-mapping  ::= (loc object))
+  (mem-mapping  ::= (loc val #;object))
+
+  (insn-store   ::= list<insn-mapping>)
+  (insn-mapping ::= (loc insn-object))
+  (insn-object  ::= (proc-name statement))
 
   ; The global store 'G' is a map from procedure names 'm' to the address
   ; of the procedure's first statement and the procedure's stack frame layout
@@ -162,7 +167,12 @@
 ;
 ; Note: making this struct `transparent` leads to less reliable union splitting
 ; behavior.
-(struct state (global-store pc sp memory input-buffer trace))
+;
+; Adding a separate memory for instructions to keep them separate
+(struct state (global-store pc sp memory instructions input-buffer trace))
+(define/contract (state->memory st)
+  (-> state? tinyA-memory?)
+  (state-memory st))
 
 (define update-state
   (λ (st #:increment-pc [inc-pc #f] ; If the pc has already been abstracted
@@ -172,21 +182,23 @@
                                 (state-pc st))]
          #:sp           [sp (state-sp st)]
          #:memory       [mem (state-memory st)]
+         #:instructions [insns (state-instructions st)]
          #:snoc-trace   [v #f]
          #:input-buffer [buf (state-input-buffer st)]
          #:trace        [tr  (if v
                                  (seec-append (state-trace st) (seec-singleton v))
                                  (state-trace st))]
          )
-    (state (state-global-store st) pc sp mem buf tr)))
+    (state (state-global-store st) pc sp mem  insns buf tr)))
 (define initial-state
   (λ (#:global-store G
       #:pc           pc
       #:sp           sp
+      #:instructions insns
       #:memory       mem
       #:input-buffer [buf (list )]
       )
-    (state G pc sp mem buf seec-empty)))
+    (state G pc sp mem insns buf seec-empty)))
 
 ;;;;;;;;;;;;;;;;;;;;;
 ;; Pretty printing ;;
@@ -201,8 +213,15 @@
 
   (printf "== Input stream: ~a~n" (state-input-buffer st))
 
+  (printf "~n==Global store==~n")
+  (display-global-store (state-global-store st))
+
   (printf "~n==Memory==~n")
   (tinyC:display-memory (state-memory st))
+
+  (printf "~n==Instructions==~n")
+  (tinyC:display-memory (state-instructions st))
+
   )
 
 #;(display-state (state (tinyA nil)
@@ -217,23 +236,32 @@
 ;; Memory access ;;
 ;;;;;;;;;;;;;;;;;;;
 
-; Lookup the object at address 'l' in memory 'M'. If 'l' is not recorded in
-; 'M', return 0. (Assume all memory is initialized to 0.)
-(define/contract (lookup-mem l mem)
-  (-> tinyA-loc? tinyA-memory? tinyA-object?)
+(define (lookup-in-map l mem default)
   (for*/all ([l l #:exhaustive]
              [mem mem]) ; Both these for/all clauses are important to make sure
                         ; the output of this function is a concise union, and not too large
     (match mem
-    [(tinyA nil) 0]
-    [(tinyA (cons (l+:loc obj+:object) m+:memory))
+    [(tinyA nil) default]
+    [(tinyA (cons (l+:loc obj+:any) m+:any))
      (for/all ([l+ l+ #:exhaustive])
        (if (equal? l l+)
            obj+
-           (lookup-mem l m+)))]
+           (lookup-in-map l m+ default)))]
      )))
 
-(define/contract (naive-lookup-mem l mem)
+; Lookup the object at address 'l' in memory 'M'. If 'l' is not recorded in
+; 'M', return 0. (Assume all memory is initialized to 0.)
+(define/contract (lookup-mem l mem)
+  (-> tinyA-loc? tinyA-memory? tinyA-val?)
+  (lookup-in-map l mem 0)
+  )
+
+; Produces a pair of a proc-name and statement
+(define/contract (lookup-insn l mem)
+  (-> tinyA-loc? tinyA-insn-store? (failure/c tinyA-insn-object?))
+  (lookup-in-map l mem *fail*))
+
+#;(define/contract (naive-lookup-mem l mem)
   (-> tinyA-loc? tinyA-memory? tinyA-object?)
     (match mem
     [(tinyA nil) 0]
@@ -286,23 +314,22 @@
 
 ; Fetch the instruction at the current PC. If the PC does not point to an
 ; instruction in memory, return *fail*
-(define/contract (pc->instruction pc mem)
-  (-> tinyA-program-counter? tinyA-memory? (failure/c tinyA-statement?))
+(define/contract (pc->instruction pc insn-store)
+  (-> tinyA-program-counter? tinyA-insn-store? (failure/c tinyA-statement?))
   #;(debug-display "(pc->instruction ~a) in the following memory..." pc)
-  #;(debug (thunk (for/all ([mem mem])
-                  (tinyC:display-memory mem))))
-  (match (lookup-mem pc mem)
+  #;(debug (thunk (tinyC:display-memory insn-store)))
+  (match (lookup-insn pc insn-store)
     [(tinyA (_:proc-name stmt:statement)) stmt]
     [_ *fail*]))
 
 (define/contract (state->instruction st)
   (-> state? (failure/c tinyA-statement?))
-  (pc->instruction (state-pc st) (state-memory st)))
+  (pc->instruction (state-pc st) (state-instructions st)))
 
 
 (define/contract (state->pc-declaration st)
     (-> state? (failure/c tinyA-declaration?))
-    (match (lookup-mem (state-pc st) (state-memory st))
+    (match (lookup-insn (state-pc st) (state-instructions st))
       [(tinyA (f:proc-name _:statement))
        (proc-name->declaration f (state-global-store st))]
       [_ *fail*]
@@ -310,9 +337,9 @@
 
 ; Fetch the procedure name that encompasses the current PC. If the PC does not
 ; point to an instruction in memory, return *fail*
-(define/contract (pc->proc-name pc mem)
-  (-> tinyA-program-counter? tinyA-memory? (failure/c syntax-proc-name?))
-  (match (lookup-mem pc mem)
+(define/contract (pc->proc-name pc insn-store)
+  (-> tinyA-program-counter? tinyA-insn-store? (failure/c syntax-proc-name?))
+  (match (lookup-insn pc insn-store)
     [(tinyA (p:proc-name _:statement)) p]
     [_ *fail*]))
 
@@ -320,14 +347,14 @@
 ; Look up the stack frame layout of the procedure that includes the currently
 ; executing statement. If the PC does not point to an instruction in memory,
 ; return *fail*
-(define/contract (pc->frame pc mem g)
-  (-> tinyA-program-counter? tinyA-memory? tinyA-global-store? (failure/c tinyA-frame?))
-  (do (<- p (pc->proc-name pc mem))
+(define/contract (pc->frame pc insn-store g)
+  (-> tinyA-program-counter? tinyA-insn-store? tinyA-global-store? (failure/c tinyA-frame?))
+  (do (<- p (pc->proc-name pc insn-store))
       (<- d (proc-name->declaration p g))
       (declaration->frame d)))
 (define/contract (state->frame st)
   (-> state? (failure/c tinyA-frame?))
-  (pc->frame (state-pc st) (state-memory st) (state-global-store st)))
+  (pc->frame (state-pc st) (state-instructions st) (state-global-store st)))
 
 
 ; Compute the size of a stack frame layout
@@ -359,8 +386,8 @@
 ; Invariant: if 'mem' is sorted by key, then '(push-objs l vs mem)' should also be sorted by key.
 ;
 ; Note: the sorting aspect might be less than ideal for symbolic analysis
-(define/contract (push-objs-sorted l objs mem)
-  (-> tinyA-loc? (listof tinyA-object?) tinyA-memory? tinyA-memory?)
+(define (push-objs-sorted l objs mem)
+  ;(-> tinyA-loc? (listof tinyA-object?) tinyA-memory? tinyA-memory?)
   (cond
     [(empty? objs) mem]
     [else
@@ -370,7 +397,7 @@
          [(tinyA nil) (seec-cons (tinyA (,l ,obj))
                                 (push-objs-sorted (+ l 1) objs+ mem))]
 
-         [(tinyA (cons (l+:loc obj+:object) mem+:memory))
+         [(tinyA (cons (l+:loc obj+:any) mem+:any))
           (cond
             ; Replace l↦obj+ with l↦obj
             [(= l l+) (seec-cons (tinyA (,l ,obj))
@@ -387,8 +414,8 @@
     ))
 
 ; Unsorted simpler version, possibly better for symbolic analysis
-(define/contract (push-objs l objs mem)
-  (-> tinyA-loc? (listof tinyA-object?) tinyA-memory? tinyA-memory?)
+(define (push-objs l objs mem)
+  (-> tinyA-loc? (listof tinyA-val?) tinyA-memory? tinyA-memory?)
   (for*/all ([l l #:exhaustive]
              [objs objs]
              [mem mem])
@@ -435,10 +462,10 @@
 ;
 ; Note: the sorting factor might be less than ideal for symbolic analysis
 (define/contract (store-mem l obj mem)
-  (-> tinyA-loc? tinyA-object? tinyA-memory? tinyA-memory?)
+  (-> tinyA-loc? tinyA-val? tinyA-memory? tinyA-memory?)
   (push-objs l (list obj) mem))
-(define/contract (store-mem-sorted l obj mem)
-  (-> tinyA-loc? tinyA-object? tinyA-memory? tinyA-memory?)
+(define (store-insn-sorted l obj mem)
+  (-> tinyA-loc? tinyA-insn-object? tinyA-insn-store? tinyA-insn-store?)
   (push-objs-sorted l (list obj) mem))
 
 
@@ -519,6 +546,8 @@
          )
      ]
 
+    [_ *fail*]
+
     ))
 ; Produce the value associated with the lvalue
 (define/contract (eval-address e st)
@@ -597,7 +626,7 @@
 
   ; Use for/all here first abstracts the pc
   (for*/all ([pc (state-pc st) #:exhaustive]
-             [insn (pc->instruction pc (state-memory st))]
+             [insn (pc->instruction pc (state-instructions st))]
              )
   (debug-display "(eval-statement-1 ~a ~a)" pc insn)
 
@@ -620,17 +649,16 @@
 
     [(tinyA (INPUT e:expr))
      (for/all ([input (state-input-buffer st)])
-       (debug-display "=====================================")
-       (debug-display "=====================================")
-       (debug-display "=====================================")
-       (debug-display "Got input: ~a" input)
-       (debug (thunk (display-state st)))
+       #;(debug-display "=====================================")
+       #;(debug-display "=====================================")
+       #;(debug-display "=====================================")
+       #;(debug-display "Got input: ~a" input)
+       #;(debug (thunk (display-state st)))
 
        (cond
          [(and (list? input) (not (empty? input)))
           (do (<- l (eval-expr e st)) ; e should evaluate to a location
-              (debug-display "~a evaluates to ~a" e l)
-              (debug (thunk (render-value/window l)))
+            #;(debug-display "~a evaluates to ~a" e l)
             #;(debug (thunk (display-state st)))
             (<- m+ (push-objs l (seec->list (first input)) (state-memory st)))
             #;(debug-display "New memory:")
@@ -661,7 +689,7 @@
                        #:memory (store-mem l v (state-memory st))
                        ))]
 
-    [(tinyA HALT) *fail*] ; cannot take a step
+    #;[(tinyA HALT) *fail*] ; cannot take a step
 
     [(tinyA (CALL p:proc-name es:list<expr>))
      #;(render-value/window p)
@@ -691,7 +719,7 @@
                 ; call arguments, return address, and stack pointer into the new frame
                 [m2+  (push-objs (- sp1 (length vs) 2)
                                  (append vs (list sp1 (+ 1 pc1)))
-                                 (state-memory st))]
+                                 (state->memory st))]
                 [m2   (init-frame-arrays F2 sp2 m2+)]
                 [x    (debug (thunk (tinyC:display-memory m2)))]
                 )
@@ -705,7 +733,7 @@
                                                 ; pc2, which depends on sp
          #;(debug-display "Got sp1: ~a" sp1)
          ; Get the current frame layout
-     (do (<- F1 (pc->frame pc (state-memory st) (state-global-store st)))
+     (do (<- F1 (pc->frame pc (state-instructions st) (state-global-store st)))
          #;(debug-display "Got F1: ~a" F1)
          ; Locate the return address on the stack by adding the frame size to
          ; the current stack pointer and adding 1
@@ -752,12 +780,12 @@
 ; Given a memory with a compiled program, initialize the stack at 'i_s' and
 ; invoke 'main' with arguments 'v ...' and with an input buffer 'buf' (racket
 ; list of tinyA-list<integer>)
-(define/contract (load-compiled-program G mem sp buf vals)
-  (-> tinyA-global-store? tinyA-memory? tinyA-stack-pointer? list? (listof tinyA-val?)
+(define/contract (load-compiled-program G insns mem sp buf vals)
+  (-> tinyA-global-store? tinyA-insn-store? tinyA-memory? tinyA-stack-pointer? list? (listof tinyA-val?)
       (failure/c state?)
       )
   (do (<- decl (proc-name->declaration (string "main") G))
-      (<- mem+ (push-objs (- sp (length vals)) vals mem))
+      (<- mem+ (push-objs (- sp (length vals)) vals (tinyA nil)))
       (<- F    (declaration->frame decl))
       (<- sp+  (- sp (frame-size F)))
       (<- mem++ (init-frame-arrays F sp+ mem+))
@@ -765,12 +793,13 @@
                      #:pc           (declaration->pc decl)
                      #:sp           sp+
                      #:memory       mem++
+                     #:instructions insns
                      #:input-buffer buf)
       ))
 
 
 (define-grammar tinyA+ #:extends tinyA
-  (expr ::= (global-store stack-pointer memory)) ; the memory fragment associated with a compiled program
+  (expr ::= (global-store stack-pointer memory insn-store)) ; the memory fragment associated with a compiled program
   (vallist ::= list<val>)
   (vallistlist ::= list<vallist>)
   ; The context consists of (1) the arguments to be passed to 'main'; and (2) a
@@ -781,13 +810,15 @@
 ; For now, just print out the instructions in memory
 (define (display-tinyA-lang-expression expr)
   (match expr
-    [(tinyA (g:global-store sp:stack-pointer mem:memory))
+    [(tinyA (g:global-store sp:stack-pointer mem:memory insns:insn-store))
      (displayln "=global store=")
      (display-global-store g)
      (displayln "=stack pointer=")
      (displayln sp)
      (displayln "=memory=")
      (tinyC:display-memory mem)
+     (displayln "=instruction store=")
+     (tinyC:display-memory insns)
      ]
     ))
 
@@ -804,8 +835,8 @@
   #:link (λ (ctx expr)
            (match (cons ctx expr)
              [(cons (tinyA+ (args:vallist input:list<vallist>))
-                    (tinyA (g:global-store sp:stack-pointer m:memory)))
-              (load-compiled-program g m sp (seec->list input) (seec->list args))]
+                    (tinyA (g:global-store sp:stack-pointer m:memory insns:insn-store)))
+              (load-compiled-program g insns m sp (seec->list input) (seec->list args))]
              ))
   #:evaluate (λ (p) (do st <- p
                         st+ <- (eval-statement (max-fuel) st)
