@@ -344,26 +344,66 @@ void main(int MAXCONN) {
 
 (define (synthesize-dispatch-gadgets)
 
-  #;(define-symbolic* invariant-pc integer?)
-  (define invariant-pc 102)
+#|
+
+  ; Create a symbolic boolean invariant in CNF (language of SMT solvers)
+  (define (symbolic-invariant)
+    (symbolic-CNF))
+
+  (define (symbolic-conjunct width len)
+    (cond
+      [(<= len 0) #t]
+      [else       (and (symbolic-disjunct width) (symbolic-conjunct width (- len 1)))]
+      ))
+  (define (symbolic-disjunct width)
+    (cond
+      [(<= len 0) #f]
+      [else       (or (symbolic-literal) (symbolic-disjunct (- width 1)))]
+      ))
+
+  (define (symbolic-literal)
+    (let ([expr1 (symbolic-expression)]
+          [expr2 (symbolic-expression)])
+      (cond
+        [(havoc!) (equal? expr1 expr2)]
+        [(havoc!) (not (equal? expr1 expr2))]
+        [(havoc!) (< expr1 expr2)]
+        [else     ; constant boolean
+         (define-symbolic* b boolean?)
+         b]
+        )))
+  (define (symbolic-expression st)
+    (cond
+      [(havoc!) ; variable name
+       _]
+      [(havoc!) ; constant integer
+       (define-symbolic* const integer?)
+       const]
+      [else     ; array indexing
+  ]))
+|#
+    
+
+  (define-symbolic* invariant-pc integer?)
+  #;(define invariant-pc 102)
   (define (invariant-holds st)
     (and (equal? (tinyA:state-pc st) invariant-pc)
-         (not (equal? (tinyA:eval-expr (tinyA (& "buf")) st)
+         #;(not (equal? (tinyA:eval-expr (tinyA (& "buf")) st)
                       (tinyA:eval-expr (tinyA (& ("buf"[0]))) st)))
-         (not (equal? (tinyA:eval-expr (tinyA (& "buf")) st)
+         #;(not (equal? (tinyA:eval-expr (tinyA (& "buf")) st)
                       (tinyA:eval-expr (tinyA (& ("buf"[1]))) st)))
          ))
 
   (define max-width 2)
-  (define input-stream-length 2)
-  #;(define prelude-context   (seec->list (symbolic-input-stream max-width input-stream-length)))
-  (define prelude-context (list))
-  #;(define loop-body-context (seec->list (symbolic-input-stream max-width input-stream-length)))
-  (define loop-body-context (list (list->seec (list 1 100)) ; PUSH
+  (define input-stream-length 1)
+  (define prelude-context   (seec->list (symbolic-input-stream max-width input-stream-length)))
+  #;(define prelude-context (list))
+  (define loop-body-context (seec->list (symbolic-input-stream max-width input-stream-length)))
+  #;(define loop-body-context (list (list->seec (list 1 100)) ; PUSH
                                   (list->seec (list 2))     ; POP
                                   ))
-  #;(define break-context     (seec->list (symbolic-input-stream max-width input-stream-length)))
-  (define break-context (list (list->seec (list 0))))
+  (define break-context     (seec->list (symbolic-input-stream max-width input-stream-length)))
+  #;(define break-context (list (list->seec (list 0))))
 
   (define-values (compiled-server-program compiled-server-program-mem)
     (tinyC->tinyA-program (list->seec server-program) init-pc))
@@ -380,8 +420,8 @@ void main(int MAXCONN) {
                    ])
       (eval-statement-wait (max-fuel) init-st)))
 
-  (displayln "Got state after prelude:")
-  (display-state state-after-prelude)
+  #;(displayln "Got state after prelude:")
+  #;(display-state state-after-prelude)
 
 
 
@@ -394,8 +434,9 @@ void main(int MAXCONN) {
 
   (define state-before-body (prepare-invariant-state compiled-server))
   #;(define state-before-body state-after-prelude)
-  #;(debug-display "state before body:")
-  #;(display-state state-before-body)
+  (debug-display "state before body:")
+  (debug (thunk (for/all ([st state-before-body])
+                  (display-state st))))
   #;(debug-display "invariant holds? ~a" (invariant-holds state-before-body))
   #;(debug-display "MAXCONN: ~a" (tinyA:eval-expr (tinyA "MAXCONN") state-before-body))
 
@@ -454,27 +495,27 @@ void main(int MAXCONN) {
           (define-values (prelude-context-concrete
                           loop-context-concrete
                           break-context-concrete
-                          state-before-loop
-                          state-after-loop)
-            (let ([contexts (concretize (list prelude-context loop-body-context break-context state-before-body state-after-body)
+                          #;state-before-loop
+                          #;state-after-loop)
+            (let ([contexts (concretize (list prelude-context loop-body-context break-context #;state-before-body #;state-after-body)
                                         sol)])
               (values (first contexts)
                       (second contexts)
                       (third contexts)
-                      (fourth contexts)
-                      (fifth contexts))))
+                      #;(fourth contexts)
+                      #;(fifth contexts))))
           (displayln (format "Prelude context: ~a" prelude-context-concrete))
           (displayln (format "Loop context: ~a" loop-context-concrete))
           (displayln (format "Break context: ~a" break-context-concrete))
 
-          (displayln "State before loop:")
-          (display-state state-before-loop)
+          #;(displayln "State before loop:")
+          #;(display-state state-before-loop)
 
-          (displayln (format "MAXCONN before loop: ~a" (tinyA:eval-expr (tinyA "MAXCONN") state-before-loop)))
-          (displayln "")
+          #;(displayln (format "MAXCONN before loop: ~a" (tinyA:eval-expr (tinyA "MAXCONN") state-before-loop)))
+          #;(displayln "")
 
-          (displayln "Got state after loop:")
-          (display-state state-after-loop)
+          #;(displayln "Got state after loop:")
+          #;(display-state state-after-loop)
 
           ))
     )

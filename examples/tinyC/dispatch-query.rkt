@@ -80,6 +80,24 @@
       ))
 
 
+  (define (push-objs-symbolic-from-frame sp F mem)
+    (match F
+      [(tinyA nil) mem]
+      [(tinyA (cons (_:var o:offset) F+:frame))
+       ; For regular variables, add a symbolic value
+       (define-symbolic* symbolic-obj integer?)
+       (seec-cons (tinyA (,(+ sp o) ,symbolic-obj))
+                  (push-objs-symbolic-from-frame sp F+ mem))]
+      [(tinyA (cons (_:var o:offset len:natural) F+:frame))
+       ; For array variables, add a concrete pointer for the array, then
+       ; symbolic values for values of the array
+
+       (tinyA:store-mem (+ sp o) (+ 1 sp o)
+                        (push-objs-symbolic (+ 1 sp o) len
+                        (push-objs-symbolic-from-frame sp F+ mem)))]
+      ))
+
+
   ; Append an input stream to that of an existing state
   (define (append-input-stream st new-input)
     (tinyA:update-state st
@@ -140,13 +158,15 @@
            ; call stack with calls and returns; or (2) if the prelude needs to
            ; write additional objects to memory
            F     <- (tinyA:pc->frame pc echo-prog-in-memory g)
+           (debug-display "Got frame ~a" F)
            fsize <- (tinyA:frame-size F)
            sp+   <- (- sp fsize)
-           #;(debug-display "fsize: ~a" fsize)
-           mem+  <- (push-objs-symbolic (- sp fsize) fsize mem)
-           ;mem+  <- (push-objs-symbolic-from-frame sp+ F)
+           (debug-display "sp+: ~a" sp+)
+           (debug-display "fsize: ~a" fsize)
+           ;mem+  <- (push-objs-symbolic (- sp fsize) fsize mem)
+           mem+  <- (push-objs-symbolic-from-frame sp+ F mem)
 
-           #;(display-memory mem+)
+           (display-memory mem+)
 
            (tinyA:initial-state #:global-store g
                                 #:pc pc
