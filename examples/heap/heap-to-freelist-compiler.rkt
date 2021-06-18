@@ -5,7 +5,6 @@
 (require seec/private/util)
 (require seec/private/monad)
 
-;(require racket/contract)
 (provide (all-defined-out))
 (require (file "heap-lang-hl.rkt"))
 (require (file "freelist-lang.rkt"))
@@ -17,28 +16,20 @@
         [(heap-model null)
          (freelist nil)]
         [(heap-model n:natural)       
-         (let* (;[in-use (opt-nth h (- n 2))]
-                ;[size (opt-nth h (- n 1))]
-                [new-p (opt-nth h n)]
+         (let* ([new-p (opt-nth h n)]
                 [bwd-p (opt-nth h (+ n 1))])
            (if (or (failure? bwd-p)
-                   (failure? new-p))
-                     ;(failure? in-use))
+                   (failure? new-p))                
                  #f                  
                  (let* ([rest (compile-into-freelist (- fuel 1) h new-p p)])
                    (if (and (equal? bwd-p bwd) ; check that the backward pointer is set properly
-                            ;(equal? in-use 0)
-                            ;(<= 2 size)
                             rest)
                        (freelist (cons ,n ,rest))
-                       #f))))]))) 
+                       #f))))])))
 
 ; heap-model.state -> (freelist.state + #f)
 (define (compile-heap-to-freelist s)
-  (compile-into-freelist 3 (state->heap s) (state->pointer s) (heap-model null))
-  #;(match s
-    [(heap-model (any h:heap p:pointer))
-                 (compile-into-freelist 3 h p (heap-model null))]))
+  (compile-into-freelist 3 (state->heap s) (state->pointer s) (heap-model null)))
 
 
 
@@ -66,11 +57,11 @@
 
 
 (define-compiler heap-to-freelist
-  #:source heap-lang
+  #:source heap-lang-state
   #:target freelist-lang
   #:behavior-relation (lambda (s f) (equal? (compile-heap-to-freelist s) f))
-  #:context-relation (lambda (s f) (equal? (compile-heap-to-freelist (make-state-struct s)) f))
-  #:compile compile-interaction)
+  #:context-relation (lambda (i fi) (equal? (compile-interaction i) fi))
+  #:compile (lambda (s) (compile-heap-to-freelist (make-state-struct s))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -82,11 +73,11 @@
       (let* ([lwl-heap (unpack-language-witness (first witnesses))]
              [lwl-freelist (unpack-language-witness (second witnesses))])
         (displayln "State: ")
-        (display-state (make-state-struct (second lwl-heap)))
+        (display-state (make-state-struct (first lwl-heap)))
         (displayln "... has freelist:")
-        (displayln (second lwl-freelist))
+        (displayln (first lwl-freelist))
         (display "... and steps, under interaction ")
-        (display (first lwl-heap))
+        (display (second lwl-heap))
         (displayln ", to state: ")
         (display-state (fourth lwl-heap))
         (displayln "... with freelist: ")

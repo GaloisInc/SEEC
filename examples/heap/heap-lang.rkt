@@ -14,11 +14,9 @@
 
 ;
 ; Heap allocator model (buf-loc version)
-; Inspired by ARCHEAP
 ; blocks have the form | In use? | size | payload ... |
 ; blocks in the freelist have the form | 0 | size | fw | bw | ... | 
 ; state is initialize with wilderness (in use? = 0, not in the freelist) and freelist = null
-
 (define-grammar heap-model
   (pointer ::= natural null)
   (offset ::= integer)
@@ -79,11 +77,11 @@
 
 
 ;; lifted list operations
-(define (length s)
+(define (s-length s)
   (match s
     [(heap-model nil) 0]
     [(heap-model (cons any h:any))
-     (+ 1 (length h))]))
+     (+ 1 (s-length h))]))
 
 (define (head s)
   (match s
@@ -110,13 +108,17 @@
       l
       (let  ([tl (tail l)])
           (skip (- n 1) tl))))
-    
+
+
 
 (define (append s1 s2)
   (match s1
     [(heap-model nil) s2]
     [(heap-model (cons hd:any tl:any))
      (heap-model (cons ,hd ,(append tl s2)))]))
+
+(define (drop-nth n l)
+  (append (first-nth n l) (skip (+ n 1) l)))
 
 ; fails if out of bound
 ;(define/debug #:suffix (nth s i)
@@ -130,11 +132,17 @@
 
 (define (opt-nth s i)
   (if (and (<= 0 i)
-           (< i (length s)))
+           (< i (s-length s)))
            
       (nth s i)
       *fail*))
 
+(define (map f l)
+  (match l
+    [(heap-model nil)
+     l]
+    [(heap-model (cons hd:any l+:any))
+     (heap-model (cons ,(f hd) ,(map f l+)))]))
 
 ; add v at the end of list s
 (define (enqueue s v)
@@ -143,6 +151,8 @@
        (heap-model (cons ,v nil))]
       [(heap-model (cons hd:any s+:any))
        (heap-model (cons ,hd ,(enqueue s+ v)))]))
+
+
 
 
 ; replace the ith element in l with v
@@ -193,8 +203,36 @@
     [(heap-model (cons v:any vs+:list<any>))
      (format "~a, ~a" (f v) (print-list f vs+))]))
 
+; return the address of the nth block
+(define (block-addr n)
+  (+ (* n 4) 2))
 
-     
+
+; return #t if h doesn't contain any allocated blocks
+(define (empty-heap? h)
+  (match h
+    [(heap-model nil)
+     #t]
+    [(heap-model (cons v-alloc:natural (cons v-size:natural h+:heap)))
+     (if (equal? v-alloc 0)
+         (empty-heap? (skip v-size h+))
+         #f)]
+    [(heap-model any)
+     #f]))
+
+; return #t if the heap consists of allocated and unallocated blocks of size 2
+(define (valid-heap? h)
+  (match h
+    [(heap-model nil)
+     #t]
+    [(heap-model (cons v-alloc:natural (cons 2:natural (cons any (cons any h+:heap)))))
+     (if (or (equal? v-alloc 0)
+             (equal? v-alloc 1))
+         (valid-heap? h+)
+         #f)]
+    [(heap-model any)
+     #f]))
+
 ; write value at the ith position of cell
 (define (write hp i v)
   ;(-> any/c natural-number/c any/c any/c)
@@ -204,7 +242,6 @@
 
 ; init a state with buf size b-i and heap size (in cells) h-i
 ; heap has a wilderness (unused block not in free list) of size (h-i*4)-2
-
 ; buf -> natural -> state*
 (define (init-state b h-i)
   (if (< h-i 1)
@@ -229,14 +266,14 @@
 
 ; check if p is a valid pointer in s->heap
 (define (state-safe-write i s)
-  (< i (length (state->heap s))))
+  (< i (s-length (state->heap s))))
 
 
 ; check if the size of the buf and heap of the state are exactly bs and hs.
 (define (state-size bs hs)
   (lambda (s)
-    (and (equal? (length (state->buf s)) bs)
-         (equal? (length (state->heap s)) hs))))
+    (and (equal? (s-length (state->buf s)) bs)
+         (equal? (s-length (state->heap s)) hs))))
 
 (define (state-con-size bs hs)
   (lambda (s)
@@ -329,12 +366,12 @@
              (cons newf h+)])))
 
 
+
 ; free block at p in h, adding it to the free-list headed at f
 ;; (1) find the size of block (at p-1)
 ;; (2) add p to the fp list
 ;; (3) set prev-in-use (at p+sz) to 0
 ;;; Returns the updated heap
-
 (define (interpret-free h f p)
   (match p
     [(heap-model n:natural)
@@ -356,7 +393,7 @@
 
 
 
-(define (interpret-action a s)
+(define/debug (interpret-action a s)
  (for/all ([a a])
 ;            [s s])
     (debug-display "~a" a)
@@ -424,16 +461,34 @@
     [(heap-model (cons a:saction setup+:setup))
      (interpret-setup setup+ (interpret-saction a s))]))
 
+(define heap-lang-link
+  (lambda (state inte)
+           (match state
+             [(heap-model (b:buf h:heap p:pointer))
+              (cons inte (make-state b h p))])))
+
+(define heap-lang-link-state
+  (lambda (inte state)
+           (match state
+             [(heap-model (b:buf h:heap p:pointer))
+              (cons inte (make-state b h p))])))
+
+
 (define-language heap-lang
   #:grammar heap-model
   #:expression interaction #:size 4
   #:context state-con #:size 10
-  #:link (lambda (state inte)
-           (match state
-             [(heap-model (b:buf h:heap p:pointer))
-              (cons inte (make-state b h p))]))
+  #:link heap-lang-link
   #:evaluate (uncurry interpret-interaction))
-              
+
+(define-language heap-lang-state
+  #:grammar heap-model
+  #:expression state-con #:size 10
+  #:context action #:size 3
+  #:link heap-lang-link-state
+  #:evaluate (uncurry interpret-action))
+
+
 
 (define (synthesize-interaction-gadget size ctx spec)
   (let* ([sol (find-gadget heap-lang

@@ -20,7 +20,7 @@
 
 
 ;; freelist.action -> freelist.state -> freelist.state
-(define (freelist-action a s)
+(define/debug #:suffix (freelist-action a s)
   (match a
     [(freelist (free n:natural))
      (freelist (cons ,n ,s))]
@@ -43,7 +43,7 @@
 
 (define-language freelist-lang
   #:grammar freelist
-  #:expression interaction #:size 4
-  #:context state #:size 3
-  #:link snoc
+  #:expression state #:size 3
+  #:context interaction #:size 3
+  #:link cons
   #:evaluate (uncurry freelist-interaction))
