@@ -40,6 +40,10 @@
          display-tinyA-lang-expression
          display-tinyA-lang-context
 
+         INPUT
+         IF
+         WHILE
+
          ; For functions that could potentially overlap with tinyC, add a
          ; "tinyA:" prefix
          (prefix-out tinyA: (combine-out
@@ -620,14 +624,20 @@
 ;; Evaluation of statements ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define/contract (input-list->intlist vs output)
-  (-> syntax-input-list? tinyA-trace? (listof integer?))
+(define/contract/debug #:suffix (input-list->intlist vs output)
+  (-> syntax-input-list? tinyA-trace? (failure/c (listof integer?)))
   (match vs
     [(tinyA nil) (list)]
     [(tinyA (cons i:integer vs+:input-list))
-     (cons i (input-list->intlist vs+ output))]
+     (do is+ <- (input-list->intlist vs+ output)
+         (cons i is+)
+         )]
     [(tinyA (cons (TRACE o:natural) vs+:input-list))
-     (cons (seec-ith o output) (input-list->intlist vs+ output))]
+     #;(debug-display "Evaluating a trace object at index ~a in output list ~a" o output)
+     (do i <- (seec-ith (- (seec-length output) o 1) output)
+         is+ <- (input-list->intlist vs+ output)
+         (cons i is+)
+         )]
     ))
 
 ; The true value represents a HALT
@@ -651,6 +661,8 @@
 
     [(tinyA (OUTPUT e:expr))
      (do (<- v (eval-expr e st))
+         #;(debug-display "~a evaluates to ~a" e v)
+         #;(debug (thunk (display-state st)))
          (update-state st
 ;                       #:increment-pc #t
                        #:pc (+ pc 1)
@@ -661,19 +673,19 @@
      (for/all ([input (state-input-buffer st)])
        #;(debug-display "=====================================")
        #;(debug-display "=====================================")
-       (debug-display "=====================================")
+       #;(debug-display "=====================================")
        (debug-display "Got input: ~a" input)
-       #;(debug (thunk (display-state st)))
+       (debug (thunk (display-state st)))
 
        (cond
          [(and (list? input) (not (empty? input)))
           (do (<- l (eval-expr e st)) ; e should evaluate to a location
-            #;(debug-display "~a evaluates to ~a" e l)
+            (debug-display "~a evaluates to ~a" e l)
             #;(debug (thunk (display-state st)))
             (<- is (input-list->intlist (first input) (state-trace st)))
             (<- m+ (push-objs l is (state-memory st)))
-            #;(debug-display "New memory:")
-            #;(debug (thunk (tinyC:display-memory m+)))
+            (debug-display "New memory:")
+            (debug (thunk (tinyC:display-memory m+)))
             (update-state st
                             #:memory m+
                             #:input-buffer (rest input)
@@ -854,3 +866,26 @@
                         (state-trace st+)))
   )
 
+
+;; Shortcuts ;;
+
+
+(define (INPUT arg)
+  (tinyC (INPUT ,arg)))
+(define (& arg)
+  (tinyC (& ,arg)))
+(define (IF b ls1 ls2)
+  (tinyC (IF ,b
+             ,(tinyC:list->statement ls1)
+             ,(tinyC:list->statement ls2))))
+(define (WHILE b ls)
+  (tinyC (WHILE ,b
+                ,(tinyC:list->statement ls))))
+(define (OUTPUT arg)
+  (tinyC (OUTPUT ,arg)))
+(define (CALL p args)
+  (tinyC (CALL ,p ,(list->seec args))))
+(define (ASSIGN x v)
+  (tinyC (ASSIGN ,x ,v)))
+(define (INDEX arr i)
+  (tinyC (,arr[,i])))

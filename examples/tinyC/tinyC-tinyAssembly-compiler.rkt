@@ -201,7 +201,7 @@
 
 (define/contract (tinyA:load P pc0 sp0 buf vals)
   (-> tinyC-prog? tinyA-program-counter? tinyA-stack-pointer? 
-      (listof (curry seec-list-of? integer?))
+      (listof syntax-input-list?)
       (listof tinyA-val?)
       (failure/c tinyA:state?))
   (let-values ([(G insns) (tinyC->tinyA-program P pc0)])
@@ -330,7 +330,8 @@
 
 
 (define (symbolic-arg!)
-  (cond
+  (tinyA input-elem 2)
+  #;(cond
     [(havoc!) (new-integer!)]
     [else     (tinyA (TRACE ,(new-natural!)))]
     ))

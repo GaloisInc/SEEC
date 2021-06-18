@@ -20,75 +20,10 @@
 (use-contracts-globally #t)
 
 
-; server program
-; Inspired by Data-Oriented Programming by Hu et al
-
-#| Original program:
-
-struct server {int *cur_max, total, typ;} *srv;
-int connect_limit = MAXCONN;
-int *size, *type;
-char buf[MAXLEN];
-
-size = &buf[8];
-type = &buf[12];
-
-...
-while (connect_limit--) {
-  readData(sockfd, buf);
-  if (*type == NONE)    break;
-  if (*type == STREAM)  *size = *(srv->cur_max); // truncating the stream?
-  else {
-    srv->typ = *type;
-    srv->total += *size;
-  }
-  ... [use size to determine how long to look ahead at the buffer] ...
-}
-
-|#
-
-
-#| Modified program for tinyC:
-
-void main(int MAXCONN, int MAXLEN) {
-
-  int** srv_cur_max;
-  int* srv_total srv_typ;
-  int connection_limit = MAXCONN;
-  int *size;
-  int *type;
-
-  int buf[MAXLEN];
-  size = &buf[8];
-  type = &buf[12];
-
-  ...
-
-  while (connection_limit > 0) {
-    input(buf);
-    if (*type == 0) { // indicating NONE
-      connection_limit = 0; // CHANGE: we don't have break statements
-    } else if (*type == 1) { // indicating STREAM
-      *size = *srv_cur_max;
-    } else {
-      *srv_typ = *type;
-      *srv_total = *srv_total + *size;
-    }
-    ...
-    connection_limit = connection_limit - 1; 
-  }
-}
-
-|#
-
-
-
-
-
 
 #|
 
-Alternative server
+Server Program
 
 Operations:
 0 - QUIT
@@ -105,25 +40,6 @@ Operations:
 
 (define MAXLEN 10) ; Set to be a concrete natural number
 
-(define (INPUT arg)
-  (tinyC (INPUT ,arg)))
-(define (& arg)
-  (tinyC (& ,arg)))
-(define (IF b ls1 ls2)
-  (tinyC (IF ,b
-             ,(tinyC:list->statement ls1)
-             ,(tinyC:list->statement ls2))))
-(define (WHILE b ls)
-  (tinyC (WHILE ,b
-                ,(tinyC:list->statement ls))))
-(define (OUTPUT arg)
-  (tinyC (OUTPUT ,arg)))
-(define (CALL p args)
-  (tinyC (CALL ,p ,(list->seec args))))
-(define (ASSIGN x v)
-  (tinyC (ASSIGN ,x ,v)))
-(define (INDEX arr i)
-  (tinyC (,arr[,i])))
 
 
 #| Modified program for tinyC:
@@ -131,8 +47,8 @@ Operations:
 void main(int MAXCONN) {
 
   int stack[MAXLEN]; // NOTE: we don't support variable length arrays
-  int head = 0; // index into the stack
   int buf[2];
+  int head = 0; // index into the stack
 
   while (MAXCONN > 0) {
     INPUT(buf);
@@ -142,7 +58,7 @@ void main(int MAXCONN) {
       head = head + 1;
 
     } else if (buf[0] = 2) { // POP
-      output(stack[head]);
+      output(stack[head-1]);
       head = head - 1;
 
     } else if (buf[0] = 3) { // SIZE
@@ -159,6 +75,10 @@ void main(int MAXCONN) {
 
 |#
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Defining the program ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define server-loop-body
               (list (INPUT (tinyC "buf"))
@@ -204,8 +124,8 @@ void main(int MAXCONN) {
                                   )
                             ; local declarations
                             (list (tinyC ("stack" (array int ,MAXLEN)))
-                                  (tinyC ("head"  int))
                                   (tinyC ("buf"   (array int 2)))
+                                  (tinyC ("head"  int))
                                   )
                             server-body))
 (define server-program (list server-declaration))
@@ -237,25 +157,20 @@ void main(int MAXCONN) {
 (tinyC:display-program (list->seec server-program))
 (display-tinyA-lang-expression compiled-server)
 
+(define-values (compiled-server-program compiled-server-program-mem)
+    (tinyC->tinyA-program (list->seec server-program) init-pc))
 
 
+
+;;;;;;;;;;;;;
+;; TESTING ;;
+;;;;;;;;;;;;;
 (module+ test
 
-#;(parameterize ([debug? #t])
-  (define server-test-quit
-    (tinyA:run server-program
-               (list 3)
-               (list (seec-singleton 0)
-                     )
-               ))
-  (display-state server-test-quit)
-  )
-
- 
 
   
   (define server-test-1
-    (parameterize ([debug? #t]
+    (parameterize ([debug? #f]
                    [max-fuel 1000])
     (tinyC:run server-program
                (list 10)
@@ -275,7 +190,7 @@ void main(int MAXCONN) {
                 )
 
 
-  (parameterize ([debug? #t]
+  (parameterize ([debug? #f]
                [max-fuel 1000]
                )
     (define server-test-2
@@ -291,7 +206,7 @@ void main(int MAXCONN) {
                   ))
 
 
-  (parameterize ([debug? #t]
+  (parameterize ([debug? #f]
                  [max-fuel 1000]
                  )
     (define server-test-3
@@ -312,7 +227,6 @@ void main(int MAXCONN) {
                 (list->seec (list 1 2 200 1 100 0))
                 ))
 
-  (debug? #t)
   (define server-test-4
       (tinyA:run server-program
                (list 10)
@@ -340,23 +254,265 @@ void main(int MAXCONN) {
 
 
   (define server-test-5
+  (parameterize ([debug? #f]
+                 [max-fuel 1000]
+                 )
+      (tinyA:run server-program
+               (list 10)
+               (list (list->seec (list 1 200 2)) ; stack[2]=200
+                     (list->seec (list 1 400 4)) ; stack[4]=400
+                     (list->seec (list 2 0 3))   ; POP stack[2]-- output 200
+                     (list->seec (list 2 0 5))   ; POP stack[4]-- output 400
+                     (list->seec (list 3))       ; OUTPUT head should now be = 4
+                     (list->seec (list 0))       ; QUIT
+                     )
+               )))
+  (check-equal? (tinyA:state-trace server-test-5)
+              (list->seec (list 200 400 4)))
+
+
+  (define server-test-6
+  (parameterize ([debug? #f]
+                 [max-fuel 1000]
+                 )
       (tinyA:run server-program
                (list 10)
                (list (list->seec (list 1 100)) ; PUSH 100
-                     (list->seec (list 3))     ; SIZE
-                     (list->seec (list 1 200)) ; PUSH 200
-                     (list->seec (list 3))     ; SIZE
-                     (list->seec (list 2))     ; POP
-                     (list->seec (list 3))     ; SIZE
-                     (list->seec (list 2))     ; POP
-                     (list->seec (list 3))     ; SIZE
+                     (list->seec (list 2))     ; POP 100
+                     (list->seec (list 1 (tinyA (TRACE 0)))) ; PUSH 100 (repeating previous output)
+                     (list->seec (list 2))     ; POP 100
                      (list->seec (list 0))     ; QUIT
                      )
-               ))
+               )))
+  (check-equal? (tinyA:state-trace server-test-6)
+              (list->seec (list 100 100)))
+
 
   )
 
+
+
+;;;;;;;;;;;;;;;
+;; Synthesis ;;
+;;;;;;;;;;;;;;;
+
 (define (synthesize-dispatch-gadgets)
+
+    
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ; First define the invariant ;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+  (define-symbolic* invariant-pc integer?)
+  #;(define invariant-pc 102)
+  (define (invariant-holds st)
+    (and (equal? (tinyA:state-pc st) invariant-pc)
+         ))
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ; Next specify the maximum length and width of input streams ;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+  (define max-width 2)
+  (define input-stream-length 1) ; Can make this 1
+
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ; Define any symbolic variables here ;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+  (define-symbolic* symbolic-i integer?)
+  (assert (<= 0 symbolic-i 9))
+  (define-symbolic* symbolic-c integer?)
+  (define symbolic-vars (list symbolic-i symbolic-c))
+
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ; Define a symbolic prelude context ;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+  (define prelude-context   (seec->list (symbolic-input-stream max-width input-stream-length)))
+  #;(define prelude-context (list))
+  (define state-after-prelude
+    (let ([init-st (tinyA:load-compiled-program compiled-server-program
+                                                compiled-server-program-mem
+                                                (tinyA nil) ; mem
+                                                init-sp
+                                                prelude-context
+                                                ; max number of iterations below--is
+                                                ; this symbolic? This number
+                                                ; doesn't matter as long as it
+                                                ; doesn't disallow any of the
+                                                ; input stream
+                                                (list input-stream-length)
+                                                )
+                   ])
+      (eval-statement-wait (max-fuel) init-st)))
+
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ; Define one ore more loop body contexts, with specs ;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  
+
+  #;(define loop-body-context (symbolic-input-stream+ max-width input-stream-length))
+  #;(define loop-body-context (list (list->seec (list 1 100)) ; PUSH
+                                  (list->seec (list 2))     ; POP
+                                  ))
+
+  ; Basic loop spec: output any trace
+  #;(define (loop-body-spec st1 st2)
+    (equal? (seec-length (tinyA:state-trace st2))
+            (+ 1 (seec-length (tinyA:state-trace st1)))
+            ))
+
+  ; TODO: specs to synthesize
+  ; 1. forall 0 <= i < 10: stack[i]=c
+  ; 2. forall 0 <= i < 10: output stack[i]
+  ; 3. stack[i]=stack[j]
+  ; 4. head = stack[i]
+  ; 5. stack[i] = head
+  ; 6. head = head + 1
+  ; 7. head = head - 1
+
+
+  ; (Currently loop-body-context is failing the assertion when symbolic,
+  ;  succeeding when concrete)
+  (define loop-body-context (list (list->seec (list 1 symbolic-c symbolic-i))))
+  ; Spec: stack[i]=c
+  (define (loop-body-spec st1 st2)
+    (equal? (tinyA:eval-expr (tinyA ("stack"[ ,symbolic-i ])) st2)
+            symbolic-c))
+
+
+
+  (define state-before-body (prepare-invariant-state compiled-server))
+  #;(define state-before-body state-after-prelude)
+  (debug-display "state before body:")
+  (debug (thunk (for/all ([st state-before-body])
+                  (display-state st))))
+
+  (define state-after-body (parameterize ([debug? #t])
+                             (do st <- state-before-body
+                               (evaluate-prepared-state st loop-body-context))))
+
+
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ; Define the break context ;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+  ; Symbolic version fails when combined with the concrete context above...
+  #;(define break-context     (seec->list (symbolic-input-stream max-width input-stream-length)))
+  (define break-context (list (list->seec (list 0))))
+
+
+  (define state-before-break (prepare-invariant-state compiled-server))
+  #;(define state-before-break state-after-prelude)
+  (define state-after-break (do st <- state-before-break
+                               (evaluate-prepared-state st break-context)))
+
+
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; Do the synthesis query and output results ;;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+  ; TODO: generalize state-before-break/state-before-body into a list that each
+  ; has specs and this query can take any number of them
+  (define (test-simultaneously)
+    (define sol
+      ; Add symbolic-i and symbolic-c to forall quantifier list
+      (synthesize #:forall (list state-before-body state-before-break symbolic-vars)
+                  #:assume (assert (and (invariant-holds state-before-body)
+                                        ; In addition to the generic invariant, we also need to add 
+                                        (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-body)
+                                           2)
+                                        (invariant-holds state-before-break)
+                                        (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-break)
+                                           2)
+                                        ))
+                  #:guarantee (assert (and (invariant-holds state-after-prelude)
+                                           (invariant-holds state-after-body)
+                                           (loop-body-spec state-before-body state-after-body)
+                                           (not (invariant-holds state-after-break))
+                                      ))
+                  ))
+
+    ;; Debugging version (for body context only)
+    #;(define sol (synthesize #:forall (list)
+;                            #:assume (assert (invariant-holds state-before-body)
+;                                             (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-body) 2)
+;                                             )
+                            #:guarantee
+                            (assert (and
+                               (invariant-holds state-before-body)
+                               (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-body)
+                                  2)
+                               (not (and (invariant-holds state-after-body)
+                                         (loop-body-spec state-before-body state-after-body)))))
+                            ))
+    (if (unsat? sol)
+        (displayln "Synthesis failed")
+        (begin
+          (displayln "Synthesis succeeded")
+
+          (define-values (prelude-context-concrete
+                          loop-context-concrete
+                          break-context-concrete
+                          state-before-loop
+                          state-after-loop)
+            (let ([contexts (concretize (list prelude-context loop-body-context break-context state-before-body state-after-body)
+                                        sol)])
+              (values (first contexts)
+                      (second contexts)
+                      (third contexts)
+                      (fourth contexts)
+                      (fifth contexts))))
+          (displayln (format "Prelude context: ~a" prelude-context-concrete))
+          (displayln (format "Loop context: ~a" loop-context-concrete))
+          (displayln (format "Break context: ~a" break-context-concrete))
+
+          #|
+          (displayln "State before loop:")
+          (display-state state-before-loop)
+
+          (displayln (format "MAXCONN before loop: ~a" (tinyA:eval-expr (tinyA "MAXCONN") state-before-loop)))
+          (displayln "")
+
+          (displayln "Got state after loop:")
+          (display-state state-after-loop)
+          |#
+
+          ))
+    )
+    
+  (test-simultaneously)
+
+
+  )
+
+(parameterize ([debug? #t]
+               [max-fuel 1000])
+  (time (synthesize-dispatch-gadgets)))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;;; SCRATCH ;;;;
+
 
 #|
 
@@ -396,146 +552,3 @@ void main(int MAXCONN) {
       [else     ; array indexing
   ]))
 |#
-    
-
-  (define-symbolic* invariant-pc integer?)
-  #;(define invariant-pc 102)
-  (define (invariant-holds st)
-    (and (equal? (tinyA:state-pc st) invariant-pc)
-         ))
-
-  (define max-width 2)
-  (define input-stream-length 2) ; Can make this 1
-  #;(define prelude-context   (seec->list (symbolic-input-stream max-width input-stream-length)))
-  (define prelude-context (list))
-  (define loop-body-context (symbolic-input-stream+ max-width input-stream-length))
-  #;(define loop-body-context (list (list->seec (list 1 100)) ; PUSH
-                                  (list->seec (list 2))     ; POP
-                                  ))
-  #;(define break-context     (seec->list (symbolic-input-stream max-width input-stream-length)))
-  (define break-context (list (list->seec (list 0))))
-
-  (define-values (compiled-server-program compiled-server-program-mem)
-    (tinyC->tinyA-program (list->seec server-program) init-pc))
-
-
-  (define state-after-prelude
-    (let ([init-st (tinyA:load-compiled-program compiled-server-program
-                                                compiled-server-program-mem
-                                                (tinyA nil) ; mem
-                                                init-sp
-                                                prelude-context
-                                                (list input-stream-length) ; max number of iterations--is this symbolic? This number doesn't matter as long as it doesn't disallow any of the input stream
-                                                )
-                   ])
-      (eval-statement-wait (max-fuel) init-st)))
-
-  #;(displayln "Got state after prelude:")
-  #;(display-state state-after-prelude)
-
-
-
-  ; Current loop spec: output any trace
-  (define (loop-body-spec st1 st2)
-    (equal? (seec-length (tinyA:state-trace st2))
-            (+ 1 (seec-length (tinyA:state-trace st1)))
-            ))
-
-
-  (define state-before-body (prepare-invariant-state compiled-server))
-  #;(define state-before-body state-after-prelude)
-  (debug-display "state before body:")
-  (debug (thunk (for/all ([st state-before-body])
-                  (display-state st))))
-  #;(debug-display "invariant holds? ~a" (invariant-holds state-before-body))
-  #;(debug-display "MAXCONN: ~a" (tinyA:eval-expr (tinyA "MAXCONN") state-before-body))
-
-  (define state-after-body (parameterize ([debug? #t])
-                             (do st <- state-before-body
-                               (evaluate-prepared-state st loop-body-context))))
-  #;(debug-display "state after body:")
-  #;(display-state state-after-body)
-  #;(debug-display "invariant holds? ~a" (invariant-holds state-after-body))
-  #;(debug-display "MAXCONN: ~a" (tinyA:eval-expr (tinyA "MAXCONN") state-after-body))
-  #;(debug-display "loop-body-spec: ~a" (loop-body-spec state-before-body state-after-body))
-
-
-  (define state-before-break (prepare-invariant-state compiled-server))
-  #;(define state-before-break state-after-prelude)
-  (define state-after-break (do st <- state-before-break
-                               (evaluate-prepared-state st break-context)))
-
-  (define (test-simultaneously)
-    (define sol
-      (synthesize #:forall (list state-before-body state-before-break)
-                  #:assume (assert (and (invariant-holds state-before-body)
-                                        (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-body)
-                                           2)
-                                        (invariant-holds state-before-break)
-                                        (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-break)
-                                           2)
-                                        ))
-                  #:guarantee (assert (and (invariant-holds state-after-prelude)
-                                           (invariant-holds state-after-body)
-                                           (loop-body-spec state-before-body state-after-body)
-                                           (not (invariant-holds state-after-break))
-                                      ))
-                  ))
-
-    ;; Debugging version
-    #;(define sol (synthesize #:forall (list)
-;                            #:assume (assert (invariant-holds state-before-body)
-;                                             (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-body) 2)
-;                                             )
-                            #:guarantee
-                            (assert (and
-                               (invariant-holds state-before-body)
-                               (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-body)
-                                  2)
-                               (not (<= (tinyA:eval-expr (tinyA (& ("buf"[0]))) state-before-body)
-                                        (tinyA:eval-expr (tinyA "buf") state-before-body)
-                                        (tinyA:eval-expr (tinyA (& ("buf"[9]))) state-before-body)))
-                               (not (and (invariant-holds state-after-body)
-                                         (loop-body-spec state-before-body state-after-body)))))
-                            ))
-    (if (unsat? sol)
-        (displayln "Synthesis failed")
-        (begin
-          (displayln "Synthesis succeeded")
-
-          (define-values (prelude-context-concrete
-                          loop-context-concrete
-                          break-context-concrete
-                          #;state-before-loop
-                          #;state-after-loop)
-            (let ([contexts (concretize (list prelude-context loop-body-context break-context #;state-before-body #;state-after-body)
-                                        sol)])
-              (values (first contexts)
-                      (second contexts)
-                      (third contexts)
-                      #;(fourth contexts)
-                      #;(fifth contexts))))
-          (displayln (format "Prelude context: ~a" prelude-context-concrete))
-          (displayln (format "Loop context: ~a" loop-context-concrete))
-          (displayln (format "Break context: ~a" break-context-concrete))
-
-          #;(displayln "State before loop:")
-          #;(display-state state-before-loop)
-
-          #;(displayln (format "MAXCONN before loop: ~a" (tinyA:eval-expr (tinyA "MAXCONN") state-before-loop)))
-          #;(displayln "")
-
-          #;(displayln "Got state after loop:")
-          #;(display-state state-after-loop)
-
-          ))
-    )
-    
-  (test-simultaneously)
-
-
-  )
-
-(parameterize ([debug? #f]
-               [max-fuel 1000])
-  (time (synthesize-dispatch-gadgets)))

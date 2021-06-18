@@ -676,7 +676,7 @@
 
 ; Return `*fail*` value if not (0 <= i < length l), otherwise return the
 ; element at location i in the seec-list l
-(define (seec-ith i l)
+(define/debug #:suffix (seec-ith i l)
   (let ([l-list (seec->list l)])
     (cond
       [(< -1 i (length l-list))
@@ -815,8 +815,8 @@
          (set-lval-list-mem addr (+ 1 offset) vs+ m+ output))
      ]
     [(tinyC (cons (TRACE o:natural) vs+:list<val>))
-         ; First calculate the offset by looking at the trace
-     (let ([v (seec-ith o output)])
+         ; First calculate the offset by looking at the trace and taking the oth from the end
+     (let ([v (seec-ith (- (seec-length output) o 1) output)])
          ; Then store v at offset 'offset'
        (do m+ <- (store-mem (tinyC (,addr ,offset)) v m)
            ; Then store vs+ starting at offset '1+offset'
