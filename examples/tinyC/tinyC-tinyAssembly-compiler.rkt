@@ -11,6 +11,10 @@
                   )
          (only-in racket/list
                   range
+                  )
+         (only-in seec/private/bonsai3
+                  new-integer!
+                  new-natural!
                   ))
 (require rosette/lib/value-browser) ; debugging
 
@@ -272,7 +276,7 @@
   ; A whole program is a (failure/c state?)
   #:link (λ (ctx expr)
            (match (cons ctx expr)
-             [(cons (tinyA+ (args:vallist input:list<vallist>))
+             [(cons (tinyA+ (args:input-list input:list<input-list>))
                     (tinyA (g:global-store sp:stack-pointer m:memory insns:insn-store)))
               (tinyA:load-compiled-program g insns m sp (seec->list input) (seec->list args))]
              ))
@@ -313,8 +317,31 @@
                      (symbolic-input-stream width (- length 1)))
           ]
     ))
+; produce a racket list instead
+(define (symbolic-input-stream+ width length)
+  (cond
+    [(or (<= length 0)
+         (havoc!))
+     (list)]
+    [else (cons (symbolic-arglist width)
+                (symbolic-input-stream+ width (- length 1)))
+          ]
+    ))
+
+
+(define (symbolic-arg!)
+  (cond
+    [(havoc!) (new-integer!)]
+    [else     (tinyA (TRACE ,(new-natural!)))]
+    ))
 (define (symbolic-arglist n)
-  (tinyA list<integer> (+ 1 n)))
+  (cond
+    [(or (<= n 0) (havoc!))
+     (tinyA nil)]
+    [else
+     (seec-cons (symbolic-arg!) (symbolic-arglist (- 1 n)))]
+  #;(tinyA list<integer> (+ 1 n))
+  ))
 
 
 

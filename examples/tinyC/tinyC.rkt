@@ -24,6 +24,7 @@
          ;syntax-lval?
          syntax-var?
          syntax-proc-name?
+         syntax-input-list?
 
          tinyC
          tinyC-lang
@@ -144,6 +145,14 @@
   (var   ::= string)
 
   (proc-name ::= string)
+
+  ; We modify the input list to include not just constant integers, but also
+  ; special inputs that allow you to pass data from the output stream back to an
+  ; input. (TRACE n) evaluates to the nth value in the output stream, counting
+  ; backwards from the most recent output.
+  (input-list   ::= list<input-elem>)
+  (input-elem   ::= integer (TRACE natural))
+
   )
 
 (define-grammar tinyC #:extends syntax
@@ -226,9 +235,8 @@
 
   ; The environment is a tuple consisting of both (1) a list of values with
   ; which to call 'main'; and (2) a list of lists of values to be passed one at
-  ; a time to calls to 'INPUT'
-  (intlist      ::= list<integer>)
-  (env          ::= (intlist list<intlist>))
+  ; a time to calls to 'INPUT'. See 'input-list' for the interaction model.
+  (env          ::= (input-list list<input-list>))
 
   )
 
@@ -247,8 +255,8 @@
 ;; States ;;
 ;;;;;;;;;;;;
 
-; The input-buffer is a (racket) list of 'intlist's that are fed to calls to
-; INPUT. This is a simple interaction model that cannot react dynamically to the
+; The input-buffer is a (racket) list of 'input-list's that are fed to calls to
+; INPUT. This is a simple interaction model that can react dynamically to the
 ; program execution.
 (struct state (statement context input-buffer trace fresh-var)
   ;#:transparent
@@ -291,7 +299,7 @@
         #:statements   (or/c #f (listof tinyC-statement?))
         #:statement    tinyC-statement?
         #:memory       (or/c #f tinyC-memory?)
-        #:input-buffer (listof (curry seec-list-of? integer?))
+        #:input-buffer (listof syntax-input-list?)
         #:context      tinyC-context?
         )
        state?)
@@ -395,15 +403,15 @@
                ", "
                #:before-first "("
                #:after-last ")"))
-(define (pp-intlist vals)
+(define (pp-input-list vals)
   #;(format "~a" (seec->list vals))
   (pp-list-with-commas (map (λ (v) (format "~a" v)) (seec->list vals))))
 
 (define (display-env env)
   (match env
-    [(tinyC (args:intlist input:list<intlist>))
-     (displayln (format "arguments : ~a" (pp-intlist args)))
-     (displayln (format "input stream : ~a" (map pp-intlist (seec->list input))))]
+    [(tinyC (args:input-list input:list<input-list>))
+     (displayln (format "arguments : ~a" (pp-input-list args)))
+     (displayln (format "input stream : ~a" (map pp-input-list (seec->list input))))]
     ))
 
 
@@ -796,22 +804,31 @@
 
     [else *fail*]))
 
-(define/contract (set-lval-list-mem addr offset vs m)
-  (-> tinyC-loc-ident? tinyC-offset? (curry seec-list-of? tinyC-val?) tinyC-memory? (failure/c tinyC-memory?))
+(define/contract (set-lval-list-mem addr offset vs m output)
+  (-> tinyC-loc-ident? tinyC-offset? syntax-input-list? tinyC-memory? tinyC-trace? (failure/c tinyC-memory?))
   (match vs
     [(tinyC nil) m]
-    [(tinyC (cons v:val vs+:list<val>))
+    [(tinyC (cons v:integer vs+:list<val>))
          ; First store v at offset 'offset'
      (do m+ <- (store-mem (tinyC (,addr ,offset)) v m)
          ; Then store vs+ starting at offset '1+offset'
-         (set-lval-list-mem addr (+ 1 offset) vs+ m+))
-     ]))
+         (set-lval-list-mem addr (+ 1 offset) vs+ m+ output))
+     ]
+    [(tinyC (cons (TRACE o:natural) vs+:list<val>))
+         ; First calculate the offset by looking at the trace
+     (let ([v (seec-ith o output)])
+         ; Then store v at offset 'offset'
+       (do m+ <- (store-mem (tinyC (,addr ,offset)) v m)
+           ; Then store vs+ starting at offset '1+offset'
+           (set-lval-list-mem addr (+ 1 offset) vs+ m+ output))
+     )]
+    ))
 
-(define/contract (set-lval-list l vs ctx)
-  (-> tinyC-val? (curry seec-list-of? tinyC-val?) tinyC-context? (failure/c tinyC-context?))
+(define/contract (set-lval-list l vs ctx output)
+  (-> tinyC-val? syntax-input-list? tinyC-context? tinyC-trace? (failure/c tinyC-context?))
   (match l
     [(tinyC (addr:loc-ident o:offset))
-     (do m+ <- (set-lval-list-mem addr o vs (context->memory ctx))
+     (do m+ <- (set-lval-list-mem addr o vs (context->memory ctx) output)
          (update-context-memory ctx m+))]
     [_ *fail*]))
     
@@ -1229,12 +1246,13 @@
             [F (ctx->top-frame ctx)]
             [m (ctx->mem ctx)]
             [input (state-input-buffer st)]
+            [output (state-trace st)]
             )
        (cond
          [(and (list? input)
                (not (empty? input)))
           (do (<- l (eval-expr e F m))
-              (<- ctx+ (set-lval-list l (first input) ctx))
+              (<- ctx+ (set-lval-list l (first input) ctx output))
               (update-state st
                             #:statement (tinyC SKIP)
                             #:context ctx+
@@ -1382,7 +1400,7 @@
                          ; integers, not locations?
   #:link (λ (env prog) #;(cons args prog)
             (match env
-              [(tinyC (args:intlist buf:list<intlist>))
+              [(tinyC (args:input-list buf:list<input-list>))
                (list prog args (seec->list buf))]))
 
   ; During evaluation, just produce the trace

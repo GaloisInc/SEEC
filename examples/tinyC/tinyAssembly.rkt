@@ -161,9 +161,9 @@
 ;; State ;;
 ;;;;;;;;;;;
 
-; The input-buffer is a (racket) list of 'intlist's that are fed to calls to
-; INPUT. This is a simple interaction model that cannot react dynamically to the
-; program execution.
+; The input-buffer is a (racket) list of 'input-list's that are fed to calls to
+; INPUT. This is a simple interaction model that can react dynamically to the
+; program execution in a simple way.
 ;
 ; Note: making this struct `transparent` leads to less reliable union splitting
 ; behavior.
@@ -620,6 +620,16 @@
 ;; Evaluation of statements ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(define/contract (input-list->intlist vs output)
+  (-> syntax-input-list? tinyA-trace? (listof integer?))
+  (match vs
+    [(tinyA nil) (list)]
+    [(tinyA (cons i:integer vs+:input-list))
+     (cons i (input-list->intlist vs+ output))]
+    [(tinyA (cons (TRACE o:natural) vs+:input-list))
+     (cons (seec-ith o output) (input-list->intlist vs+ output))]
+    ))
+
 ; The true value represents a HALT
 (define/contract (eval-statement-1 #;insn st)
   (-> #;tinyA-statement? state? (failure/c (or/c #t state?)))
@@ -651,8 +661,8 @@
      (for/all ([input (state-input-buffer st)])
        #;(debug-display "=====================================")
        #;(debug-display "=====================================")
-       #;(debug-display "=====================================")
-       #;(debug-display "Got input: ~a" input)
+       (debug-display "=====================================")
+       (debug-display "Got input: ~a" input)
        #;(debug (thunk (display-state st)))
 
        (cond
@@ -660,7 +670,8 @@
           (do (<- l (eval-expr e st)) ; e should evaluate to a location
             #;(debug-display "~a evaluates to ~a" e l)
             #;(debug (thunk (display-state st)))
-            (<- m+ (push-objs l (seec->list (first input)) (state-memory st)))
+            (<- is (input-list->intlist (first input) (state-trace st)))
+            (<- m+ (push-objs l is (state-memory st)))
             #;(debug-display "New memory:")
             #;(debug (thunk (tinyC:display-memory m+)))
             (update-state st
@@ -800,11 +811,11 @@
 
 (define-grammar tinyA+ #:extends tinyA
   (expr ::= (global-store stack-pointer memory insn-store)) ; the memory fragment associated with a compiled program
-  (vallist ::= list<val>)
-  (vallistlist ::= list<vallist>)
+  #;(vallist ::= list<val>)
+  #;(vallistlist ::= list<vallist>)
   ; The context consists of (1) the arguments to be passed to 'main'; and (2) a
   ; list of lists of values that provide input to the INPUT command
-  (ctx  ::= (vallist list<vallist>))
+  (ctx  ::= (input-list list<input-list>))
   )
 
 ; For now, just print out the instructions in memory
@@ -834,7 +845,7 @@
   ; A whole program is a (failure/c state?)
   #:link (λ (ctx expr)
            (match (cons ctx expr)
-             [(cons (tinyA+ (args:vallist input:list<vallist>))
+             [(cons (tinyA+ (args:input-list input:list<input-list>))
                     (tinyA (g:global-store sp:stack-pointer m:memory insns:insn-store)))
               (load-compiled-program g insns m sp (seec->list input) (seec->list args))]
              ))

@@ -339,6 +339,20 @@ void main(int MAXCONN) {
                                  ))
 
 
+  (define server-test-5
+      (tinyA:run server-program
+               (list 10)
+               (list (list->seec (list 1 100)) ; PUSH 100
+                     (list->seec (list 3))     ; SIZE
+                     (list->seec (list 1 200)) ; PUSH 200
+                     (list->seec (list 3))     ; SIZE
+                     (list->seec (list 2))     ; POP
+                     (list->seec (list 3))     ; SIZE
+                     (list->seec (list 2))     ; POP
+                     (list->seec (list 3))     ; SIZE
+                     (list->seec (list 0))     ; QUIT
+                     )
+               ))
 
   )
 
@@ -388,22 +402,18 @@ void main(int MAXCONN) {
   #;(define invariant-pc 102)
   (define (invariant-holds st)
     (and (equal? (tinyA:state-pc st) invariant-pc)
-         #;(not (equal? (tinyA:eval-expr (tinyA (& "buf")) st)
-                      (tinyA:eval-expr (tinyA (& ("buf"[0]))) st)))
-         #;(not (equal? (tinyA:eval-expr (tinyA (& "buf")) st)
-                      (tinyA:eval-expr (tinyA (& ("buf"[1]))) st)))
          ))
 
   (define max-width 2)
-  (define input-stream-length 1)
-  (define prelude-context   (seec->list (symbolic-input-stream max-width input-stream-length)))
-  #;(define prelude-context (list))
-  (define loop-body-context (seec->list (symbolic-input-stream max-width input-stream-length)))
+  (define input-stream-length 2) ; Can make this 1
+  #;(define prelude-context   (seec->list (symbolic-input-stream max-width input-stream-length)))
+  (define prelude-context (list))
+  (define loop-body-context (symbolic-input-stream+ max-width input-stream-length))
   #;(define loop-body-context (list (list->seec (list 1 100)) ; PUSH
                                   (list->seec (list 2))     ; POP
                                   ))
-  (define break-context     (seec->list (symbolic-input-stream max-width input-stream-length)))
-  #;(define break-context (list (list->seec (list 0))))
+  #;(define break-context     (seec->list (symbolic-input-stream max-width input-stream-length)))
+  (define break-context (list (list->seec (list 0))))
 
   (define-values (compiled-server-program compiled-server-program-mem)
     (tinyC->tinyA-program (list->seec server-program) init-pc))
@@ -415,7 +425,7 @@ void main(int MAXCONN) {
                                                 (tinyA nil) ; mem
                                                 init-sp
                                                 prelude-context
-                                                (list 10) ; max number of iterations--is this symbolic?
+                                                (list input-stream-length) ; max number of iterations--is this symbolic? This number doesn't matter as long as it doesn't disallow any of the input stream
                                                 )
                    ])
       (eval-statement-wait (max-fuel) init-st)))
@@ -440,8 +450,9 @@ void main(int MAXCONN) {
   #;(debug-display "invariant holds? ~a" (invariant-holds state-before-body))
   #;(debug-display "MAXCONN: ~a" (tinyA:eval-expr (tinyA "MAXCONN") state-before-body))
 
-  (define state-after-body (do st <- state-before-body
-                               (evaluate-prepared-state st loop-body-context)))
+  (define state-after-body (parameterize ([debug? #t])
+                             (do st <- state-before-body
+                               (evaluate-prepared-state st loop-body-context))))
   #;(debug-display "state after body:")
   #;(display-state state-after-body)
   #;(debug-display "invariant holds? ~a" (invariant-holds state-after-body))
@@ -525,6 +536,6 @@ void main(int MAXCONN) {
 
   )
 
-(parameterize ([debug? #t]
+(parameterize ([debug? #f]
                [max-fuel 1000])
   (time (synthesize-dispatch-gadgets)))

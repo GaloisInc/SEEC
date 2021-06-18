@@ -313,7 +313,7 @@
 ; 1470925 ms == 24.5 min
 
 ;
-; Without wf-add-spec constraints:
+; Without wf-acc-spec constraints:
 ; Expression (%n (0 NONE))
 ;            (%s (4 (* 3)))
 ;            (%s (4 (* 2)))

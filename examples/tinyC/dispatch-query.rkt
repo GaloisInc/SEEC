@@ -118,10 +118,13 @@
 
   ; The pc is a symbolic union of the pc of any HALT
   ; instructions, and the pc of any INPUT instructions
+  ; Modification: only include INPUT instructions, as HALT instructions will not
+  ; be invariants in general
   (define/contract (potential-pc-from-memory prog)
     (-> tinyA-insn-store? (failure/c tinyA-program-counter?))
     (match prog
-      [(tinyA (cons (l:loc (f:proc-name HALT)) m+:insn-store))
+      ; For now, only consider INPUT PCs.
+      #;[(tinyA (cons (l:loc (f:proc-name HALT)) m+:insn-store))
        (if (havoc!)
            l
            (potential-pc-from-memory m+))]
