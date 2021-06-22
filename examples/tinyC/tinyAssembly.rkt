@@ -624,7 +624,7 @@
 ;; Evaluation of statements ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define/contract/debug #:suffix (input-list->intlist vs output)
+(define/contract (input-list->intlist vs output)
   (-> syntax-input-list? tinyA-trace? (failure/c (listof integer?)))
   (match vs
     [(tinyA nil) (list)]
@@ -706,10 +706,17 @@
     [(tinyA (ASSIGN x:expr e:expr))
      (do (<- l (eval-address x st))
          (<- v (eval-expr e  st))
+         (<- m (store-mem l v (state-memory st)))
+         (debug-display "~a evaluates to ~a" e v)
+         (debug-display "Old memory:")
+         (debug (thunk (tinyC:display-memory (state-memory st))))
+         (debug-display "New memory:")
+         (debug (thunk (tinyC:display-memory m)))
+
          (update-state st
 ;                       #:increment-pc #t
                        #:pc (+ pc 1)
-                       #:memory (store-mem l v (state-memory st))
+                       #:memory m
                        ))]
 
     #;[(tinyA HALT) *fail*] ; cannot take a step

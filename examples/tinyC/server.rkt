@@ -291,6 +291,32 @@ void main(int MAXCONN) {
   )
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;
+;; Added a structure to better treat dispatch gadgets uniformly, moving towards
+;; a framework query
+;;;;;;;;;;;;;;;;;;;;;;;;
+
+(struct dispatch-gadget (context spec before after))
+
+(define (dispatch-spec-holds g)
+  ((dispatch-gadget-spec g) (dispatch-gadget-before g) (dispatch-gadget-after g)))
+
+(define context->gadget
+  (λ (compiled-prog
+      ctx
+      #:spec spec
+      #:state-before [state-before (prepare-invariant-state compiled-prog)]
+      )
+
+    (debug-display "(context->gadget ~a)" ctx)
+    (define state-after (do st <- state-before
+                            (evaluate-prepared-state st ctx)))
+
+    (dispatch-gadget ctx
+                     spec
+                     state-before
+                     state-after
+                     )))
 
 ;;;;;;;;;;;;;;;
 ;; Synthesis ;;
@@ -308,57 +334,51 @@ void main(int MAXCONN) {
   (define (invariant-holds st)
     (and (equal? (tinyA:state-pc st) invariant-pc)
          ))
+  (define (invariant-requires st)
+    (> (tinyA:eval-expr (tinyA "MAXCONN") st)
+       2))
+
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ; Next specify the maximum length and width of input streams ;
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  (define max-width 2)
+  (define max-width 3)
   (define input-stream-length 1) ; Can make this 1
-
-
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ; Define any symbolic variables here ;
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-  (define-symbolic* symbolic-i integer?)
-  (assert (<= 0 symbolic-i 9))
-  (define-symbolic* symbolic-c integer?)
-  (define symbolic-vars (list symbolic-i symbolic-c))
 
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ; Define a symbolic prelude context ;
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  (define prelude-context   (seec->list (symbolic-input-stream max-width input-stream-length)))
-  #;(define prelude-context (list))
-  (define state-after-prelude
-    (let ([init-st (tinyA:load-compiled-program compiled-server-program
-                                                compiled-server-program-mem
-                                                (tinyA nil) ; mem
-                                                init-sp
-                                                prelude-context
-                                                ; max number of iterations below--is
-                                                ; this symbolic? This number
-                                                ; doesn't matter as long as it
-                                                ; doesn't disallow any of the
-                                                ; input stream
-                                                (list input-stream-length)
-                                                )
-                   ])
-      (eval-statement-wait (max-fuel) init-st)))
 
+  (define prelude-gadget
+
+    #;(define prelude-context (symbolic-input-stream+ max-width input-stream-length))
+    (let ([prelude-context (list )])
+
+    (context->gadget compiled-server
+                 prelude-context
+                 #:spec (λ (st1 st2) #t)
+                 #:state-before (tinyA:load-compiled-program
+                                 compiled-server-program
+                                 compiled-server-program-mem
+                                 (tinyA nil) ; mem
+                                 init-sp
+                                 prelude-context
+                                 ; max number of iterations below--is this
+                                 ; symbolic? This number doesn't matter as long
+                                 ; as it doesn't disallow any of the input
+                                 ; stream
+                                 (list input-stream-length)
+                                 )
+                 )))
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ; Define one ore more loop body contexts, with specs ;
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   
 
-  #;(define loop-body-context (symbolic-input-stream+ max-width input-stream-length))
-  #;(define loop-body-context (list (list->seec (list 1 100)) ; PUSH
-                                  (list->seec (list 2))     ; POP
-                                  ))
 
   ; Basic loop spec: output any trace
   #;(define (loop-body-spec st1 st2)
@@ -376,25 +396,35 @@ void main(int MAXCONN) {
   ; 7. head = head - 1
 
 
-  ; (Currently loop-body-context is failing the assertion when symbolic,
-  ;  succeeding when concrete)
-  (define loop-body-context (list (list->seec (list 1 symbolic-c symbolic-i))))
-  ; Spec: stack[i]=c
-  (define (loop-body-spec st1 st2)
-    (equal? (tinyA:eval-expr (tinyA ("stack"[ ,symbolic-i ])) st2)
-            symbolic-c))
+  (define/contract (write-constant-gadget i c) ; Write constant c to index i in the stack
+    (-> integer? integer? dispatch-gadget?)
 
+    (define loop-body-context-concrete (list (list->seec (list 1 c i))))
+    #;(define loop-body-context (symbolic-input-stream+ 3 input-stream-length))
+    (define-symbolic* symbolic-cmd integer?)
+    (define-symbolic* symbolic-c integer?)
+    (define-symbolic* symbolic-i integer?)
+    ; This is not currently working properly...
+    (define loop-body-context 
+      (cond
+        [(havoc!) (list (list->seec (list symbolic-cmd symbolic-c symbolic-i)))]
+        #;[(havoc!) (list (list->seec (list symbolic-cmd)))]
+        #;[(havoc!) (list (list->seec (list symbolic-cmd symbolic-c )))]
+        [else (list)]
+        ))
+    #;(define loop-body-context loop-body-context-concrete)
+    (assert (equal? loop-body-context loop-body-context-concrete))
 
+    (define (loop-body-spec st1 st2)
+      (equal? (tinyA:eval-expr (tinyA ("stack"[,i])) st2)
+              c))
+    (context->gadget compiled-server
+                     loop-body-context
+                     #:spec loop-body-spec
+                     )
+    )
+  (define write-gadget (write-constant-gadget 3 300))
 
-  (define state-before-body (prepare-invariant-state compiled-server))
-  #;(define state-before-body state-after-prelude)
-  (debug-display "state before body:")
-  (debug (thunk (for/all ([st state-before-body])
-                  (display-state st))))
-
-  (define state-after-body (parameterize ([debug? #t])
-                             (do st <- state-before-body
-                               (evaluate-prepared-state st loop-body-context))))
 
 
 
@@ -402,15 +432,17 @@ void main(int MAXCONN) {
   ; Define the break context ;
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  ; Symbolic version fails when combined with the concrete context above...
-  #;(define break-context     (seec->list (symbolic-input-stream max-width input-stream-length)))
-  (define break-context (list (list->seec (list 0))))
 
+  (define break-gadget
 
-  (define state-before-break (prepare-invariant-state compiled-server))
-  #;(define state-before-break state-after-prelude)
-  (define state-after-break (do st <- state-before-break
-                               (evaluate-prepared-state st break-context)))
+    (let ([break-context (list (list->seec (list 0)))
+                         #;(seec->list (symbolic-input-stream max-width input-stream-length))
+                         ])
+
+      (context->gadget compiled-server
+                       break-context
+                       #:spec (λ (st1 st2) #t)
+                       )))
 
 
 
@@ -422,20 +454,20 @@ void main(int MAXCONN) {
   ; has specs and this query can take any number of them
   (define (test-simultaneously)
     (define sol
-      ; Add symbolic-i and symbolic-c to forall quantifier list
-      (synthesize #:forall (list state-before-body state-before-break symbolic-vars)
-                  #:assume (assert (and (invariant-holds state-before-body)
+      ; Add symbolic-i and symbolic-c to forall quantifier list (symbolic-vars)
+      (synthesize #:forall (list (dispatch-gadget-before write-gadget)
+                                 (dispatch-gadget-before break-gadget)
+                                 )
+                  #:assume (assert (and (invariant-holds    (dispatch-gadget-before write-gadget))
                                         ; In addition to the generic invariant, we also need to add 
-                                        (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-body)
-                                           2)
-                                        (invariant-holds state-before-break)
-                                        (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-break)
-                                           2)
+                                        (invariant-requires (dispatch-gadget-before write-gadget))
+                                        (invariant-holds    (dispatch-gadget-before break-gadget))
+                                        (invariant-requires (dispatch-gadget-before break-gadget))
                                         ))
-                  #:guarantee (assert (and (invariant-holds state-after-prelude)
-                                           (invariant-holds state-after-body)
-                                           (loop-body-spec state-before-body state-after-body)
-                                           (not (invariant-holds state-after-break))
+                  #:guarantee (assert (and (invariant-holds (dispatch-gadget-after prelude-gadget))
+                                           (invariant-holds (dispatch-gadget-after write-gadget))
+                                           (dispatch-spec-holds write-gadget)
+                                           (not (invariant-holds (dispatch-gadget-after break-gadget)))
                                       ))
                   ))
 
@@ -445,12 +477,15 @@ void main(int MAXCONN) {
 ;                                             (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-body) 2)
 ;                                             )
                             #:guarantee
-                            (assert (and
-                               (invariant-holds state-before-body)
-                               (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-body)
-                                  2)
-                               (not (and (invariant-holds state-after-body)
-                                         (loop-body-spec state-before-body state-after-body)))))
+                            (assert (and (invariant-holds (dispatch-gadget-before write-gadget))
+                                           ; In addition to the generic invariant, we also need to add 
+                                           (invariant-requires (dispatch-gadget-before write-gadget))
+                                           (invariant-holds state-before-break)
+                                           (> (tinyA:eval-expr (tinyA "MAXCONN") state-before-break)
+                                              2)
+                                           (not (and (invariant-holds (dispatch-gadget-after write-gadget))
+                                                     (dispatch-spec-holds write-gadget)))
+                                           ))
                             ))
     (if (unsat? sol)
         (displayln "Synthesis failed")
@@ -459,30 +494,20 @@ void main(int MAXCONN) {
 
           (define-values (prelude-context-concrete
                           loop-context-concrete
-                          break-context-concrete
-                          state-before-loop
-                          state-after-loop)
-            (let ([contexts (concretize (list prelude-context loop-body-context break-context state-before-body state-after-body)
+                          break-context-concrete)
+            (let ([contexts (concretize (list (dispatch-gadget-context prelude-gadget)
+                                              (dispatch-gadget-context write-gadget)
+                                              (dispatch-gadget-context break-gadget)
+                                              )
                                         sol)])
               (values (first contexts)
                       (second contexts)
                       (third contexts)
-                      (fourth contexts)
-                      (fifth contexts))))
+                      )))
           (displayln (format "Prelude context: ~a" prelude-context-concrete))
           (displayln (format "Loop context: ~a" loop-context-concrete))
           (displayln (format "Break context: ~a" break-context-concrete))
 
-          #|
-          (displayln "State before loop:")
-          (display-state state-before-loop)
-
-          (displayln (format "MAXCONN before loop: ~a" (tinyA:eval-expr (tinyA "MAXCONN") state-before-loop)))
-          (displayln "")
-
-          (displayln "Got state after loop:")
-          (display-state state-after-loop)
-          |#
 
           ))
     )

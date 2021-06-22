@@ -340,7 +340,7 @@
     [(or (<= n 0) (havoc!))
      (tinyA nil)]
     [else
-     (seec-cons (symbolic-arg!) (symbolic-arglist (- 1 n)))]
+     (seec-cons (symbolic-arg!) (symbolic-arglist (- n 1)))]
   #;(tinyA list<integer> (+ 1 n))
   ))
 

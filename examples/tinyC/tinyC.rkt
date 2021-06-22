@@ -676,7 +676,7 @@
 
 ; Return `*fail*` value if not (0 <= i < length l), otherwise return the
 ; element at location i in the seec-list l
-(define/debug #:suffix (seec-ith i l)
+(define (seec-ith i l)
   (let ([l-list (seec->list l)])
     (cond
       [(< -1 i (length l-list))
