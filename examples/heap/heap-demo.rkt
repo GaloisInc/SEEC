@@ -11,21 +11,17 @@
 (require seec/private/util)
 (require seec/private/monad)
 
+(require (file "demo-utils.rkt"))
 (require (file "lib.rkt"))
 (require (file "heap-lang.rkt"))
 (require (file "heap-abstract-lang-err.rkt"))
 (require (file "abstract-to-heap-compiler-err.rkt"))
 
 
-
 (define (demo1)
   (display-changed-abstract-to-heap
-   (with-abstract-schema (lambda (as*) (find-changed-behavior abstract-to-heap-nd as*)))))
-
-(define (recorded1)
-  (begin
-    (sleep 2)
-    (display (file->string "./output/upper-demo-err-demo1.txt"))))
+   (with-abstract-schema
+     (lambda (as*) (find-changed-behavior abstract-to-heap-nd as*)))))
 
 ; found: (write 1 2) where 2 is not a pointer
 ; sol: ignore read/write from non-pointers
@@ -71,11 +67,6 @@
   (display-changed-abstract-to-heap
    (with-abstract-schema (lambda (as*) (find-changed-behavior abstract-to-heap-nd+ as*)))))
 
-(define (recorded2)
-  (begin
-    (sleep 2)
-    (display (file->string "./output/upper-demo-err-demo2.txt"))))
-
 ; Found decr on a pointer with P 0 a
 ; Sol: ignore out of bound incr and decr
 (define/debug #:suffix (abs-interpret-action++ a s)
@@ -119,11 +110,6 @@
 (define (demo3)
   (display-changed-abstract-to-heap
    (with-abstract-schema (lambda (as*) (find-changed-behavior abstract-to-heap-nd++ as*)))))
-
-(define (recorded3)
-  (begin
-    (sleep 2)
-    (display (file->string "./output/upper-demo-err-demo3.txt"))))
 
 ; finds free with an offset
 ; sol: change the spec of free to only be well-defined on pointers without offset
@@ -170,11 +156,6 @@
   (display-changed-abstract-to-heap
    (with-abstract-schema (lambda (as*) (find-changed-behavior abstract-to-heap-nd+++ as*)))))
 
-(define (recorded4)
-  (begin
-    (sleep 2)
-    (display (file->string "./output/upper-demo-err-demo4.txt"))))
-
 ; finds free on a non-pointers
 ; sol: ignore free from non-pointers
 (define (abs-free++ b h bl)
@@ -220,11 +201,6 @@
   (display-changed-abstract-to-heap
    (with-abstract-schema (lambda (as*) (find-changed-behavior abstract-to-heap-nd4 as*)))))
 
-(define (recorded5)
-  (begin
-    (sleep 2)
-    (display (file->string "./output/upper-demo-err-demo5.txt"))))
-
 ; finds a dangling pointer error (free with other pointers to the same block)
 ; sol: can ignore null pointers in equivalence checking
 
@@ -268,12 +244,6 @@
 (define (demo6)
   (display-changed-abstract-to-heap
    (with-abstract-schema (lambda (as*) (find-changed-behavior abstract-to-heap-nd5 as*)))))
-
-(define (recorded6)
-  (begin
-    (sleep 2)
-    (display (file->string "./output/upper-demo-err-demo6.txt"))))
-
 
 ; finds an alloc in freelist w/o resetting the payload
 ; sol: change the implementation to reset the payload
