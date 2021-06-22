@@ -202,7 +202,7 @@
   (with-abstract-schema (lambda (as*) (find-changed-behavior abstract-to-heap-nd4 as*))))
 
 (define (demo5)
-  (display-changed-abstract-to-heap demo5))
+  (display-changed-abstract-to-heap comp-demo5))
 
 ; finds a dangling pointer error (free with other pointers to the same block)
 ; sol: can ignore null pointers in equivalence checking
