@@ -46,3 +46,4 @@ FP HEAD:
 
 ...in the following target-level context...
 (write 1 2)
+cpu time: 107343 real time: 133777 gc time: 24730
