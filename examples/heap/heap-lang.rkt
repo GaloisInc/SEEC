@@ -461,6 +461,32 @@
     [(heap-model (cons a:saction setup+:setup))
      (interpret-setup setup+ (interpret-saction a s))]))
 
+(define (interpret-complete-interaction ci s)
+  (match ci
+    [(heap-model (v:setup i:interaction))
+     (interpret-interaction i (interpret-setup v s))]))
+
+
+(define (default-val val def)
+  (match val
+    [(heap-model null)
+     def]
+    [(heap-model i:integer)
+     i]))
+
+(define (obs-buf n s)
+  (nth (state->buf s) n))
+
+(define (obs-buf-def n def s)
+  (default-val (obs-buf n s) def))
+
+(define (obs-heap n s)
+  (nth (state->heap s) n))
+
+(define (obs-heap-def n def s)
+  (default-val (obs-heap n s) def))
+
+
 (define heap-lang-link
   (lambda (state inte)
            (match state

@@ -1,0 +1,55 @@
+The following expression...
+BUFFER:
+0  > 0
+1  > P 0 a
+2  > P 0 b
+3  > P 0 a
+
+HEAP:
+0  > (2, P 0 a) 
+
+
+...has behavior...
+BUFFER:
+0  > 0
+1  > null
+2  > null
+3  > null
+
+HEAP:
+
+
+...in the following source-level context...
+(free 2)
+
+====
+Compiles to...
+BUFFER:
+0  > 0
+1  > 2
+2  > 3
+3  > 2
+
+HEAP:
+0  > | 1    | 2    | 2    | 2    |
+4  > | 0    | 2    | 0    | 0    |
+
+FP HEAD:
+null
+
+...with emergent behavior...
+BUFFER:
+0  > 0
+1  > 2
+2  > null
+3  > 2
+
+HEAP:
+0  > | 1    | 0    | 2    | null |
+4  > | null | 2    | 0    | 0    |
+
+FP HEAD:
+3
+
+...in the following target-level context...
+(free 2)

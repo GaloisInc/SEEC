@@ -1,0 +1,48 @@
+The following expression...
+BUFFER:
+0  > P 0 a
+1  > P 0 a
+2  > P 0 b
+3  > P 0 b
+
+HEAP:
+0  > (0, 0) 
+
+
+...has behavior...
+ERROR ABSTRACT STATE
+
+...in the following source-level context...
+(decr 0)
+
+====
+Compiles to...
+BUFFER:
+0  > 6
+1  > 6
+2  > 7
+3  > 7
+
+HEAP:
+0  > | 0    | 2    | null | null |
+4  > | 1    | 2    | 0    | 0    |
+
+FP HEAD:
+2
+
+...with emergent behavior...
+BUFFER:
+0  > 5
+1  > 6
+2  > 7
+3  > 7
+
+HEAP:
+0  > | 0    | 2    | null | null |
+4  > | 1    | 2    | 0    | 0    |
+
+FP HEAD:
+2
+
+...in the following target-level context...
+(decr 0)
