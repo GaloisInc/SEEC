@@ -23,8 +23,9 @@
    (with-abstract-schema
      (lambda (as*) (find-changed-behavior abstract-to-heap-nd as*)))))
 
-; found: (write 1 2) where 2 is not a pointer
-; sol: ignore read/write from non-pointers
+; Found (write 1 2) where 2 is not a pointer
+; Sol: ignore read/write from non-pointers
+
 (define/debug #:suffix (abs-interpret-action+ a s)
  (for/all ([a a])
 ;            [s s])
@@ -69,6 +70,7 @@
 
 ; Found decr on a pointer with P 0 a
 ; Sol: ignore out of bound incr and decr
+
 (define/debug #:suffix (abs-interpret-action++ a s)
  (for/all ([a a])
 ;            [s s])
@@ -111,10 +113,11 @@
   (display-changed-abstract-to-heap
    (with-abstract-schema (lambda (as*) (find-changed-behavior abstract-to-heap-nd++ as*)))))
 
-; finds free with an offset
-; sol: change the spec of free to only be well-defined on pointers without offset
+; Found free with an offset
+; Sol: change the spec of free to only be well-defined on pointers without offset
+
 (define (abs-free+ b h bl)
-  (let* ([p (nth b bl)]) ; get the pointer
+  (let* ([p (nth b bl)])
     (match p
       [(abstract-model (P n:natural a))
        (let* ([b+ (replace b bl (abstract-model N))]
@@ -158,10 +161,11 @@
   (display-changed-abstract-to-heap
    (with-abstract-schema (lambda (as*) (find-changed-behavior abstract-to-heap-nd+++ as*)))))
 
-; finds free on a non-pointers
-; sol: ignore free from non-pointers
+; Found free on a non-pointers
+; Sol: ignore free from non-pointers
+
 (define (abs-free++ b h bl)
-  (let* ([p (nth b bl)]) ; get the pointer
+  (let* ([p (nth b bl)])
     (match p
       [(abstract-model (P n:natural a))
        (let* ([b+ (replace b bl (abstract-model N))]
@@ -203,8 +207,8 @@
   (display-changed-abstract-to-heap
    (with-abstract-schema (lambda (as*) (find-changed-behavior abstract-to-heap-nd4 as*)))))
 
-; finds a dangling pointer error (free with other pointers to the same block)
-; sol: can ignore null pointers in equivalence checking
+; Found a dangling pointer error (free with other pointers to the same block)
+; Sol: can ignore null pointers in equivalence checking
 
 (define (bounded-equiv-val+ ah h n av v)
   (match av
@@ -247,8 +251,8 @@
   (display-changed-abstract-to-heap
    (with-abstract-schema (lambda (as*) (find-changed-behavior abstract-to-heap-nd5 as*)))))
 
-; finds an alloc in freelist w/o resetting the payload
-; sol: change the implementation to reset the payload
+; Found an alloc in freelist w/o resetting the payload
+; Sol: change the implementation to reset the payload
 
 (define (interpret-alloc-free+ h n)
   (let* ([newf  (nth h n)] 
@@ -257,7 +261,7 @@
          [h+3 (replace h++ (+ n 1) (heap-model 0))])
           (match newf
             [(heap-model nf:natural)
-             (do h+4 <- (replace h+3 (+ nf 1) (heap-model null)) ; change the new head's backward pointer to be null
+             (do h+4 <- (replace h+3 (+ nf 1) (heap-model null))
                  (cons newf h+4))]
             [(heap-model null)
              (cons newf h+3)])))
@@ -297,9 +301,4 @@
   (display-changed-abstract-to-heap
    (with-abstract-schema (lambda (as*) (find-changed-behavior abstract-to-heap-nd6 as*)))))
 
-(define (recorded7)
-  (begin
-    (sleep 2)
-    (display (file->string "./output/upper-demo-err-demo7.txt"))))
-; didn't find any changed behavior.
-
+; Didn't find any changed behavior.
