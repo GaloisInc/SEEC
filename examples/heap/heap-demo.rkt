@@ -135,7 +135,9 @@
               [h+ (drop-nth n h)]
               [b++ (abs-shift-buf n b+)]
               [h++ (abs-shift-heap n h+)])
-        (abs-state b++ h++))]
+         (abs-state b++ h++))]
+      [(abstract-model (P n:natural b))
+       (assert #f)]
       [any
        (abs-error-state)])))
 

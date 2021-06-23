@@ -1,49 +1,49 @@
 The following expression...
 BUFFER:
-0  > P 0 b
-1  > P 0 a
-2  > P 0 b
-3  > null
+0  > 3
+1  > 0
+2  > null
+3  > 6
 
 HEAP:
-0  > (4, 0) 
+0  > (P 0 a, null) 
 
 
 ...has behavior...
 ERROR ABSTRACT STATE
 
 ...in the following source-level context...
-(free 2)
+(free 3)
 
 ====
 Compiles to...
 BUFFER:
 0  > 3
-1  > 2
-2  > 3
-3  > null
+1  > 0
+2  > null
+3  > 6
 
 HEAP:
-0  > | 1    | 2    | 4    | 0    |
-4  > | 0    | 2    | null | null |
+0  > | 0    | 2    | null | null |
+4  > | 1    | 2    | 6    | null |
 
 FP HEAD:
-6
+2
 
 ...with emergent behavior...
 BUFFER:
 0  > 3
-1  > 2
+1  > 0
 2  > null
 3  > null
 
 HEAP:
-0  > | 1    | 0    | 4    | 6    |
-4  > | null | 2    | null | 3    |
+0  > | 0    | 2    | null | 6    |
+4  > | 0    | 2    | 2    | null |
 
 FP HEAD:
-3
+6
 
 ...in the following target-level context...
-(free 2)
-cpu time: 266200 real time: 302813 gc time: 178005
+(free 3)
+cpu time: 125881 real time: 164270 gc time: 31255
