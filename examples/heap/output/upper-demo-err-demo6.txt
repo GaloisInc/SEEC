@@ -55,4 +55,4 @@ null
 
 ...in the following target-level context...
 (alloc 0)
-cpu time: 448039 real time: 482745 gc time: 358950
+cpu time: 126996 real time: 160715 gc time: 30747

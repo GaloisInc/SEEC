@@ -1,2 +1,2 @@
 No changed behavior found
-cpu time: 1036560 real time: 1445985 gc time: 853699
+cpu time: 320244 real time: 800949 gc time: 122939
