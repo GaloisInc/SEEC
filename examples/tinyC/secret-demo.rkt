@@ -147,7 +147,7 @@
   (format "~a" (seec->list vals)))
 (define (display-env-password-checker env)
   (match env
-    [(tinyC (args:intlist input:list<intlist>))
+    [(tinyC (args:input-list input:list<input-list>))
      (displayln (format "password : ~a" (pp-intlist args)))
      (displayln (format "input stream : ~a" (map pp-intlist (seec->list input))))]
     ))
