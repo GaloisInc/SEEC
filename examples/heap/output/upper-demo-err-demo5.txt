@@ -1,0 +1,56 @@
+The following expression...
+BUFFER:
+0  > P 0 a
+1  > 0
+2  > 3
+3  > P 0 a
+
+HEAP:
+0  > (0, P 0 b) 
+
+
+...has behavior...
+BUFFER:
+0  > null
+1  > 0
+2  > 3
+3  > null
+
+HEAP:
+
+
+...in the following source-level context...
+(free 3)
+
+====
+Compiles to...
+BUFFER:
+0  > 6
+1  > 0
+2  > 3
+3  > 6
+
+HEAP:
+0  > | 0    | 2    | null | null |
+4  > | 1    | 2    | 0    | 7    |
+
+FP HEAD:
+2
+
+...with emergent behavior...
+BUFFER:
+0  > 6
+1  > 0
+2  > 3
+3  > null
+
+HEAP:
+0  > | 0    | 2    | null | 6    |
+4  > | 0    | 2    | 2    | null |
+
+FP HEAD:
+6
+
+...in the following target-level context...
+(free 3)
+cpu time: 338951 real time: 374827 gc time: 245744

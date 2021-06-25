@@ -1,0 +1,49 @@
+The following expression...
+BUFFER:
+0  > 3
+1  > 0
+2  > null
+3  > 6
+
+HEAP:
+0  > (P 0 a, null) 
+
+
+...has behavior...
+ERROR ABSTRACT STATE
+
+...in the following source-level context...
+(free 3)
+
+====
+Compiles to...
+BUFFER:
+0  > 3
+1  > 0
+2  > null
+3  > 6
+
+HEAP:
+0  > | 0    | 2    | null | null |
+4  > | 1    | 2    | 6    | null |
+
+FP HEAD:
+2
+
+...with emergent behavior...
+BUFFER:
+0  > 3
+1  > 0
+2  > null
+3  > null
+
+HEAP:
+0  > | 0    | 2    | null | 6    |
+4  > | 0    | 2    | 2    | null |
+
+FP HEAD:
+6
+
+...in the following target-level context...
+(free 3)
+cpu time: 125881 real time: 164270 gc time: 31255
