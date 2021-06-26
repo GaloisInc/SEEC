@@ -151,12 +151,12 @@
   (define g (find-gadget printf-impl
                          (λ (prog behav) (and (COMPL-spec IN OUT prog behav)
                                               #;(wf-acc-spec (behavior->config behav))))
-                         #:expr (fmt-sketch 5)
-;                         #:expr fmt-concrete-reset-first
-;                         #:expr-constraint (λ (f) (equal? f fmt-concrete))
+                         #:expression (fmt-sketch 5)
+;                         #:expression fmt-concrete-reset-first
+;                         #:expression-where (λ (f) (equal? f fmt-concrete))
                          #:context context-sketch-long
-;                         #:context-constraint (λ (ctx) (wf-acc-spec (context->config ctx)))
-                         #:context-constraint (λ (ctx) (not (equal? IN OUT)))
+;                         #:context-where (λ (ctx) (wf-acc-spec (context->config ctx)))
+                         #:context-where (λ (ctx) (not (equal? IN OUT)))
                          #:fresh-witness #f
                          #:forall (list acc-val IN OUT b-val)
                          ))
@@ -288,9 +288,9 @@
                          (λ (prog behav) (and (XOR-spec IN1 IN2 OUT prog behav)
                                               #;(wf-acc-spec (behavior->config behav))))
 ;                         #:expr fmt-concrete
-                         #:expr (fmt-sketch 5)
+                         #:expression (fmt-sketch 5)
                          #:context context-sketch
-;                         #:context-constraint (λ (ctx) (wf-acc-spec (context->config ctx)))
+;                         #:context-where (λ (ctx) (wf-acc-spec (context->config ctx)))
                          #:forall (list acc-val IN1 IN2 OUT in1 in2)
                          ))
   (display-gadget g displayln)

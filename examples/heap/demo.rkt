@@ -19,7 +19,7 @@
 
 (define (demo1) (display-heap-to-freelist
                  (find-changed-component heap-to-freelist
-                                         #:source-expr (make-state-con d+3*))))
+                                         #:source-expression (make-state-con d+3*))))
 
 (define (valid-free loc h)
   (let* ([v-bit (nth (- loc 2) h)]
@@ -71,7 +71,7 @@
 
 (define (demo2) (display-heap-to-freelist
                  (find-changed-component heap-to-freelist+
-                                         #:source-expr (make-state-con d+3*))))
+                                         #:source-expression (make-state-con d+3*))))
 
 
 (define (valid-write loc h)
@@ -127,7 +127,7 @@
 
 (define (demo3) (display-heap-to-freelist
                  (find-changed-component heap-to-freelist++
-                                         #:source-expr (make-state-con d+3*))))
+                                         #:source-expression (make-state-con d+3*))))
 
 (define (demo3+) (display-heap-to-freelist
                   (find-changed-component heap-to-freelist++)))
@@ -137,8 +137,8 @@
 
 (define (demo3++) (display-heap-to-freelist
                    (find-changed-component heap-to-freelist++
-                                           #:source-context-bound 5
-                                           #:source-expr (make-state-con d))))
+                                           #:source-context-size 5
+                                           #:source-expression (make-state-con d))))
 
 
 (define (valid-heap-block-size h)
@@ -165,7 +165,7 @@
 
 (define (demo3+++) (display-heap-to-freelist
                     (find-changed-component heap-to-freelist++
-                                            #:source-expr-where
+                                            #:source-expression-where
                                             (lambda (v c) (valid-state-block c)))))
 
 

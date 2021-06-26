@@ -12,8 +12,8 @@
 
 
 (define (ex2) (find-weird-component abstract-to-buggyconcrete
-                                    #:source-context-bound 2
-                                    #:target-context-bound 2))
+                                    #:source-context-size 2
+                                    #:target-context-size 2))
 #;(begin
   (displayln "Trying to find a trace with weird behavior under buggy compilation")
   (display-weird-component (ex2) displayln)
@@ -24,8 +24,8 @@
 ; witnessed by target-level context *null*
 
 (define (ex3) (find-weird-component abstract-to-concrete
-                                    #:source-context-bound 2
-                                    #:target-context-bound 2))
+                                    #:source-context-size 2
+                                    #:target-context-size 2))
 #;(begin
     (displayln "Trying to find a trace with weird behavior under correct compilation")
     (display-weird-component (ex3) displayln))

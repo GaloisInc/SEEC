@@ -77,7 +77,7 @@
   #:evaluate (uncurry eval-simp))
 
 (define SIMP-BACKTOBOUND
-  (refine-language SIMP-NOBOUND #:expression-bound 4 #:context-bound 4))
+  (refine-language SIMP-NOBOUND #:expression-size 4 #:context-size 4))
 
 (define-compiler SIMP-REFINED
   #:source SIMP

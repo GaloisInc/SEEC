@@ -79,10 +79,10 @@
 
   (define g (find-gadget printf-impl
                          ((curry add-constant-spec) c)
-                         #:expr-bound 5
-                         #:context-bound 3
-                         ; NOTE: will not find gadget without this context-constraint. WHY????
-                         #:context-constraint (λ (ctx) (match (context->arglist ctx)
+                         #:expression-size 5
+                         #:context-size 3
+                         ; NOTE: will not find gadget without this context-where. WHY????
+                         #:context-where (λ (ctx) (match (context->arglist ctx)
                                                          [(printf-lang (cons "" arglist)) #t]
                                                          [_ #f]))
                          ))
@@ -168,11 +168,11 @@
 ;                       #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
 ;                                                                    (program->context p)))
                        ; This valid constraint is not *necessarily* good for printf-impl
-                       #:expr-bound 6
-;                       #:expr-constraint (λ (e) (equal? e f-concrete))
-                       #:context-bound 4 ; must be at least 4
+                       #:expression-size 6
+;                       #:expression-where (λ (e) (equal? e f-concrete))
+                       #:context-size 4 ; must be at least 4
                        #:context (context-concrete x-val) ;context-symbolic
-                       #:context-constraint (λ (ctx)
+                       #:context-where (λ (ctx)
                                               (and (arglist-constraint ctx 0 x-val)
                                                    ; NOTE: no symbolic variables
                                                    ; (like a symbolic index)
@@ -235,10 +235,10 @@
                        ((curry add-constant-spec) x-val)
                        #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
                                                                     (program->context p)))
-                       #:expr-bound 6
-;                       #:expr f-concrete
-;                       #:expr-constraint (λ (f) (equal? f f-concrete))
-                       #:context-bound 6
+                       #:expression-size 6
+;                       #:expression f-concrete
+;                       #:expression-where (λ (f) (equal? f f-concrete))
+                       #:context-size 6
                        ; NOTE: I found it easier to provide this "concrete"
                        ;   context with symbolic variables in it, than to
                        ;   provide a completely symbolic context and constrain
@@ -349,7 +349,7 @@
                        (λ (p b) (add-mem-spec l1 l2 l3 p b))
                        #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
                                                                     (program->context p)))
-                       #:expr-bound 7
+                       #:expression-size 7
                        #:context context-structure
                        ; NOTE: SEEC is not very good at synthesizing maps based
                        ; on specifications of their contexts... e.g. on what lookup-loc does
@@ -389,7 +389,7 @@
 
   (define g (find-gadget printf-impl
                          ((curry add-constant-spec) N)
-                         #:expr-bound 6
+                         #:expression-size 6
                          #:context ctx-sketch
                          #:forall (list N acc-val)
                          ))
@@ -446,7 +446,7 @@
                          ((curry lookup-in-mem-spec) ptr acc-val)
                          #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
                                                                       (program->context p)))
-                         #:expr-bound 6
+                         #:expression-size 6
                          #:context ctx-sketch
                          #:fresh-witness #f
                          #:forall (list ptr acc-val)))
@@ -499,7 +499,7 @@
                          (λ (p res) (add-constant-spec str-len p res))
                          #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
                                                                       (program->context p)))
-                         #:expr-bound 6
+                         #:expression-size 6
                          #:context ctx-sketch
                          #:forall (list str-len str acc-val)
                          ))
@@ -550,7 +550,7 @@
                          (λ (p res) (add-constant-spec x-val p res))
                          #:valid (λ (p) (fmt-consistent-with-arglist? (program->fmt p)
                                                                       (program->context p)))
-                         #:expr-bound 6
+                         #:expression-size 6
                          #:context ctx-sketch
                          #:forall (list x-val acc-val)
                          ))

@@ -9,8 +9,9 @@
 (require (file "heap-lang-hl.rkt"))
 (require (file "heap-abstract-lang-hl.rkt"))
 (require (file "freelist-lang.rkt"))
-(require (file "heap-to-freelist-compiler.rkt"))
 (require (file "abstract-to-heap-hl-compiler.rkt"))
+(require (file "heap-to-freelist-compiler.rkt"))
+
 
 
 
@@ -119,3 +120,35 @@
       (display-heap-to-freelist
        (with-heap-schema (lambda (s*) (find-changed-behavior heap-to-freelist++ s*)))))
 
+;
+(define ademobuf (abstract-model (cons (P 0 b) (cons -1 (cons 0 (cons 1 nil))))))
+(define ademoheap (abstract-model (cons (1 2) nil)))
+(define ademostate (abstract-model (,ademobuf ,ademoheap)))
+
+(define demoperm (list 0 #f))
+
+(define pdemostate (test-abs-into-heap-fl demoperm ademostate))
+(define demostate (make-state-struct pdemostate))
+(define demofreelist (compile-heap-to-freelist demostate))
+
+(define demoattack (heap-model (cons (free 4) nil)))
+(define demostate+ (interpret-interaction demoattack demostate))
+
+(define-language heap-state-lang+++
+  #:grammar heap-model
+  #:expression state-con #:size 10
+  #:context interaction #:size 4
+  #:link heap-lang-link-state
+  #:evaluate (uncurry interpret-interaction++))
+
+(define-compiler heap-to-freelist+++
+  #:source heap-state-lang+++
+  #:target freelist-lang
+  #:behavior-relation (lambda (s f) (and (equal? (compile-heap-to-freelist s) f)
+                                         (valid-heap? (state->heap s))))
+  #:context-relation (lambda (i fi) (equal? (compile-interaction i) fi))
+  #:compile (lambda (s) (compile-heap-to-freelist (make-state-struct s))))
+
+(define (demo4)
+      (display-heap-to-freelist
+       (with-heap-schema (lambda (s*) (find-changed-behavior heap-to-freelist+++ s*)))))

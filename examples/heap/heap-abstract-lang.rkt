@@ -194,6 +194,25 @@
     [(abstract-model (P n:natural b))
      (abstract-model (P ,n a))]))
 
+(define (abs-incr-fix val)
+  (match val
+    [(abstract-model i:integer)
+     (abstract-model ,(+ i 1))]
+    [(abstract-model (P n:natural s:selector))
+     (abs-select s                 
+                 (abstract-model (P ,n b))
+                 (abstract-model N))]))
+
+(define (abs-decr-fix val)
+  (match val
+    [(abstract-model i:integer)
+     (abstract-model ,(- i 1))]
+    [(abstract-model (P n:natural s:selector))
+     (abs-select s
+                 (abstract-model N)
+                 (abstract-model (P ,n a)))]))
+
+
 (define/debug #:suffix (abs-interpret-action a s)
  (for/all ([a a])
 ;            [s s])
@@ -462,7 +481,7 @@
 
 (define (am-q0s)
   (let* ([sv (make-symbolic-abstract-state)])
-    (display-abs-witness (first (find-gadget abstract-lang demo-behavior0 #:expr (car sv))))))
+    (display-abs-witness (first (find-gadget abstract-lang demo-behavior0 #:expression (car sv))))))
 
 
 ; -- not working yet?
@@ -473,4 +492,4 @@
 
 (define (am-q1s)
   (let* ([sv (make-symbolic-abstract-state)])
-    (display-abs-witness (first (find-gadget abstract-lang demo-behavior1 #:expr (car sv))))))
+    (display-abs-witness (first (find-gadget abstract-lang demo-behavior1 #:expression (car sv))))))
