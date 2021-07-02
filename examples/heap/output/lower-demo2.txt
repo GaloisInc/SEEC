@@ -1,0 +1,33 @@
+State: 
+BUFFER:
+0  > 0
+1  > 7
+2  > 7
+3  > 7
+
+HEAP:
+0  > | 0    | 2    | null | null |
+4  > | 1    | 2    | 7    | null |
+
+FP HEAD:
+2
+... has freelist:
+(2)
+... and steps, under interaction ((write 0 3)), to state: 
+BUFFER:
+0  > 0
+1  > 7
+2  > 7
+3  > 7
+
+HEAP:
+0  > | 0    | 2    | null | 0    |
+4  > | 1    | 2    | 7    | null |
+
+FP HEAD:
+2
+... with freelist: 
+#f
+... with emergent behavior: 
+(2)
+cpu time: 32260 real time: 35971 gc time: 4899

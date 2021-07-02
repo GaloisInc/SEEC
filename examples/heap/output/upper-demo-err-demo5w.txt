@@ -1,0 +1,31 @@
+The following expression...
+
+BUFFER:
+0  > P 0 a
+1  > P 0 b
+2  > null
+3  > null
+
+HEAP:
+0  > (P 0 a, null) 
+
+
+...has emergent behavior...
+
+BUFFER:
+0  > 6
+1  > 8
+2  > null
+3  > null
+
+HEAP:
+0  > | 0    | 2    | null | null |
+4  > | 1    | 2    | 6    | null |
+
+FP HEAD:
+2
+
+...witnessed by the following target-level context...
+
+(incr 1)
+cpu time: 360980 real time: 436441 gc time: 148550

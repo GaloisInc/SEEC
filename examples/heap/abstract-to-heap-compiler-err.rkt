@@ -257,7 +257,7 @@
 ; Pretty-printing
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define (display-weird-abstract-to-heap witness)
-  (display-weird-behavior witnesses
+  (display-weird-behavior witness
                            #:display-expression display-abs-state
                            #:display-behavior display-state))
 
