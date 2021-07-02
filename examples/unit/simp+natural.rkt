@@ -114,12 +114,12 @@
   "count argument to find-changed-component"))
 
 
-(define test-cc-arg-source-exp-bound-nat-to-integer
+(define test-cc-arg-source-exp-size-nat-to-integer
   (list
    (lambda (r) (r))
    (thunk (find-changed-component SIMP-NAT-TO-INTEGER
-                           #:source-expression-bound 6))
-  "source-expression-bound argument to find-changed-component"))
+                           #:source-expression-size 6))
+  "source-expression-size argument to find-changed-component"))
                            
 
 
@@ -130,12 +130,12 @@
                            #:source-expression-where (lambda (v1) (>= (num-ops v1) 3))))
     "source-expression-where argument to find-changed-component"))
 
-(define test-cc-arg-source-context-bound-nat-to-integer
+(define test-cc-arg-source-context-size-nat-to-integer
   (list
    (lambda (r) (r))
    (thunk (find-changed-component SIMP-NAT-TO-INTEGER
-                           #:source-context-bound 2))
-   "source-context-bound argument to find-changed-component"))
+                           #:source-context-size 2))
+   "source-context-size argument to find-changed-component"))
 
   
 (define test-cc-arg-source-context-where-nat-to-integer
@@ -145,12 +145,12 @@
                            #:source-context-where (lambda (v1 c1) (equal? c1 0))))
    "source-context-where argument to find-changed-component"))
 
-(define test-cc-arg-target-context-bound-nat-to-integer
+(define test-cc-arg-target-context-size-nat-to-integer
   (list
    (lambda (r) (r))
    (thunk (find-changed-component SIMP-NAT-TO-INTEGER
-                           #:target-context-bound 2)) 
-   "target-context-bound argument to find-changed-component"))
+                           #:target-context-size 2)) 
+   "target-context-size argument to find-changed-component"))
   
 (define test-cc-arg-target-context-where-nat-to-integer
   (list
@@ -177,11 +177,11 @@
   (list
    (lambda (r) (r))
    (thunk (find-changed-component SIMP-NAT-TO-INTEGER
-                           #:source-expression-bound 6
+                           #:source-expression-size 6
                            #:source-expression-where (lambda (v1) (>= (num-ops v1) 3))
-                           #:source-context-bound 2
+                           #:source-context-size 2
                            #:source-context-where (lambda (v1 c1) (equal? c1 0))
-                           #:target-context-bound 2
+                           #:target-context-size 2
                            #:target-context-where (lambda (v1 c2) (equal? c2 1))
                            #:source-behavior-where (lambda (v1 c1 c2 b1) (equal? b1 0))
                            #:target-behavior-where (lambda (v1 c1 c2 b2) (<= 1000 b2))))
@@ -202,12 +202,12 @@
    (thunk (find-weird-component SIMP-NAT-TO-INTEGER #:count 3))
   "count argument to find-weird-component"))
 
-(define test-wc-arg-source-exp-bound-nat-to-integer
+(define test-wc-arg-source-exp-size-nat-to-integer
   (list
    (lambda (r) (r))
    (thunk (find-weird-component SIMP-NAT-TO-INTEGER
-                           #:source-expression-bound 6))
-  "source-expression-bound argument to find-weird-component"))
+                           #:source-expression-size 6))
+  "source-expression-size argument to find-weird-component"))
 
 
 (define test-wc-arg-source-exp-where-nat-to-integer
@@ -217,12 +217,12 @@
                            #:source-expression-where (lambda (v1) (>= (num-ops v1) 3))))
     "source-expression-where argument to find-weird-component"))
 
-(define test-wc-arg-source-context-bound-nat-to-integer
+(define test-wc-arg-source-context-size-nat-to-integer
   (list
    (lambda (r) (r))
    (thunk (find-weird-component SIMP-NAT-TO-INTEGER
-                           #:source-context-bound 2))
-   "source-context-bound argument to find-weird-component"))
+                           #:source-context-size 2))
+   "source-context-size argument to find-weird-component"))
 
   
 (define test-wc-arg-source-context-where-nat-to-integer
@@ -232,12 +232,12 @@
                            #:source-context-where (lambda (v1 c1) (equal? c1 0))))
    "source-context-where argument to find-weird-component"))
 
-(define test-wc-arg-target-context-bound-nat-to-integer
+(define test-wc-arg-target-context-size-nat-to-integer
   (list
    (lambda (r) (r))
    (thunk (find-weird-component SIMP-NAT-TO-INTEGER
-                           #:target-context-bound 2)) 
-   "target-context-bound argument to find-weird-component"))
+                           #:target-context-size 2)) 
+   "target-context-size argument to find-weird-component"))
   
 (define test-wc-arg-target-context-where-nat-to-integer
   (list
@@ -273,11 +273,11 @@
   (list
    (lambda (r) (r))
    (thunk (find-weird-component SIMP-NAT-TO-INTEGER
-                           #:source-expression-bound 6
+                           #:source-expression-size 6
                            #:source-expression-where (lambda (v1) (>= (num-ops v1) 3))
-                           #:source-context-bound 2
+                           #:source-context-size 2
                            #:source-context-where (lambda (v1 c1) (equal? c1 0))
-                           #:target-context-bound 2
+                           #:target-context-size 2
                            #:target-context-where (lambda (v1 c2) (equal? c2 1))
                            #:source-behavior-where (lambda (v1 c1 c2 b1) (equal? b1 0))
                            #:target-behavior-where (lambda (v1 c1 c2 b2) (<= 1000 b2))))

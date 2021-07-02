@@ -330,6 +330,12 @@
             [b+ (compile-abs-buf ab p)])
        (heap-model (,b+ ,(car hp+) ,(cdr hp+))))]))
 
+(define/debug #:suffix (compile-abs-into-heap-nd hl s)
+    (let*-values
+        ([(s* nondet*) (capture-nondeterminism #:nondet #t (compile-abs-into-heap-fl hl s))])
+      s*))
+
+
 ; the permutation generated will have a FL that is stricly increasing (i.e. each block will be after the other in the 
 (define pfl-test1 (list 1 -4 0 #f))
 (define pfl-test2 (list -2 #f 1 0))
@@ -441,6 +447,14 @@
   #:behavior-relation (bounded-equiv-state 3)
   #:context-relation equal?
   #:compile (lambda (as) (compile-abs-into-heap-fl 2 as)))
+
+(define-compiler abstract-to-heap-nd
+  #:source abstract-lang
+  #:target heap-lang-state
+  #:behavior-relation (bounded-equiv-state 3)
+  #:context-relation equal? 
+  #:compile (lambda (as) (compile-abs-into-heap-nd 2 as)))
+
 
 (define (atest0) (find-changed-component small-fixed-permutation-to-heap
                                           #:source-expr asmallstate))

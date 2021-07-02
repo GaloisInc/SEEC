@@ -105,15 +105,16 @@ void guarded-fun (int auth) {
       #:args   args
       #:input  input
       )
-    (let ([g (find-weird-behavior tinyC-compiler
-                                  #:source-expr (list->seec prog)
+    (let* ([gl (find-weird-computation-backend tinyC-compiler
+                                  #:source-expression (list->seec prog)
                                   #:source-context (tinyC (,(list->seec args)
                                                            (cons ,(list->seec input) nil)))
                                   #:target-context (tinyA (,(list->seec args)
                                                            (cons ,(list->seec input) nil)))
                                   #:forall (list)
                                   #:fresh-witness #f
-                                  )])
+                                  )]
+           [g (if gl (first gl) gl)])
       (display-weird-behavior g
                               #:display-expression tinyC:display-program
                               #:display-context tinyC:display-env
@@ -147,7 +148,7 @@ void guarded-fun (int auth) {
       )
     (let ([g (find-ctx-gadget tinyA-lang
                               spec
-                              #:expr ((compiler-compile tinyC-compiler) (list->seec prog))
+                              #:expression ((compiler-compile tinyC-compiler) (list->seec prog))
                               #:context (tinyA (,(list->seec args)
                                                 (cons ,(list->seec input) nil)))
                               #:forall vars

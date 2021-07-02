@@ -257,12 +257,9 @@
 ; Pretty-printing
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (define (display-weird-abstract-to-heap witness)
-  (let* ([witnesses (if witness
-                       (list witness)
-                       #f)])
-  (display-weird-component witnesses
+  (display-weird-behavior witnesses
                            #:display-expression display-abs-state
-                           #:display-behavior display-state)))
+                           #:display-behavior display-state))
 
 (define (display-changed-abstract-to-heap witness)
   (display-changed-behavior witness
@@ -554,19 +551,19 @@
 
 ; #f
 (define (atest0) (find-changed-component small-fixed-permutation-to-heap
-                                          #:source-expr asmallstate))
+                                          #:source-expression asmallstate))
 
 ; 
 (define (atest1) (display-abstract-to-heap
                   (find-changed-component fixed-permutation-to-heap
-                                         #:source-expr astate)))
+                                         #:source-expression astate)))
 
 
 (define (atest2)
   (let* ([sv (make-symbolic-abstract-state)])
     (display-abstract-to-heap
      (find-changed-component small-fixed-permutation-to-heap
-                             #:source-expr (car sv)))))
+                             #:source-expression (car sv)))))
 
 
 (define i-test0 (heap-model (cons (decr 1) (cons (free 2) nil)))) ; from demo0

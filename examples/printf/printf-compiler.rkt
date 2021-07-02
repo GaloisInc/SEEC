@@ -137,15 +137,16 @@
 
 |#
     
-  (define comp (find-weird-behavior printf-compiler
-                                    #:source-expr fmt-example
-;                                    #:source-context-bound 6
+  (define comp (find-weird-computation-backend printf-compiler
+                                    #:source-expression fmt-example
+;                                    #:source-context-size 6
 ;                                    #:source-context (safe:printf-lang (,target-args (0 nil)))
                                     #:target-context target-ctx
 ;                                    #:forall-extra (list l-val)
                                     #:debug #f
                                     #:fresh-witness #f
                                     ))
+  (displayln "ddd")
   (display-weird-behavior comp displayln)
   (displayln "hi")
   )
@@ -154,8 +155,8 @@
 (define (find-changed-component-example)
   (display-changed-component
    (find-changed-component printf-compiler
-                           #:source-expr-bound 3
-                           #:source-context-bound 3
+                           #:source-expression-size 3
+                           #:source-context-size 3
                            )
    displayln)
   )

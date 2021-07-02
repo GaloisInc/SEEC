@@ -499,7 +499,7 @@
 (define (synthesize-interaction-gadget size ctx spec)
   (let* ([sol (find-gadget heap-lang
                            spec
-                           #:expr-bound size
+                           #:expression-size size
                            #:expression-witness-only #t
                            #:context (make-state-con ctx))])
     (if sol

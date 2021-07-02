@@ -9,8 +9,8 @@
 (define (synthesize-arg-tinyC)
   (let ([g (find-ctx-gadget tinyC-lang
                             (λ (p tr) (equal? tr (seec-singleton 3)))
-                            #:expr (list->seec simple-call-example)
-                            #:context-bound 4
+                            #:expression (list->seec simple-call-example)
+                            #:context-size 4
                             )])
     (display-gadget g displayln))
   ; Should find (seec-singleton 3)
@@ -24,8 +24,8 @@
     (let* ([symbolic-args (list->seec (list val0))]
            [g (find-ctx-gadget tinyC-lang
                               (λ (p tr) (equal? tr (seec-singleton 6)))
-                              #:expr (list->seec factorial)
-;                              #:context-bound 2
+                              #:expression (list->seec factorial)
+;                              #:context-size 2
                               #:context symbolic-args
 ;                              #:context (seec-singleton 3)
                               )])
@@ -56,9 +56,9 @@
                  )
     (let ([g (find-ctx-gadget tinyA-lang
                           (λ (p tr) (equal? tr (seec-singleton 3)))
-                          #:expr ((compiler-compile tinyC-compiler) (list->seec simple-call-example))
+                          #:expression ((compiler-compile tinyC-compiler) (list->seec simple-call-example))
                           #:context (tinyA (,symbolic-args nil))
-                          #:context-bound 3
+                          #:context-size 3
                           )])
       (display-gadget g displayln)))
   )
@@ -69,9 +69,9 @@
 (define (synthesize-weird-behavior-call)
   (parameterize ([debug? #t]
                  [max-fuel 10])
-    (let ([g (find-weird-computation tinyC-compiler
+    (let ([g (find-weird-behavior tinyC-compiler
                                      (list->seec simple-call-example)
-                                     #:target-context-bound 2
+                                     #:target-context-size 2
                                      )])
       (display-weird-behavior g displayln))))
 ; Expected: No weird behavior found
@@ -80,9 +80,9 @@
 (define (synthesize-weird-behavior-factorial)
   (parameterize ([debug? #t]
                  [max-fuel 4]) ; Should increase bound to allow feasibility
-    (let ([g (find-weird-computation tinyC-compiler
+    (let ([g (find-weird-behavior tinyC-compiler
                                      (list->seec factorial)
-                                     #:target-context-bound 3
+                                     #:target-context-size 3
                                      )])
       (display-weird-behavior g displayln))))
 #;(synthesize-weird-behavior-factorial)
@@ -97,7 +97,7 @@
     (let* ([g (find-ctx-gadget tinyA-lang
                                ; Synthesize an input that gains authorization
                                (λ (p tr) (equal? tr (seec-singleton 1)))
-                               #:expr ((compiler-compile tinyC-compiler) (list->seec password-checker))
+                               #:expression ((compiler-compile tinyC-compiler) (list->seec password-checker))
                                #:context (tinyA (nil (cons ,input nil)))
                                )])
       (display-gadget g displayln))))
@@ -117,7 +117,7 @@
     (let ([g (find-ctx-gadget tinyA-lang
                                ; Synthesize an input that gains authorization
                                (λ (p tr) (equal? tr (seec-singleton 1)))
-                               #:expr ((compiler-compile tinyC-compiler) (list->seec password-checker))
+                               #:expression ((compiler-compile tinyC-compiler) (list->seec password-checker))
                                #:context (tinyA (nil (cons ,input nil)))
                                )])
       (display-gadget g displayln))))
@@ -149,7 +149,7 @@
     (let ([g (find-ctx-gadget tinyA-lang
                                ; Synthesize an input that gains authorization
                                (λ (p tr) (equal? tr (seec-singleton 1)))
-                               #:expr ((compiler-compile tinyC-compiler) (list->seec password-checker))
+                               #:expression ((compiler-compile tinyC-compiler) (list->seec password-checker))
                                #:context (tinyA (nil (cons ,input nil)))
                                )])
       (display-gadget g displayln))))
@@ -166,7 +166,7 @@
     (let ([g (find-ctx-gadget tinyA-lang
                                ; Synthesize an input that gains authorization
                                (λ (p tr) (equal? tr (seec-singleton 1)))
-                               #:expr ((compiler-compile tinyC-compiler)
+                               #:expression ((compiler-compile tinyC-compiler)
                                        (list->seec password-checker-with-arg))
                                #:context (tinyA (,args (cons ,input nil)))
                                #:forall pswd
@@ -183,8 +183,8 @@
 
   (parameterize ([debug? #f]
                  [max-fuel 10])
-    (let ([g (find-weird-behavior tinyC-compiler
-                                     #:source-expr (list->seec password-checker)
+    (let* ([gl (find-weird-computation-backend tinyC-compiler
+                                     #:source-expression (list->seec password-checker)
                                      ; I think we need to provide both the
                                      ; source and target contexts so symbolic
                                      ; execution will terminate
@@ -192,7 +192,8 @@
                                      #:target-context (tinyA (nil (cons ,input nil)))
                                      #:forall (list)
                                      #:fresh-witness #f
-                                     )])
+                                     )]           
+           [g (if gl (first gl) gl)])
       (display-weird-behavior g displayln))))
 #;(synthesize-weird-behavior-password)
 ;

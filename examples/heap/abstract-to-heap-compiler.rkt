@@ -256,6 +256,19 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Pretty-printing
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(define (display-weird-abstract-to-heap witness)
+  (display-weird-behavior witness
+                           #:display-expression display-abs-state
+                           #:display-behavior display-state))
+
+(define (display-changed-abstract-to-heap witness)
+  (display-changed-behavior witness
+                            #:display-source-expression display-abs-state
+                            #:display-target-expression (lambda (s) (display-state (make-state-struct s)))
+                            #:display-source-behavior display-abs-state
+                            #:display-target-behavior display-state))
+
+
 
 (define (display-abstract-to-heap witnesses)
   (if witnesses     
@@ -526,22 +539,29 @@
   #:context-relation equal? 
   #:compile (lambda (as) (compile-abs-into-heap-nd 2 as)))
 
+(define-compiler abstract-to-heap-nc
+  #:source abstract-lang
+  #:target heap-lang-state
+  #:behavior-relation (bounded-equiv-state 3)
+  #:compile (lambda (as) (compile-abs-into-heap-nd 2 as)))
+
+
 
 ; #f
 (define (atest0) (find-changed-component small-fixed-permutation-to-heap
-                                          #:source-expr asmallstate))
+                                          #:source-expression asmallstate))
 
 ; 
 (define (atest1) (display-abstract-to-heap
                   (find-changed-component fixed-permutation-to-heap
-                                         #:source-expr astate)))
+                                         #:source-expression astate)))
 
 
 (define (atest2)
   (let* ([sv (make-symbolic-abstract-state)])
     (display-abstract-to-heap
      (find-changed-component small-fixed-permutation-to-heap
-                             #:source-expr (car sv)))))
+                             #:source-expression (car sv)))))
 
 
 (define i-test0 (heap-model (cons (decr 1) (cons (free 2) nil)))) ; from demo0
@@ -550,3 +570,14 @@
 (define a-test0 (heap-model (write 1 3)))
 
 (define as+t1 (abs-interpret-interaction i-test1 ademostate))
+
+
+; returns the state, the permutation and the captured nondet
+(define (make-heap-schema)
+  (let* ([assert-store (asserts)]
+         [as* (make-symbolic-abstract-state)])
+    (let*-values ([(p* nondet*) (capture-nondeterminism #:nondet #t (generate-permutation-fl 2 1))])
+      (let* ([s* (test-abs-into-heap-fl p* (car as*))])
+        (clear-asserts!)
+        (for-each (lambda (arg) (assert arg)) assert-store)
+        (list s* p* nondet*)))))

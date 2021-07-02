@@ -391,6 +391,6 @@
 
 #;(begin
   (displayln "(3) Trying to find n+m in EXPN2")
-  (display-gadget (find-gadget EXPN2) addnmspec) displayln))
+  (display-gadget (find-gadget EXPN2 addnmspec) displayln))
 
 

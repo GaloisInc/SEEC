@@ -453,7 +453,7 @@
 
 (define (am-q0s)
   (let* ([sv (make-symbolic-abstract-state)])
-    (display-abs-witness (first (find-gadget abstract-lang demo-behavior0 #:expr (car sv))))))
+    (display-abs-witness (first (find-gadget abstract-lang demo-behavior0 #:expression (car sv))))))
 
 
 ; -- not working yet?
@@ -464,4 +464,4 @@
 
 (define (am-q1s)
   (let* ([sv (make-symbolic-abstract-state)])
-    (display-abs-witness (first (find-gadget abstract-lang demo-behavior1 #:expr (car sv))))))
+    (display-abs-witness (first (find-gadget abstract-lang demo-behavior1 #:expression (car sv))))))

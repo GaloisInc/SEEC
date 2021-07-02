@@ -57,6 +57,8 @@
             (displayln "which are equivalent?")
             (displayln ((bounded-equiv-state 3) as+ s+)))))))
 
+
+
 ; Compile all the way to freelist
 (define (manual-full-test1)
   (begin
@@ -72,8 +74,8 @@
         ([(p* nondet*) (capture-nondeterminism #:nondet #t (generate-permutation-fl 2 1))])
           (define s* (make-state-struct (test-abs-into-heap-fl p* as*)))
           (define fl* (compile-heap-to-freelist s*))
-          ;(define ai* (abstract-model action 3))
-          ; (define as+* (abs-interpret-action ai* as*))
+          (define ai* (abstract-model interaction 3))
+          ;(define as+* (abs-interpret-interaction ai* as*))
           (define i* (heap-model interaction 3)) ; (compile-abs-action ai* p*))
           (define s+* (interpret-interaction i* s*))
           (define fi* (compile-interaction i*))
@@ -102,3 +104,95 @@
                 (display-state s+)
                 (displayln "and free list :")
                 (displayln fl+))))))
+
+(define (semi-manual-test1)
+  (define as* (make-symbolic-abstract-state))
+  (define-values (perm* nondet*) (capture-nondeterminism #:nondet #t (generate-permutation-fl 2 1)))
+  (define s* (test-abs-into-heap-fl perm* (car as*)))
+  (define fl* (compile-heap-to-freelist (make-state-struct s*))) ; #compile
+  (define i* (heap-model interaction 3)) ; #context
+  (define p* (heap-lang-link-state i* s*))
+  (define s+* ((uncurry interpret-interaction) p*))
+  (define fi* (freelist interaction 3))
+  (assert (equal? fi* (compile-interaction i*)))
+  (define fl+* ((uncurry freelist-interaction) (cons fi* fl*)))
+  (define sol (verify (assert (equal? (compile-heap-to-freelist s+*) fl+*))))
+  (if (unsat? sol)
+    (displayln "unsat")
+    (displayln "sat")))
+
+#|
+         [source           (compiler-source comp)]  heap-lang-state
+         [target           (compiler-target comp)] freelist-lang
+         [e2               ((compiler-compile comp) e1)] (lambda s (compile-heap-to-freelist (make-state-struct s)))) e1
+         [p1               ((language-link source) c1 e1)] 
+         [p2               ((language-link target) c2 e2)]
+         [context-relation (compiler-context-relation comp)] (lambda (i fi) (equal? (compile-interaction i) fi)) c1 c2
+         [ccomp            (if context-relation
+                               (context-relation c1 c2)
+                               #t)])
+|#
+
+; manual-test1 using the query
+(define (aftest)
+  (let* ([as* (make-symbolic-abstract-state)])
+    (let*-values ([(p* nondet*) (capture-nondeterminism #:nondet #t (generate-permutation-fl 2 1))])
+      (define s* (test-abs-into-heap-fl p* (car as*)))
+      (display-heap-to-freelist
+       (find-changed-behavior heap-to-freelist s*)))))
+
+
+(define (aftest-wh)
+      (display-heap-to-freelist
+       (with-heap-schema (lambda (s*) (find-changed-behavior heap-to-freelist s*)))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Pretty-printing
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (display-abstract-to-freelist witnesses)
+  (if witnesses     
+      (let* ([lwl-abstract (unpack-language-witness (first witnesses))]
+             [lwl-freelist (unpack-language-witness (second witnesses))])
+        (displayln "State: ")
+        (display-abs-state (first lwl-abstract))
+        (displayln "... can have freelist:")
+        (displayln (first lwl-freelist))
+        (display "... and steps, under interaction ")
+        (display (second lwl-abstract))
+        (displayln ", to state: ")
+        (display-abs-state (fourth lwl-abstract))
+        (displayln "... with emergent behavior: ")
+        (displayln (fourth lwl-freelist)))
+      (displayln "No changed behavior found")))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Full compiler
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(compose-compiler fixedperm-full-compiler
+                  #:upper small-fixed-permutation-to-heap
+                  #:lower heap-to-freelist)
+
+
+(compose-compiler full-compiler
+                  #:upper abstract-to-heap
+                  #:lower heap-to-freelist)
+
+
+
+(define (fpftest0)
+  (display-abstract-to-freelist
+       (find-changed-behavior fixedperm-full-compiler asmallstate)))
+
+(define (fpftest1)
+  (display-abstract-to-freelist
+       (find-changed-component fixedperm-full-compiler)))
+
+(define (fulltest0)
+  (display-abstract-to-freelist
+       (find-changed-behavior full-compiler asmallstate)))
+
+(define (fulltest1)
+  (display-abstract-to-freelist
+       (find-changed-component full-compiler)))

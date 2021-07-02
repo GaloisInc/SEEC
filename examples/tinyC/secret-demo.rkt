@@ -24,7 +24,7 @@
       )
     (let ([g (find-ctx-gadget tinyA-lang
                               spec
-                              #:expr ((compiler-compile tinyC-compiler) (list->seec prog))
+                              #:expression ((compiler-compile tinyC-compiler) (list->seec prog))
                               #:context (tinyA (,(list->seec args)
                                                 (cons ,seec-input nil)))
                               #:forall vars
@@ -93,7 +93,7 @@
 #;(tinyC:display-state (run-password-checker 100        0))
                                           ;  ^ password ^ guess
 ; Produces a trace of 0, indicating failure
-
+#;
 (define (run-password-checker-n correct-password input)
   (tinyA:run password-checker
              (list correct-password) ; The argument to main
@@ -145,6 +145,7 @@
 
 (define (pp-intlist vals)
   (format "~a" (seec->list vals)))
+
 (define (display-env-password-checker env)
   (match env
     [(tinyC (args:input-list input:list<input-list>))
@@ -206,7 +207,7 @@
   (let ([g (find-ctx-gadget tinyC-lang
                             (λ (p tr) (and (not (equal? tr seec-empty))
                                            (not (equal? tr *fail*))))
-                            #:expr (list->seec password-checker)
+                            #:expression (list->seec password-checker)
                             #:context (tinyC ((cons ,password nil)
                                               (cons ,input-seec-list nil)))
                             #:forall (list))])
@@ -225,7 +226,7 @@
       )
     (let ([g (find-ctx-gadget tinyA-lang
                               spec
-                              #:expr ((compiler-compile tinyC-compiler) (list->seec prog))
+                              #:expression ((compiler-compile tinyC-compiler) (list->seec prog))
                               #:context (tinyA (,(list->seec args)
                                                 (cons ,seec-input nil)))
                               #:forall vars
@@ -377,3 +378,4 @@
                            ))
 
                            
+
