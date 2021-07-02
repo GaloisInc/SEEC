@@ -193,7 +193,8 @@
                                  (seec-append (state-trace st) (seec-singleton v))
                                  (state-trace st))]
          )
-    (state (state-global-store st) pc sp mem  insns buf tr)))
+    (for/all ([mem mem])
+      (state (state-global-store st) pc sp mem  insns buf tr))))
 (define initial-state
   (λ (#:global-store G
       #:pc           pc
@@ -626,6 +627,8 @@
 
 (define/contract (input-list->intlist vs output)
   (-> syntax-input-list? tinyA-trace? (failure/c (listof integer?)))
+  (for/all ([vs vs])
+    #;(debug-display  "(input-list->intlist ~a)" vs)
   (match vs
     [(tinyA nil) (list)]
     [(tinyA (cons i:integer vs+:input-list))
@@ -638,7 +641,7 @@
          is+ <- (input-list->intlist vs+ output)
          (cons i is+)
          )]
-    ))
+    )))
 
 ; The true value represents a HALT
 (define/contract (eval-statement-1 #;insn st)
@@ -675,14 +678,17 @@
        #;(debug-display "=====================================")
        #;(debug-display "=====================================")
        (debug-display "Got input: ~a" input)
+       (debug-display "Length of input: ~a" (length input))
+       #;(render-value/window input)
        (debug (thunk (display-state st)))
 
        (cond
          [(and (list? input) (not (empty? input)))
           (do (<- l (eval-expr e st)) ; e should evaluate to a location
-            (debug-display "~a evaluates to ~a" e l)
+            #;(debug-display "~a evaluates to ~a" e l)
             #;(debug (thunk (display-state st)))
             (<- is (input-list->intlist (first input) (state-trace st)))
+            #;(render-value/window is)
             (<- m+ (push-objs l is (state-memory st)))
             (debug-display "New memory:")
             (debug (thunk (tinyC:display-memory m+)))
@@ -707,11 +713,13 @@
      (do (<- l (eval-address x st))
          (<- v (eval-expr e  st))
          (<- m (store-mem l v (state-memory st)))
-         (debug-display "~a evaluates to ~a" e v)
-         (debug-display "Old memory:")
-         (debug (thunk (tinyC:display-memory (state-memory st))))
-         (debug-display "New memory:")
-         (debug (thunk (tinyC:display-memory m)))
+         (debug-display "Old value of ~a: ~a" x (eval-expr x st))
+         (debug-display "New value of ~a: ~a" x v)
+         #;(debug-display "~a evaluates to ~a" e v)
+         #;(debug-display "Old memory:")
+         #;(debug (thunk (tinyC:display-memory (state-memory st))))
+         #;(debug-display "New memory:")
+         #;(debug (thunk (tinyC:display-memory m)))
 
          (update-state st
 ;                       #:increment-pc #t

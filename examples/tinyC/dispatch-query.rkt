@@ -6,7 +6,8 @@
          "tinyAssembly.rkt"
          "tinyC-tinyAssembly-compiler.rkt")
 (require (only-in racket/base
-                  values))
+                  values
+                  for))
 
 
 (require rosette/lib/value-browser) ; debugging
@@ -16,6 +17,13 @@
          push-objs-symbolic
          evaluate-prepared-state
          prepare-invariant-state
+
+         (struct-out dispatch-gadget)
+         dispatch-spec-holds
+         context->gadget
+         context->prelude-gadget
+         find-dispatch-gadgets
+         find-dispatch-gadgets-debug
          )
 
 (use-contracts-globally #t)
@@ -169,7 +177,7 @@
            ;mem+  <- (push-objs-symbolic (- sp fsize) fsize mem)
            mem+  <- (push-objs-symbolic-from-frame sp+ F mem)
 
-           (display-memory mem+)
+           (debug (thunk (display-memory mem+)))
 
            (tinyA:initial-state #:global-store g
                                 #:pc pc
@@ -180,3 +188,194 @@
            )]
       ))
 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;
+;; Added a structure to better treat dispatch gadgets uniformly, moving towards
+;; a framework query
+;;;;;;;;;;;;;;;;;;;;;;;;
+
+(struct dispatch-gadget (context spec before after))
+
+(define (dispatch-spec-holds g)
+  ((dispatch-gadget-spec g) (dispatch-gadget-before g) (dispatch-gadget-after g)))
+
+
+(define context->gadget
+  (λ (compiled-prog
+      ctx
+      #:spec spec
+      #:state-before [state-before (prepare-invariant-state compiled-prog)]
+      )
+
+    (debug-display "(context->gadget ~a)" ctx)
+    (define state-after (do st <- state-before
+                            (evaluate-prepared-state st ctx)))
+
+    (dispatch-gadget ctx
+                     spec
+                     state-before
+                     state-after
+                     )))
+
+(define context->prelude-gadget
+  (λ (compiled-prog
+      ctx
+      input-stream-length
+      )
+    (match compiled-prog
+      [(tinyA (g:global-store sp:stack-pointer mem:memory insns:insn-store))
+    (context->gadget compiled-prog
+                     ctx
+                     #:spec (λ (st1 st2) #t)
+                     #:state-before (tinyA:load-compiled-program
+                                     g
+                                     insns
+                                     mem
+                                     sp
+                                     (list) ; Start out with empty input, ctx gets added later
+                                     ; max number of iterations below--is this
+                                     ; symbolic? This number doesn't matter as long
+                                     ; as it doesn't disallow any of the input
+                                     ; stream
+                                     (list input-stream-length)
+                                     ))])))
+
+(define find-dispatch-gadgets
+  (λ (#:prelude-gadget    prelude-gadget
+      #:loop-body-gadgets body-gadgets
+;      #:loop-body-gadget  body-gadget
+      #:break-gadget      break-gadget
+      #:loop-invariant    invariant-holds
+      #:invariant-requires [invariant-requires (λ (st) #t)]
+      )
+    (define (invariant-holds-before g)
+      (invariant-holds (dispatch-gadget-before g)))
+    (define (invariant-requires-before g)
+      (invariant-requires (dispatch-gadget-before g)))
+    (define (invariant-holds-after g)
+      (invariant-holds (dispatch-gadget-after g)))
+
+    (define sol (synthesize
+                 #:forall (cons (dispatch-gadget-before break-gadget)
+                                (map dispatch-gadget-before body-gadgets)
+                                )
+                 #:assume (assert (and (andmap invariant-holds-before body-gadgets)
+                                       (andmap invariant-requires-before body-gadgets)
+                                       (invariant-holds-before break-gadget)
+                                       (invariant-requires-before break-gadget)
+                                       ))
+                 #:guarantee (assert (and (invariant-holds-after prelude-gadget)
+                                          (andmap invariant-holds-after body-gadgets)
+                                          #;(invariant-holds-after body-gadget)
+                                          (andmap dispatch-spec-holds body-gadgets)
+                                          (not (invariant-holds-after break-gadget))
+                                          ))
+                 ))
+    (if (unsat? sol)
+        (displayln "Dispatch gadget synthesis failed")
+        (begin
+          (displayln "Dispatch gadget synthesis succeeded")
+          (define-values (prelude-context-concrete
+                          loop-contexts-concrete
+                          break-context-concrete)
+            (let ([contexts (concretize (list (dispatch-gadget-context prelude-gadget)
+                                              (map dispatch-gadget-context body-gadgets)
+                                              (dispatch-gadget-context break-gadget)
+                                              )
+                                        sol)])
+              (values (first contexts)
+                      (second contexts)
+                      (third contexts)
+                      )))
+          (displayln (format "Prelude context: ~a" prelude-context-concrete))
+          (for ([ctx loop-contexts-concrete])
+            (displayln (format "Loop context: ~a" ctx)))
+          (displayln (format "Break context: ~a" break-context-concrete))
+          ))))
+
+
+(define find-dispatch-gadgets-debug
+  (λ (compiled-prog
+      #:prelude-gadget    prelude-gadget
+      #:loop-body-gadgets body-gadgets
+;      #:loop-body-gadget  body-gadget
+      #:break-gadget      break-gadget
+      #:loop-invariant    invariant-holds
+      #:invariant-requires [invariant-requires (λ (st) #t)]
+      )
+    (define (invariant-holds-before g)
+      (invariant-holds (dispatch-gadget-before g)))
+    (define (invariant-requires-before g)
+      (invariant-requires (dispatch-gadget-before g)))
+    (define (invariant-holds-after g)
+      (invariant-holds (dispatch-gadget-after g)))
+
+    (define sol (synthesize
+                 #:forall (list )
+                 #:assume (assert #t)
+                 #:guarantee (assert (and (andmap invariant-holds-before body-gadgets)
+                                       (andmap invariant-requires-before body-gadgets)
+                                       (invariant-holds-before break-gadget)
+                                       (invariant-requires-before break-gadget)
+                                       (not (and (invariant-holds-after prelude-gadget)
+                                                 (andmap invariant-holds-after body-gadgets)
+                                                 (andmap dispatch-spec-holds body-gadgets)
+                                                 (not (invariant-holds-after break-gadget))
+                                                 ))))
+                 ))
+    (if (unsat? sol)
+        (displayln "Dispatch gadget debugging failed")
+        (begin
+          (displayln "Dispatch gadget debugging succeeded")
+          (define-values (prelude-concrete
+                          loops-concrete
+                          break-concrete
+                          )
+            (let ([contexts (concretize (list prelude-gadget
+                                              body-gadgets
+                                              break-gadget
+                                              )
+                                        sol)])
+              (values (first contexts)
+                      (second contexts)
+                      (third contexts)
+                      )))
+
+          (displayln "=====================")
+          (displayln (format "Prelude context: ~a" (dispatch-gadget-context prelude-concrete)))
+          (displayln (format "Prelude gadget before:"))
+          (display-state (dispatch-gadget-before prelude-concrete))
+          (displayln (format "Prelude gadget after:"))
+          (display-state (dispatch-gadget-after prelude-concrete))
+
+          (displayln (format "invariant-holds-after prelude: ~a" (invariant-holds-after prelude-concrete)))
+          (displayln "")
+
+          (for ([g loops-concrete])
+            (displayln "=====================")
+            (displayln (format "Loop context: ~a" (dispatch-gadget-context g)))
+            (displayln (format "Loop gadget before:"))
+            (display-state (dispatch-gadget-before g))
+            (displayln (format "Loop gadget after:"))
+            (display-state (dispatch-gadget-after g))
+            (displayln (format "invariant-holds-before loop: ~a" (invariant-holds-before g)))
+            (displayln (format "invariant-requires-before loop: ~a" (invariant-requires-before g)))
+            (displayln (format "invariant-holds-after loop: ~a" (invariant-holds-after g)))
+            (displayln (format "dispatch-spec-holds for loop: ~a" (dispatch-spec-holds g)))
+            (displayln "")
+            )
+
+          (displayln "=====================")
+          (displayln (format "Break context: ~a" (dispatch-gadget-context break-concrete)))
+          (displayln (format "Break gadget before:"))
+          (display-state (dispatch-gadget-before break-concrete))
+          (displayln (format "Break gadget after:"))
+          (display-state (dispatch-gadget-after break-concrete))
+          (displayln (format "invariant-holds-before break: ~a" (invariant-holds-before break-concrete)))
+          (displayln (format "invariant-requires-before break: ~a" (invariant-requires-before break-concrete)))
+          (displayln (format "invariant-holds-after break: ~a" (invariant-holds-after break-concrete)))
+          (displayln "")
+          
+
+          ))))
