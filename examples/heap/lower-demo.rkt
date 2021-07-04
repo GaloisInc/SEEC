@@ -6,10 +6,10 @@
 (require seec/private/monad)
 
 (require (file "lib.rkt"))
-(require (file "heap-lang-hl.rkt"))
-(require (file "heap-abstract-lang-hl.rkt"))
+(require (file "heap-lang.rkt"))
+(require (file "heap-abstract-lang.rkt"))
 (require (file "freelist-lang.rkt"))
-(require (file "abstract-to-heap-hl-compiler.rkt"))
+(require (file "abstract-to-heap-compiler.rkt"))
 (require (file "heap-to-freelist-compiler.rkt"))
 
 
@@ -29,7 +29,7 @@
         #f)))
 
 
-(define (interpret-action+ a s)
+(define (interpret-action-hl+ a s)
   (let ([b (state->buf s)]
         [h (state->heap s)]
         [f (state->pointer s)])
@@ -38,26 +38,26 @@
        (if (valid-free p h)
            (make-state b (interpret-free h f p) p)
            (assert #f))]       
-      [_ (interpret-action a s)])))
+      [_ (interpret-action-hl a s)])))
 
-(define (interpret-interaction+ i s)
+(define (interpret-interaction-hl+ i s)
   (match i
     [(heap-model (cons a:action i+:interaction))
-     (interpret-interaction+ i+ (interpret-action+ a s))]
+     (interpret-interaction-hl+ i+ (interpret-action-hl+ a s))]
     [(heap-model nil)
      s]))
 
 
-(define-language heap-state-lang+
+(define-language heap-lang-hl+
   #:grammar heap-model
   #:expression state-con #:size 10
   #:context interaction #:size 3
-  #:link heap-lang-link-state
-  #:evaluate (uncurry interpret-interaction+))
+  #:link heap-lang-link
+  #:evaluate (uncurry interpret-interaction-hl+))
 
 
 (define-compiler heap-to-freelist+
-  #:source heap-state-lang+
+  #:source heap-lang-hl+
   #:target freelist-lang
   #:behavior-relation
   (lambda (s f) (equal? (compile-heap-to-freelist s) f))
@@ -78,7 +78,7 @@
         #f)))
 
 
-(define (interpret-action++ a s)
+(define (interpret-action-hl++ a s)
   (let ([b (state->buf s)]
         [h (state->heap s)]
         [f (state->pointer s)])
@@ -90,27 +90,27 @@
          (if (valid-write loc h)
              (make-state b h+ f)
              (assert #f)))]
-      [_ (interpret-action+ a s)])))
+      [_ (interpret-action-hl+ a s)])))
 
 
 
-(define (interpret-interaction++ i s)
+(define (interpret-interaction-hl++ i s)
   (match i
     [(heap-model (cons a:action i+:interaction))
-     (interpret-interaction++ i+ (interpret-action++ a s))]
+     (interpret-interaction-hl++ i+ (interpret-action-hl++ a s))]
     [(heap-model nil)
      s]))
 
-(define-language heap-state-lang++
+(define-language heap-lang-hl++
   #:grammar heap-model
   #:expression state-con #:size 10
   #:context interaction #:size 3
-  #:link heap-lang-link-state
-  #:evaluate (uncurry interpret-interaction++))
+  #:link heap-lang-link
+  #:evaluate (uncurry interpret-interaction-hl++))
 
 
 (define-compiler heap-to-freelist++
-  #:source heap-state-lang++
+  #:source heap-lang-hl++
   #:target freelist-lang
   #:behavior-relation (lambda (s f) (equal? (compile-heap-to-freelist s) f))
   #:context-relation (lambda (i fi) (equal? (compile-interaction i) fi))
@@ -132,17 +132,17 @@
 (define demofreelist (compile-heap-to-freelist demostate))
 
 (define demoattack (heap-model (cons (free 4) nil)))
-(define demostate+ (interpret-interaction demoattack demostate))
+(define demostate+ (interpret-interaction-hl demoattack demostate))
 
-(define-language heap-state-lang+++
+(define-language heap-lang-hl+++
   #:grammar heap-model
   #:expression state-con #:size 10
   #:context interaction #:size 4
-  #:link heap-lang-link-state
-  #:evaluate (uncurry interpret-interaction++))
+  #:link heap-lang-link
+  #:evaluate (uncurry interpret-interaction-hl++))
 
 (define-compiler heap-to-freelist+++
-  #:source heap-state-lang+++
+  #:source heap-lang-hl+++
   #:target freelist-lang
   #:behavior-relation (lambda (s f) (and (equal? (compile-heap-to-freelist s) f)
                                          (valid-heap? (state->heap s))))

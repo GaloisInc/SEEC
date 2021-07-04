@@ -6,7 +6,7 @@
 (require seec/private/monad)
 
 (provide (all-defined-out))
-(require (file "heap-lang-hl.rkt"))
+(require (file "heap-lang.rkt"))
 (require (file "freelist-lang.rkt"))
 
 (define/debug #:suffix (compile-into-freelist fuel h p bwd)
@@ -57,7 +57,7 @@
 
 
 (define-compiler heap-to-freelist
-  #:source heap-lang-state
+  #:source heap-lang-hl
   #:target freelist-lang
   #:behavior-relation (lambda (s f) (equal? (compile-heap-to-freelist s) f))
   #:context-relation (lambda (i fi) (equal? (compile-interaction i) fi))

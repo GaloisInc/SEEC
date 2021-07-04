@@ -8,7 +8,7 @@
                   raise-arguments-error))
 (require (file "lib.rkt"))
 (require (file "heap-lang.rkt"))
-(require (file "heap-abstract-lang.rkt"))
+(require (file "abstract-lang.rkt"))
 (provide (all-defined-out))
 
 ; returns (list 0 ... n)
@@ -486,6 +486,8 @@
 (define/debug (bounded-equiv-state n)
   (lambda (as s)
     (match as
+      [(abstract-model E)
+       #f]
       [(abstract-model (ab:any ah:any))
        (and
         (valid-heap? (state->heap s))
@@ -511,14 +513,14 @@
 
 (define-compiler fixed-permutation-to-heap
   #:source abstract-lang
-  #:target heap-lang-state
+  #:target heap-lang
   #:behavior-relation (bounded-equiv-state 3)
   #:context-relation equal?
   #:compile (lambda (as) (test-abs-into-heap-fl fixed-p as)))
 
 (define-compiler small-fixed-permutation-to-heap
   #:source abstract-lang
-  #:target heap-lang-state
+  #:target heap-lang
   #:behavior-relation (bounded-equiv-state 3)
   #:context-relation equal?
   #:compile (lambda (as) (test-abs-into-heap-fl smallfixed-p as)))
@@ -526,7 +528,7 @@
 
 (define-compiler abstract-to-heap
   #:source abstract-lang
-  #:target heap-lang-state
+  #:target heap-lang
   #:behavior-relation (bounded-equiv-state 3)
   #:context-relation equal?
   #:compile (lambda (as) (compile-abs-into-heap-fl 2 as)))
@@ -534,14 +536,14 @@
 
 (define-compiler abstract-to-heap-nd
   #:source abstract-lang
-  #:target heap-lang-state
+  #:target heap-lang
   #:behavior-relation (bounded-equiv-state 3)
   #:context-relation equal? 
   #:compile (lambda (as) (compile-abs-into-heap-nd 2 as)))
 
 (define-compiler abstract-to-heap-nc
   #:source abstract-lang
-  #:target heap-lang-state
+  #:target heap-lang
   #:behavior-relation (bounded-equiv-state 3)
   #:compile (lambda (as) (compile-abs-into-heap-nd 2 as)))
 
@@ -572,12 +574,13 @@
 (define as+t1 (abs-interpret-interaction i-test1 ademostate))
 
 
-; returns the state, the permutation and the captured nondet
-(define (make-heap-schema)
+; Call query q with an abstract heap schema
+(define (with-heap-schema q)
   (let* ([assert-store (asserts)]
          [as* (make-symbolic-abstract-state)])
     (let*-values ([(p* nondet*) (capture-nondeterminism #:nondet #t (generate-permutation-fl 2 1))])
-      (let* ([s* (test-abs-into-heap-fl p* (car as*))])
+      (let* ([s* (test-abs-into-heap-fl p* (car as*))]
+             [w (q s*)])
         (clear-asserts!)
         (for-each (lambda (arg) (assert arg)) assert-store)
-        (list s* p* nondet*)))))
+        w))))

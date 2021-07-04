@@ -35,6 +35,15 @@
           (free buf-loc) ; free the object at the pointer held in buf-loc in buffer
           (alloc buf-loc)) ; alloc an object with n blocks, placing its pointer in buffer at buf-loc
   (interaction ::= list<action>)
+  (action-hl ::=
+          (read heap-loc buf-loc) ; place the element at (1)heap location into the buffer at (2)buf-loc
+          (write buf-loc heap-loc); place the element at (1)buf-loc in buffer into (2) heap location
+          (copy buf-loc buf-loc) ; overwrite (2) with value of (1)
+          (incr buf-loc) ; add 1 to value at buf-loc
+          (decr buf-loc) ; remove 1 to value at buf-loc
+          (free heap-loc) ; free the object at (1)heap location
+          (alloc buf-loc)) ; alloc an object with n blocks, placing its pointer in buffer at buf-loc
+  (interaction-hl ::= list<action-hl>)
   (saction ::=
            (set buf-loc nnvalue))
   (setup ::= list<saction>)
@@ -447,6 +456,56 @@
     [(heap-model nil)
      s]))
 
+(define/debug #:suffix (interpret-action-hl a s)
+ (for/all ([a a])
+    (debug-display "~a" a)
+    (let ([b (state->buf s)]
+          [h (state->heap s)]
+          [f (state->pointer s)])
+     (match a
+       [(heap-model (copy bl0:buf-loc bl1:buf-loc))
+        (let* ([val (nth b bl0)]
+               [b+ (replace b bl1 val)])
+          (state b+ h f))]                    
+       [(heap-model (free p:heap-loc))
+        (let* ([h+ (interpret-free h f p)])
+          (state b h+ p))]
+       [(heap-model (alloc bl:buf-loc))
+        (match f
+          [(heap-model n:natural)
+           (let* ([ph+ (interpret-alloc-free h n)]
+                  [b+ (replace b bl f)])
+             (state b+ (cdr ph+) (car ph+)))]
+          [(heap-model null)
+           (let* ([ph+ (interpret-alloc-no-free h)]
+                  [b+  (replace b bl (heap-model ,(car ph+)))])
+             (state b+ (cdr ph+) f))])]
+       [(heap-model (incr bl:buf-loc))
+        (let* ([val (nth b bl)]
+               [b+ (replace b bl (+ val 1))])
+          (state b+ h f))]
+       [(heap-model (decr bl:buf-loc))
+        (let* ([val (nth b bl)]
+               [b+ (replace b bl (- val 1))])
+          (state b+ h f))]
+       [(heap-model (read hl:heap-loc bl:buf-loc))
+        (let* ([val (nth h hl)] ; get the value at the location
+               [b+ (replace b bl val)]) ; place the value in the buffer
+             (state b+ h f))]
+       [(heap-model (write bl:buf-loc hl:buf-loc))
+        (let* ([val (nth b bl)]
+               [h+ (write h hl val)])
+          (state b h+ f))]))))
+
+
+(define (interpret-interaction-hl i s)
+    (match i
+    [(heap-model (cons a:action-hl i+:interaction-hl))
+     (interpret-interaction-hl i+ (interpret-action-hl a s))]
+    [(heap-model nil)
+     s]))
+
+
 (define (interpret-saction a s)
   (match a
     [(heap-model (set bl:buf-loc v:nnvalue))
@@ -488,40 +547,32 @@
 
 
 (define heap-lang-link
-  (lambda (state inte)
-           (match state
-             [(heap-model (b:buf h:heap p:pointer))
-              (cons inte (make-state b h p))])))
-
-(define heap-lang-link-state
   (lambda (inte state)
            (match state
              [(heap-model (b:buf h:heap p:pointer))
               (cons inte (make-state b h p))])))
 
-
 (define-language heap-lang
-  #:grammar heap-model
-  #:expression interaction #:size 4
-  #:context state-con #:size 10
-  #:link heap-lang-link
-  #:evaluate (uncurry interpret-interaction))
-
-(define-language heap-lang-state
   #:grammar heap-model
   #:expression state-con #:size 10
   #:context action #:size 3
-  #:link heap-lang-link-state
+  #:link heap-lang-link
   #:evaluate (uncurry interpret-action))
+
+(define-language heap-lang-hl
+  #:grammar heap-model
+  #:expression state-con #:size 10
+  #:context interaction-hl #:size 3
+  #:link heap-lang-link
+  #:evaluate (uncurry interpret-interaction-hl))
 
 
 
 (define (synthesize-interaction-gadget size ctx spec)
-  (let* ([sol (find-gadget heap-lang
+  (let* ([sol (find-ctx-gadget heap-lang
                            spec
-                           #:expression-size size
-                           #:expression-witness-only #t
-                           #:context (make-state-con ctx))])
+                           #:context-size size
+                           #:expression (make-state-con ctx))])
     (if sol
         (first sol)
         #f)))
