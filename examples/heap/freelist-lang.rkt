@@ -43,7 +43,7 @@
 
 (define-language freelist-lang
   #:grammar freelist
-  #:expression state #:size 3
+  #:expression state #:size 4
   #:context interaction #:size 3
   #:link cons
   #:evaluate (uncurry freelist-interaction))
