@@ -24,6 +24,8 @@
          context->prelude-gadget
          find-dispatch-gadgets
          find-dispatch-gadgets-debug
+
+         tinyA-invariant
          )
 
 (use-contracts-globally #t)
@@ -221,7 +223,7 @@
 (define context->prelude-gadget
   (λ (compiled-prog
       ctx
-      input-stream-length
+      args
       )
     (match compiled-prog
       [(tinyA (g:global-store sp:stack-pointer mem:memory insns:insn-store))
@@ -238,7 +240,7 @@
                                      ; symbolic? This number doesn't matter as long
                                      ; as it doesn't disallow any of the input
                                      ; stream
-                                     (list input-stream-length)
+                                     args
                                      ))])))
 
 (define find-dispatch-gadgets
@@ -267,7 +269,6 @@
                                        ))
                  #:guarantee (assert (and (invariant-holds-after prelude-gadget)
                                           (andmap invariant-holds-after body-gadgets)
-                                          #;(invariant-holds-after body-gadget)
                                           (andmap dispatch-spec-holds body-gadgets)
                                           (not (invariant-holds-after break-gadget))
                                           ))
@@ -379,3 +380,92 @@
           
 
           ))))
+
+
+;; synthesizing invariants ;;
+
+
+  (define-grammar tinyA-invariant #:extends syntax
+    (conjunct ::= list<disjunct>)
+    (disjunct ::= list<literal>)
+    (literal  ::= boolean
+                  (expr = expr)
+                  (expr <> expr)
+                  (expr < expr)
+                  (PC   = integer)
+                  )
+    )
+  (define (interpret-conjunct conj st)
+    (andmap (λ (disj) (interpret-disjunct disj st)) (seec->list conj)))
+  (define (interpret-disjunct disj st)
+    (ormap (λ (lit) (interpret-literal lit st)) (seec->list disj)))
+  (define (interpret-literal lit st)
+    (match lit
+      [(tinyA-invariant b:boolean) b]
+      [(tinyA-invariant (e1:expr = e2:expr))
+       (do v1 <- (tinyA:eval-expr e1 st)
+           v2 <- (tinyA:eval-expr e2 st)
+           (equal? v1 v2))]
+      [(tinyA-invariant (e1:expr <> e2:expr))
+       (do v1 <- (tinyA:eval-expr e1 st)
+           v2 <- (tinyA:eval-expr e2 st)
+           (not (equal? v1 v2)))]
+      [(tinyA-invariant (e1:expr < e2:expr))
+       (do v1 <- (tinyA:eval-expr e1 st)
+           v2 <- (tinyA:eval-expr e2 st)
+           (< v1 v2))]
+      [(tinyA-invariant (PC = x:integer))
+       (equal? (tinyA:state-pc st) x)]
+      ))
+
+
+
+      
+
+#|
+
+  ; Create a symbolic boolean invariant in CNF (language of SMT solvers)
+  (define (symbolic-invariant)
+    (symbolic-CNF))
+
+  (define (symbolic-conjunct width len)
+    (cond
+      [(<= len 0) #t]
+      [else       (and (symbolic-disjunct width) (symbolic-conjunct width (- len 1)))]
+      ))
+  (define (symbolic-disjunct width)
+    (cond
+      [(<= len 0) #f]
+      [else       (or (symbolic-literal) (symbolic-disjunct (- width 1)))]
+      ))
+
+  (define (symbolic-var+ felem)
+    (match felem
+      [(tinyA (x:var o:offset) x)]
+      [(tinyA 
+
+  (define (symbolic-var F)
+    (match F
+      [(tinyA (cons (x:var o:offset) nil))
+
+  (define (symbolic-literal)
+    (let ([expr1 (symbolic-expression)]
+          [expr2 (symbolic-expression)])
+      (cond
+        [(havoc!) (equal? expr1 expr2)]
+        [(havoc!) (not (equal? expr1 expr2))]
+        [(havoc!) (< expr1 expr2)]
+        [else     ; constant boolean
+         (define-symbolic* b boolean?)
+         b]
+        )))
+  (define (symbolic-expression st)
+    (cond
+      [(havoc!) ; variable name
+       _]
+      [(havoc!) ; constant integer
+       (define-symbolic* const integer?)
+       const]
+      [else     ; array indexing
+  ]))
+|#

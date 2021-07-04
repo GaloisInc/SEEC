@@ -332,9 +332,16 @@ void main(int MAXCONN) {
   (define-symbolic* invariant-pc integer?)
   (define (invariant-holds st)
     (and (equal? (tinyA:state-pc st) invariant-pc)
-         (> (tinyA:eval-expr (tinyA "MAXCONN") st) 2)
+         (> (tinyA:eval-expr (tinyA "MAXCONN") st) 0)
          ))
-
+  #;(define symbolic-inv (tinyA-invariant conjunct 10))
+                
+  #;(assert (equal? symbolic-inv
+                  (list->seec (list _)
+                              (list _)
+                              )))
+  #;(define (invariant-holds st)
+    (interpret-invariant symbolic-inv st))
   
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ; Next specify the maximum length and width of input streams ;
@@ -354,7 +361,7 @@ void main(int MAXCONN) {
                              (symbolic-input-stream+ max-width input-stream-length)
                              #;(list (list->seec (list 1 4 14)))
                              #;(list (list->seec (list 3 0 0 10)))
-                             input-stream-length))
+                             (list input-stream-length)))
   (displayln "Done with symbolic execution of prelude gadget")
 
 
@@ -371,7 +378,7 @@ void main(int MAXCONN) {
   ; 6. head = head + 1
   ; 7. head = head - 1
 
-  (define output-anything-gadget
+  #;(define output-anything-gadget
     (context->gadget compiled-server
                      (symbolic-input-stream+ max-width input-stream-length)
                      #;(list (list->seec (list 3 0 0 10)))
@@ -379,7 +386,7 @@ void main(int MAXCONN) {
                               (equal? (seec-length (tinyA:state-trace st2))
                                       (+ 1 (seec-length (tinyA:state-trace st1)))))
                      ))
-  (displayln "Done with symbolic execution of output anything gadget")
+  #;(displayln "Done with symbolic execution of output anything gadget")
 
   (define (write-constant-gadget i c)
     (context->gadget compiled-server
@@ -429,17 +436,13 @@ void main(int MAXCONN) {
 
   (find-dispatch-gadgets ;-debug compiled-server
                          #:prelude-gadget     prelude-gadget
-                         #:loop-body-gadgets  (list output-anything-gadget write-gadget read-gadget)
+                         #:loop-body-gadgets  (list  write-gadget read-gadget)
                          #:break-gadget       break-gadget
                          #:loop-invariant     invariant-holds
                          )
 #|Result: 
 
-Prelude context: ()
-Loop context: ((2 (0 (0))))
-Loop context: ((1 (300 (3))))
-Break context: ((-1))
-cpu time: 643981 real time: 644334 gc time: 10473
+
 |#
 
 
@@ -468,42 +471,3 @@ cpu time: 643981 real time: 644334 gc time: 10473
 
 ;;; SCRATCH ;;;;
 
-
-#|
-
-  ; Create a symbolic boolean invariant in CNF (language of SMT solvers)
-  (define (symbolic-invariant)
-    (symbolic-CNF))
-
-  (define (symbolic-conjunct width len)
-    (cond
-      [(<= len 0) #t]
-      [else       (and (symbolic-disjunct width) (symbolic-conjunct width (- len 1)))]
-      ))
-  (define (symbolic-disjunct width)
-    (cond
-      [(<= len 0) #f]
-      [else       (or (symbolic-literal) (symbolic-disjunct (- width 1)))]
-      ))
-
-  (define (symbolic-literal)
-    (let ([expr1 (symbolic-expression)]
-          [expr2 (symbolic-expression)])
-      (cond
-        [(havoc!) (equal? expr1 expr2)]
-        [(havoc!) (not (equal? expr1 expr2))]
-        [(havoc!) (< expr1 expr2)]
-        [else     ; constant boolean
-         (define-symbolic* b boolean?)
-         b]
-        )))
-  (define (symbolic-expression st)
-    (cond
-      [(havoc!) ; variable name
-       _]
-      [(havoc!) ; constant integer
-       (define-symbolic* const integer?)
-       const]
-      [else     ; array indexing
-  ]))
-|#
