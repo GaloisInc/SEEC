@@ -10,10 +10,7 @@
 (require (file "lib.rkt"))
 (provide (all-defined-out))
 
-
-
-;
-; Heap allocator model (buf-loc version)
+; Heap allocator model
 ; blocks have the form | In use? | size | payload ... |
 ; blocks in the freelist have the form | 0 | size | fw | bw | ... | 
 ; state is initialize with wilderness (in use? = 0, not in the freelist) and freelist = null
@@ -36,21 +33,19 @@
           (alloc buf-loc)) ; alloc an object with n blocks, placing its pointer in buffer at buf-loc
   (interaction ::= list<action>)
   (action-hl ::=
-          (read heap-loc buf-loc) ; place the element at (1)heap location into the buffer at (2)buf-loc
-          (write buf-loc heap-loc); place the element at (1)buf-loc in buffer into (2) heap location
-          (copy buf-loc buf-loc) ; overwrite (2) with value of (1)
-          (incr buf-loc) ; add 1 to value at buf-loc
-          (decr buf-loc) ; remove 1 to value at buf-loc
-          (free heap-loc) ; free the object at (1)heap location
-          (alloc buf-loc)) ; alloc an object with n blocks, placing its pointer in buffer at buf-loc
+          (read heap-loc buf-loc) 
+          (write buf-loc heap-loc)
+          (copy buf-loc buf-loc)
+          (incr buf-loc)
+          (decr buf-loc)
+          (free heap-loc)
+          (alloc buf-loc))
   (interaction-hl ::= list<action-hl>)
   (saction ::=
            (set buf-loc nnvalue))
   (setup ::= list<saction>)
   (complete-interaction ::= (setup interaction))
-  (state-con ::= (buf heap pointer))
- )
-
+  (state-con ::= (buf heap pointer)))
 
 (struct state (buf heap pointer))
 
@@ -62,8 +57,7 @@
   (match s
     [(heap-model (b:buf h:heap p:pointer))
      (make-state b h p)]))
-                 
-    
+                     
 ; from state to state-con
 (define (make-state-con s)
   (heap-model (,(state->buf s) ,(state->heap s) ,(state->pointer s))))
@@ -75,15 +69,12 @@
 (define state->pointer
   state-pointer)
 
-
-
 (define (fold f l s)
   (match l
     [(heap-model nil)
      s]
     [(heap-model (cons hd:any l+:list<any>))
      (f s (fold f l+ s))]))
-
 
 ;; lifted list operations
 (define (s-length s)
@@ -118,8 +109,6 @@
       (let  ([tl (tail l)])
           (skip (- n 1) tl))))
 
-
-
 (define (append s1 s2)
   (match s1
     [(heap-model nil) s2]
@@ -141,8 +130,7 @@
 
 (define (opt-nth s i)
   (if (and (<= 0 i)
-           (< i (s-length s)))
-           
+           (< i (s-length s)))           
       (nth s i)
       *fail*))
 
@@ -160,9 +148,6 @@
        (heap-model (cons ,v nil))]
       [(heap-model (cons hd:any s+:any))
        (heap-model (cons ,hd ,(enqueue s+ v)))]))
-
-
-
 
 ; replace the ith element in l with v
 ; list* -> integer* -> value* -> list*
@@ -186,7 +171,6 @@
      (if (equal? hd v)
          l+
          (heap-model (cons ,hd ,(remove-one-elem l+ v))))]))
-
 
 (define (and-seec-list f l)
   (match l
@@ -215,7 +199,6 @@
 ; return the address of the nth block
 (define (block-addr n)
   (+ (* n 4) 2))
-
 
 ; return #t if h doesn't contain any allocated blocks
 (define (empty-heap? h)
@@ -284,23 +267,6 @@
     (and (equal? (s-length (state->buf s)) bs)
          (equal? (s-length (state->heap s)) hs))))
 
-(define (state-con-size bs hs)
-  (lambda (s)
-    ((state-size bs hs) (make-state-struct s))))
-
-(define (state-same-heap s s+)
-  (equal? (state->heap s) (state->heap s+)))
-
-(define (state-con-same-heap s s+)
-  (state-same-heap (make-state-struct s) (make-state-struct s+)))
-
-
-(define (prog-state-size bs hs)
-  (lambda (p)
-    (let ([s (cdr p)])
-      ((state-size bs hs) s))))
-
-    
 ; pointer* -> boolean
 (define (is-null? p)
   (match p
@@ -322,13 +288,11 @@
         (displayln "UNSAT")
         (displayln "SAT"))))
 
-
 ; calculate the address of a heap-loc in the heap
 (define (heap-loc-addr hl)
   (match hl
     [(heap-model n:natural)
      n]))
-
 
 (define (interpret-alloc-no-free h)
   (match h
@@ -357,9 +321,7 @@
                         [old-payload (first-nth size h+2)]
                         [old-block (heap-model (cons ,in-use (cons ,size ,old-payload)))]
                         [new-hr (append old-block hr)])
-                   (cons new-i new-hr))])))])]))
-     
-
+                   (cons new-i new-hr))])))])]))     
 
 ; reallocate the block at the head of the free-list
 ; heap* -> natural -> (pointer* x heap*)
@@ -373,8 +335,6 @@
                  (cons newf h++))]
             [(heap-model null)
              (cons newf h+)])))
-
-
 
 ; free block at p in h, adding it to the free-list headed at f
 ;; (1) find the size of block (at p-1)
@@ -400,12 +360,8 @@
           (assert #f)
           ]))]))
 
-
-
-(define/debug (interpret-action a s)
+(define (interpret-action a s)
  (for/all ([a a])
-;            [s s])
-    (debug-display "~a" a)
     (let ([b (state->buf s)]
           [h (state->heap s)]
           [f (state->pointer s)])
@@ -447,7 +403,6 @@
                [loc (nth b bhl)]
                [h+ (write h loc val)])
           (state b h+ f))]))))
-
 
 (define (interpret-interaction i s)
     (match i
@@ -497,7 +452,6 @@
                [h+ (write h hl val)])
           (state b h+ f))]))))
 
-
 (define (interpret-interaction-hl i s)
     (match i
     [(heap-model (cons a:action-hl i+:interaction-hl))
@@ -505,13 +459,10 @@
     [(heap-model nil)
      s]))
 
-
 (define (interpret-saction a s)
   (match a
     [(heap-model (set bl:buf-loc v:nnvalue))
-     (state-buf-set bl v s)]))
-                 
-
+     (state-buf-set bl v s)]))                 
 
 (define (interpret-setup setup s)
   (match setup
@@ -524,7 +475,6 @@
   (match ci
     [(heap-model (v:setup i:interaction))
      (interpret-interaction i (interpret-setup v s))]))
-
 
 (define (default-val val def)
   (match val
@@ -544,7 +494,6 @@
 
 (define (obs-heap-def n def s)
   (default-val (obs-heap n s) def))
-
 
 (define heap-lang-link
   (lambda (inte state)
@@ -566,8 +515,6 @@
   #:link heap-lang-link
   #:evaluate (uncurry interpret-interaction-hl))
 
-
-
 (define (synthesize-interaction-gadget size ctx spec)
   (let* ([sol (find-ctx-gadget heap-lang
                            spec
@@ -576,8 +523,6 @@
     (if sol
         (first sol)
         #f)))
-
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Pretty-printing
@@ -595,7 +540,6 @@
     [(heap-model null)
      "null"]))
                  
-
 (define (print-value v)
   (match v
     [(heap-model p:pointer)
@@ -639,7 +583,6 @@
                           (~a (print-value h4) #:width 4)))
        (display-heap+ h+ (+ addr 4))]
       [(heap-model any)
-       ;       (displayln "HEAP not a multiple of 4")
        (display (format "~a > |"
                         (~a addr #:width 2)))
        (displayln (print-list-value h))
@@ -655,9 +598,6 @@
     (displayln "FP HEAD:")
     (displayln (print-pointer (state->pointer s)))))
       
-
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; TESTING heap-model
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -673,7 +613,6 @@
 (define d+  (interpret-action aa0 d))
 (define d++ (interpret-action aa1 d+))
 
-
 (define d+3* (interpret-action af0 d++))
 (define d+3** (interpret-action af1 d++))
 (define d+4* (interpret-action af1 d+3*))
@@ -683,7 +622,6 @@
 (define d+3  (state-buf-set 2 7 d++))
 (define d+4 (interpret-action aw d+3))
 (define d+5 (interpret-action ar d+4))
-
 
 (define (clear-buf s)
   (state (repeat (heap-model null) 4) (state->heap s) (state->pointer s)))

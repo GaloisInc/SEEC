@@ -20,7 +20,7 @@
 
 (define (demo1)
   (display-weird-abstract-to-heap
-   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap-nd as*)))))
+   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap as*)))))
 
 (define (recorded1)
   (begin
@@ -64,7 +64,7 @@
   #:evaluate (uncurry interpret-action+))
 
 
-(define-compiler abstract-to-heap-nd+
+(define-compiler abstract-to-heap+
   #:source abstract-lang
   #:target heap-lang+
   #:behavior-relation (bounded-equiv-state 3)
@@ -74,7 +74,7 @@
 
 (define (demo2)
   (display-weird-abstract-to-heap
-   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap-nd+ as*)))))
+   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap+ as*)))))
 
 (define (recorded2)
   (begin
@@ -115,7 +115,7 @@
   #:evaluate (uncurry abs-interpret-action+))
 
 
-(define-compiler abstract-to-heap-nd++
+(define-compiler abstract-to-heap++
   #:source abstract-lang+
   #:target heap-lang+
   #:behavior-relation (bounded-equiv-state 3)
@@ -125,7 +125,7 @@
 
 (define (demo3)
   (display-weird-abstract-to-heap
-   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap-nd++ as*)))))
+   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap++ as*)))))
 
 (define (recorded3)
   (begin
@@ -167,7 +167,7 @@
   #:evaluate (uncurry abs-interpret-action++))
 
 
-(define-compiler abstract-to-heap-nd3
+(define-compiler abstract-to-heap3
   #:source abstract-lang++
   #:target heap-lang+
   #:behavior-relation (bounded-equiv-state 3)
@@ -176,7 +176,7 @@
 
 (define (demo4)
   (display-weird-abstract-to-heap
-   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap-nd3 as*)))))
+   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap3 as*)))))
 
 (define (recorded4)
   (begin
@@ -217,7 +217,7 @@
   #:evaluate (uncurry abs-interpret-action3))
 
 
-(define-compiler abstract-to-heap-nd4
+(define-compiler abstract-to-heap4
   #:source abstract-lang3
   #:target heap-lang+
   #:behavior-relation (bounded-equiv-state 3)
@@ -226,7 +226,7 @@
 
 (define (demo5)
   (display-weird-abstract-to-heap
-   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap-nd4 as*)))))
+   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap4 as*)))))
 
 (define (recorded5)
   (begin
@@ -266,7 +266,7 @@
   #:evaluate (uncurry abs-interpret-action4))
 
 
-(define-compiler abstract-to-heap-nd5
+(define-compiler abstract-to-heap5
   #:source abstract-lang4
   #:target heap-lang+
   #:behavior-relation (bounded-equiv-state 3)
@@ -275,7 +275,7 @@
 
 (define (demo6)
   (display-weird-abstract-to-heap
-   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap-nd5 as*)))))
+   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap5 as*)))))
 
 (define (recorded6)
   (begin
@@ -313,7 +313,7 @@
       [(abstract-model any)
        ((bounded-equiv-state n) as s)])))
 
-(define-compiler abstract-to-heap-nd6
+(define-compiler abstract-to-heap6
   #:source abstract-lang4
   #:target heap-lang+
   #:behavior-relation (bounded-equiv-state+ 3)
@@ -322,7 +322,7 @@
 
 (define (demo7)
   (display-weird-abstract-to-heap
-   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap-nd6 as*)))))
+   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap6 as*)))))
 
 (define (recorded7)
   (begin

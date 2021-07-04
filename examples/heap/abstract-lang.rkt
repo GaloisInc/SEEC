@@ -10,10 +10,7 @@
 (require (file "heap-lang.rkt"))
 (provide (all-defined-out))
 
-
-; Making a higher-abstraction model which described the content of a heap
-; and which can be compiled (non-deterministically) into a multiple equivalent heaps
-
+; Higher-abstraction view of memory
 (define-grammar abstract-model
   (pointer ::= (P natural selector) N)
   (selector ::= a b)
@@ -23,7 +20,7 @@
   (buf-loc ::= natural)
   (buf ::= list<value>)
   (heap ::= list<block>)
-  (state ::= (buf heap) E) ; added error state E
+  (state ::= (buf heap) E)
   (action ::=
     (read buf-loc buf-loc) ; place the element at pointer (1)buf-loc in heap into the buffer at (2)buf-loc
     (write buf-loc buf-loc); place the element at (1)buf-loc in buffer into the heap pointer (2)buf-loc
@@ -32,8 +29,7 @@
     (decr buf-loc) ; remove 1 to value at buf-loc
     (free buf-loc) ; free the object at the pointer held in buf-loc in buffer
     (alloc buf-loc)) ; alloc an object with n blocks, placing its pointer in buffer at buf-loc
-  (interaction ::= list<action>)
-  )
+  (interaction ::= list<action>))
 
 (define (abs-select s a1 a2)
   (match s
@@ -93,8 +89,6 @@
     [(abstract-model N)
      p]))
 
-
-
 (define (abs-shift-value n v)
   (match v
     [(abstract-model p:pointer)
@@ -118,7 +112,6 @@
     [(abstract-model (b:buf h:heap))
      (abstract-model (,(abs-shift-buf n b) ,(abs-shift-heap n h)))]))
 
-
 ; This version of abs-free doesn't force the selector to be "a"
 (define (abs-free b h bl)
   (let* ([p (nth b bl)]) ; get the pointer
@@ -131,7 +124,6 @@
         (abs-state b++ h++))]
       [any
        (abs-error-state)])))
-
 
 (define/debug #:suffix (abs-alloc b h bl)
   (begin
@@ -156,7 +148,6 @@
     [(abstract-model any)
      #f]))
 
-
 (define (abs-incr val)
   (match val
     [(abstract-model i:integer)
@@ -175,10 +166,8 @@
                  (abstract-model N)
                  (abstract-model (P ,n a)))]))
 
-
 (define/debug #:suffix (abs-interpret-action a s)
  (for/all ([a a])
-;            [s s])
     (let ([b (abs-state->buf s)]
           [h (abs-state->heap s)])
      (match a
@@ -218,14 +207,12 @@
               (abs-state b h+)
               (abs-error-state)))]))))
 
-
 (define (abs-interpret-interaction i s)
     (match i
     [(abstract-model (cons a:action i+:interaction))
      (abs-interpret-interaction i+ (abs-interpret-action a s))]
     [(abstract-model nil)
      s]))
-
 
 (define-language abstract-lang
   #:grammar abstract-model
@@ -364,15 +351,10 @@
 ; TESTING abstract-model
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
 (define ad (abs-init-state 4))
-
-;(debug? #t)
 (define ad+  (abs-interpret-action aa0 ad))
 
-
 (define ad++ (abs-interpret-action aa1 ad+))
-
 
 (define ad+3* (abs-interpret-action af0 ad++))
 (define ad+3** (abs-interpret-action af1 ad++))
@@ -380,12 +362,9 @@
 (define ad+5* (abs-interpret-action aa0 ad+4*))
 (define ad+4** (abs-interpret-action af0 ad+3**))
 
-
-
 (define abuf (abstract-model (cons (P 0 a) (cons (P 1 b) (cons 4 (cons 5 nil))))))
 (define aheap (abstract-model (cons (6 (P 1 a)) (cons ((P 0 a) 7) nil))))
 (define astate (abstract-model (,abuf ,aheap)))
-
 
 (define asmallbuf (abstract-model (cons (P 0 a) (cons -1 (cons 0 (cons 1 nil))))))
 (define asmallheap (abstract-model (cons ((P 0 b) 2) nil)))
@@ -396,7 +375,7 @@
 (define ademostate (abstract-model (,ademobuf ,ademoheap)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; QUERY over the abstract-model
+; Example of query over the abstract-model
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; initial state is ademostate
@@ -429,7 +408,6 @@
        [as* (abstract-model (,ab* ,ah*))])
     (cons as* (list ab0 ab1 ab2 ab3 ah*))))
 
-
 (define (with-abstract-schema q)
     (let* ([assert-store (asserts)]
            [as* (make-small-abstract-state)])
@@ -455,8 +433,6 @@
   (let* ([sv (make-symbolic-abstract-state)])
     (display-abs-witness (first (find-gadget abstract-lang demo-behavior0 #:expression (car sv))))))
 
-
-; -- not working yet?
 ; -- should be able to find ademostate after (free 1), and then alloc 1
 (define (am-q1) 
   (display-abs-witness (first (find-gadget abstract-lang demo-behavior1))))
