@@ -22,12 +22,159 @@
   (display-weird-abstract-to-heap
    (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap as*)))))
 
+; Found: read from non-pointers
 (define (recorded1)
   (begin
     (sleep 2)
-    (display (file->string "./output/upper-demo-err-demo1w.txt"))))
+    (display (file->string "./output/upper-demo1.txt"))))
+
+; Sol: Ignoring read/write using non-pointers
+(define/debug #:suffix (abs-interpret-action+ a s)
+ (for/all ([a a])
+;            [s s])
+    (let ([b (abs-state->buf s)]
+          [h (abs-state->heap s)])
+     (match a
+       [(abstract-model (read bhl:buf-loc bl:buf-loc))
+        (let* ([loc (nth b bhl)] 
+               [val (abs-read-heap h loc)]
+               [b+ (replace b bl val)])
+          (if val
+              (abs-state b+ h)
+              (assert #f)))]
+       [(abstract-model (write bl:buf-loc bhl:buf-loc))
+        (let* ([val (nth b bl)]
+               [loc (nth b bhl)]
+               [h+ (abs-write-heap h loc val)])
+          (if h+
+              (abs-state b h+)
+              (assert #f)))]
+       [(abstract-model any)
+        (abs-interpret-action a s)]))))
+
+(define-language abstract-lang+
+  #:grammar abstract-model
+  #:expression state #:size 10
+  #:context action #:size 3
+  #:link cons
+  #:evaluate (uncurry abs-interpret-action+))
 
 
+(define-compiler abstract-to-heap+
+  #:source abstract-lang+
+  #:target heap-lang
+  #:behavior-relation (bounded-equiv-state 3)
+  #:context-relation equal? 
+  #:compile (lambda (as) (compile-abs-into-heap-nd 2 as)))
+
+(define (demo2)
+  (display-weird-abstract-to-heap
+   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap+ as*)))))
+
+; Found: Free creating a dangling pointer
+(define (recorded2)
+  (begin
+    (sleep 2)
+    (display (file->string "./output/upper-demo2.txt"))))
+
+; Sol: Ignore dangling pointers
+(define (bounded-equiv-val+ ah h n av v)
+  (match av
+    [(abstract-model N)
+     #t]
+    [(abstract-model any)
+     (bounded-equiv-val ah h n av v)]))
+
+(define (bounded-equiv-buf+ ah h n ab b)
+  (match ab
+    [(abstract-model nil)
+     (match b
+       [(heap-model nil) #t]
+       [(heap-model any) #f])]    
+    [(abstract-model (cons av:any ab+:any))
+     (match b
+       [(heap-model (cons v:any b+:any))
+        (and (bounded-equiv-val+ ah h n av v)
+             (bounded-equiv-buf+ ah h n ab+ b+))]
+       [(heap-model nil) #f])]))
+
+(define/debug (bounded-equiv-state+ n)
+  (lambda (as s)
+    (match as
+      [(abstract-model (ab:any ah:any))
+       (and
+        (valid-heap? (state->heap s))
+        (bounded-equiv-buf+ ah (state->heap s) n ab (state->buf s)))]
+      [(abstract-model any)
+       ((bounded-equiv-state n) as s)])))
+
+(define-compiler abstract-to-heap++
+  #:source abstract-lang+
+  #:target heap-lang
+  #:behavior-relation (bounded-equiv-state+ 3)
+  #:context-relation equal? 
+  #:compile (lambda (as) (compile-abs-into-heap-nd 2 as)))
+
+(define (demo3)
+  (display-weird-abstract-to-heap
+   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap++ as*)))))
+
+; Found: free on a non-pointer
+(define (recorded3)
+  (begin
+    (sleep 2)
+    (display (file->string "./output/upper-demo3.txt"))))
+
+(define (abs-free+ b h bl)
+  (let* ([p (nth b bl)]) ; get the pointer
+    (match p
+      [(abstract-model (P n:natural any))
+       (let* ([b+ (replace b bl (abstract-model N))]
+              [h+ (drop-nth n h)]
+              [b++ (abs-shift-buf n b+)]
+              [h++ (abs-shift-heap n h+)])
+        (abs-state b++ h++))]
+      [any
+       (assert #f)])))
+
+
+(define (abs-interpret-action++ a s)
+ (for/all ([a a])
+;            [s s])
+    (let ([b (abs-state->buf s)]
+          [h (abs-state->heap s)])
+     (match a
+       [(abstract-model (free bl:buf-loc))
+        (abs-free+ b h bl)]
+       [(abstract-model any)
+        (abs-interpret-action+ a s)]))))
+
+(define-language abstract-lang++
+  #:grammar abstract-model
+  #:expression state #:size 10
+  #:context action #:size 3
+  #:link cons
+  #:evaluate (uncurry abs-interpret-action++))
+
+
+(define-compiler abstract-to-heap3
+  #:source abstract-lang++
+  #:target heap-lang
+  #:behavior-relation (bounded-equiv-state+ 3)
+  #:context-relation equal? 
+  #:compile (lambda (as) (compile-abs-into-heap-nd 2 as)))
+
+(define (demo4)
+  (display-weird-abstract-to-heap
+   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap3 as*)))))
+
+; Found: alloc in heap-lang doesn't zero-out payload
+(define (recorded4)
+  (begin
+    (sleep 2)
+    (display (file->string "./output/upper-demo4.txt"))))
+
+; Sol: fix the implementation of alloc-free
 (define (interpret-alloc-free+ h n)
   (let* ([newf  (nth h n)] 
          [h+ (replace h (- n 2) (heap-model 1))]
@@ -63,164 +210,10 @@
   #:link heap-lang-link
   #:evaluate (uncurry interpret-action+))
 
-
-(define-compiler abstract-to-heap+
-  #:source abstract-lang
-  #:target heap-lang+
-  #:behavior-relation (bounded-equiv-state 3)
-  #:context-relation equal? 
-  #:compile (lambda (as) (compile-abs-into-heap-nd 2 as)))
-
-
-(define (demo2)
-  (display-weird-abstract-to-heap
-   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap+ as*)))))
-
-(define (recorded2)
-  (begin
-    (sleep 2)
-    (display (file->string "./output/upper-demo-err-demo2w.txt"))))
-
-
-; found: (write 1 2) where 2 is not a pointer
-; sol: ignore read/write from non-pointers
-(define/debug #:suffix (abs-interpret-action+ a s)
- (for/all ([a a])
-;            [s s])
-    (let ([b (abs-state->buf s)]
-          [h (abs-state->heap s)])
-     (match a
-       [(abstract-model (read bhl:buf-loc bl:buf-loc))
-        (let* ([loc (nth b bhl)] 
-               [val (abs-read-heap h loc)]
-               [b+ (replace b bl val)])
-          (if val
-              (abs-state b+ h)
-              (assert #f)))]
-       [(abstract-model (write bl:buf-loc bhl:buf-loc))
-        (let* ([val (nth b bl)]
-               [loc (nth b bhl)]
-               [h+ (abs-write-heap h loc val)])
-          (if h+
-              (abs-state b h+)
-              (assert #f)))]
-       [(abstract-model any)
-        (abs-interpret-action a s)]))))
-
-(define-language abstract-lang+
-  #:grammar abstract-model
-  #:expression state #:size 10
-  #:context action #:size 3
-  #:link cons
-  #:evaluate (uncurry abs-interpret-action+))
-
-
-(define-compiler abstract-to-heap++
-  #:source abstract-lang+
-  #:target heap-lang+
-  #:behavior-relation (bounded-equiv-state 3)
-  #:context-relation equal? 
-  #:compile (lambda (as) (compile-abs-into-heap-nd 2 as)))
-
-
-(define (demo3)
-  (display-weird-abstract-to-heap
-   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap++ as*)))))
-
-(define (recorded3)
-  (begin
-    (sleep 2)
-    (display (file->string "./output/upper-demo-err-demo3w.txt"))))
-
-
-; finds free on a non-pointers
-; sol: ignore free from non-pointers
-(define (abs-free+ b h bl)
-  (let* ([p (nth b bl)]) ; get the pointer
-    (match p
-      [(abstract-model (P n:natural any))
-       (let* ([b+ (replace b bl (abstract-model N))]
-              [h+ (drop-nth n h)]
-              [b++ (abs-shift-buf n b+)]
-              [h++ (abs-shift-heap n h+)])
-        (abs-state b++ h++))]
-      [any
-       (assert #f)])))
-
-
-(define (abs-interpret-action++ a s)
- (for/all ([a a])
-;            [s s])
-    (let ([b (abs-state->buf s)]
-          [h (abs-state->heap s)])
-     (match a
-       [(abstract-model (free bl:buf-loc))
-        (abs-free+ b h bl)]
-       [(abstract-model any)
-        (abs-interpret-action+ a s)]))))
-
-(define-language abstract-lang++
-  #:grammar abstract-model
-  #:expression state #:size 10
-  #:context action #:size 3
-  #:link cons
-  #:evaluate (uncurry abs-interpret-action++))
-
-
-(define-compiler abstract-to-heap3
+(define-compiler abstract-to-heap4
   #:source abstract-lang++
   #:target heap-lang+
-  #:behavior-relation (bounded-equiv-state 3)
-  #:context-relation equal? 
-  #:compile (lambda (as) (compile-abs-into-heap-nd 2 as)))
-
-(define (demo4)
-  (display-weird-abstract-to-heap
-   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap3 as*)))))
-
-(define (recorded4)
-  (begin
-    (sleep 2)
-    (display (file->string "./output/upper-demo-err-demo4w.txt"))))
-
-; finds free with an offset
-; sol: change the spec of free to only be well-defined on pointers without offset
-(define (abs-free++ b h bl)
-  (let* ([p (nth b bl)]) ; get the pointer
-    (match p
-      [(abstract-model (P n:natural a))
-       (let* ([b+ (replace b bl (abstract-model N))]
-              [h+ (drop-nth n h)]
-              [b++ (abs-shift-buf n b+)]
-              [h++ (abs-shift-heap n h+)])
-        (abs-state b++ h++))]
-      [any
-       (assert #f)])))
-
-
-(define (abs-interpret-action3 a s)
- (for/all ([a a])
-;            [s s])
-    (let ([b (abs-state->buf s)]
-          [h (abs-state->heap s)])
-     (match a
-       [(abstract-model (free bl:buf-loc))
-        (abs-free++ b h bl)]
-       [(abstract-model any)
-        (abs-interpret-action+ a s)]))))
-
-(define-language abstract-lang3
-  #:grammar abstract-model
-  #:expression state #:size 10
-  #:context action #:size 3
-  #:link cons
-  #:evaluate (uncurry abs-interpret-action3))
-
-
-(define-compiler abstract-to-heap4
-  #:source abstract-lang3
-  #:target heap-lang+
-  #:behavior-relation (bounded-equiv-state 3)
+  #:behavior-relation (bounded-equiv-state+ 3)
   #:context-relation equal? 
   #:compile (lambda (as) (compile-abs-into-heap-nd 2 as)))
 
@@ -228,14 +221,14 @@
   (display-weird-abstract-to-heap
    (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap4 as*)))))
 
+; Found: decr on a pointer P x a
 (define (recorded5)
   (begin
     (sleep 2)
-    (display (file->string "./output/upper-demo-err-demo5w.txt"))))
+    (display (file->string "./output/upper-demo5.txt"))))
 
-; Found incr on a pointer with P 0 b
 ; Sol: ignore out of bound incr and decr
-(define/debug #:suffix (abs-interpret-action4 a s)
+(define/debug #:suffix (abs-interpret-action3 a s)
  (for/all ([a a])
 ;            [s s])
     (let ([b (abs-state->buf s)]
@@ -256,6 +249,54 @@
               (assert #f)
               (abs-state b+ h)))]
        [(abstract-model any)
+        (abs-interpret-action++ a s)]))))
+
+(define-language abstract-lang3
+  #:grammar abstract-model
+  #:expression state #:size 10
+  #:context action #:size 3
+  #:link cons
+  #:evaluate (uncurry abs-interpret-action3))
+
+(define-compiler abstract-to-heap5
+  #:source abstract-lang3
+  #:target heap-lang+
+  #:behavior-relation (bounded-equiv-state+ 3)
+  #:context-relation equal? 
+  #:compile (lambda (as) (compile-abs-into-heap-nd 2 as)))
+
+(define (demo6)
+  (display-weird-abstract-to-heap
+   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap5 as*)))))
+
+; finds free with an offset
+(define (recorded6)
+  (begin
+    (sleep 2)
+    (display (file->string "./output/upper-demo6.txt"))))
+
+; sol: change the spec of free to only be well-defined on pointers without offset
+(define (abs-free++ b h bl)
+  (let* ([p (nth b bl)]) ; get the pointer
+    (match p
+      [(abstract-model (P n:natural a))
+       (let* ([b+ (replace b bl (abstract-model N))]
+              [h+ (drop-nth n h)]
+              [b++ (abs-shift-buf n b+)]
+              [h++ (abs-shift-heap n h+)])
+        (abs-state b++ h++))]
+      [any
+       (assert #f)])))
+
+(define (abs-interpret-action4 a s)
+ (for/all ([a a])
+;            [s s])
+    (let ([b (abs-state->buf s)]
+          [h (abs-state->heap s)])
+     (match a
+       [(abstract-model (free bl:buf-loc))
+        (abs-free++ b h bl)]
+       [(abstract-model any)
         (abs-interpret-action3 a s)]))))
 
 (define-language abstract-lang4
@@ -264,54 +305,6 @@
   #:context action #:size 3
   #:link cons
   #:evaluate (uncurry abs-interpret-action4))
-
-
-(define-compiler abstract-to-heap5
-  #:source abstract-lang4
-  #:target heap-lang+
-  #:behavior-relation (bounded-equiv-state 3)
-  #:context-relation equal? 
-  #:compile (lambda (as) (compile-abs-into-heap-nd 2 as)))
-
-(define (demo6)
-  (display-weird-abstract-to-heap
-   (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap5 as*)))))
-
-(define (recorded6)
-  (begin
-    (sleep 2)
-    (display (file->string "./output/upper-demo-err-demo6w.txt"))))
-
-
-(define (bounded-equiv-val+ ah h n av v)
-  (match av
-    [(abstract-model N)
-     #t]
-    [(abstract-model any)
-     (bounded-equiv-val ah h n av v)]))
-
-(define (bounded-equiv-buf+ ah h n ab b)
-  (match ab
-    [(abstract-model nil)
-     (match b
-       [(heap-model nil) #t]
-       [(heap-model any) #f])]    
-    [(abstract-model (cons av:any ab+:any))
-     (match b
-       [(heap-model (cons v:any b+:any))
-        (and (bounded-equiv-val+ ah h n av v)
-             (bounded-equiv-buf+ ah h n ab+ b+))]
-       [(heap-model nil) #f])]))
-
-(define/debug (bounded-equiv-state+ n)
-  (lambda (as s)
-    (match as
-      [(abstract-model (ab:any ah:any))
-       (and
-        (valid-heap? (state->heap s))
-        (bounded-equiv-buf+ ah (state->heap s) n ab (state->buf s)))]
-      [(abstract-model any)
-       ((bounded-equiv-state n) as s)])))
 
 (define-compiler abstract-to-heap6
   #:source abstract-lang4
@@ -324,7 +317,8 @@
   (display-weird-abstract-to-heap
    (with-abstract-schema (lambda (as*) (find-weird-behavior abstract-to-heap6 as*)))))
 
+; No weird behavior found
 (define (recorded7)
   (begin
     (sleep 2)
-    (display (file->string "./output/upper-demo-err-demo7w.txt"))))
+    (display (file->string "./output/upper-demo7.txt"))))

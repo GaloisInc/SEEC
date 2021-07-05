@@ -185,8 +185,6 @@
                             #:display-source-behavior display-abs-state
                             #:display-target-behavior display-state))
 
-
-
 (define (display-abstract-to-heap witnesses)
   (if witnesses     
       (let* ([lwl-abstract (unpack-language-witness (first witnesses))]
@@ -203,10 +201,7 @@
         (display-state (fourth lwl-heap)))
       (displayln "No changed behavior found")))
 
-; begin with a default permutation
 (define p-test (list 1 -1 0 -1))
-
-
 
 ; compile abs.state into a set of heap.state-con with a freelist
 (define/debug #:suffix (compile-abs-into-heap hl s)
@@ -310,8 +305,6 @@
 
 (define small-fixed-p (make-state-struct dfl-ad-smallfixed-p))
 (define demo-fixed-p (make-state-struct dfl-ad-demofixed-p))
-
-
 
 (define-compiler fixed-permutation-to-heap
   #:source abstract-lang
