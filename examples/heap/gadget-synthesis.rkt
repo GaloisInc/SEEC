@@ -308,7 +308,7 @@
 
 ; based on obs-alloc
 ; trying to get a gadget which toggles the alloc state of a block
-; trying to get a decoder which observes the alloc state of a block
+; and a decoder which observes the alloc state of a block
 (define (toggle-alloc)
   (define s-* dc)
   (define s* (state-buf-set 0 2 s-*))
