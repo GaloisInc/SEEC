@@ -378,7 +378,7 @@ void main(int MAXCONN) {
   ; 6. head = head + 1
   ; 7. head = head - 1
 
-  #;(define output-anything-gadget
+  (define output-anything-gadget
     (context->gadget compiled-server
                      (symbolic-input-stream+ max-width input-stream-length)
                      #;(list (list->seec (list 3 0 0 10)))
@@ -386,7 +386,7 @@ void main(int MAXCONN) {
                               (equal? (seec-length (tinyA:state-trace st2))
                                       (+ 1 (seec-length (tinyA:state-trace st1)))))
                      ))
-  #;(displayln "Done with symbolic execution of output anything gadget")
+  (displayln "Done with symbolic execution of output anything gadget")
 
   (define (write-constant-gadget i c)
     (context->gadget compiled-server
@@ -436,14 +436,10 @@ void main(int MAXCONN) {
 
   (find-dispatch-gadgets ;-debug compiled-server
                          #:prelude-gadget     prelude-gadget
-                         #:loop-body-gadgets  (list  write-gadget read-gadget)
+                         #:loop-body-gadgets  (list output-gadget write-gadget read-gadget)
                          #:break-gadget       break-gadget
                          #:loop-invariant     invariant-holds
                          )
-#|Result: 
-
-
-|#
 
 
   )
@@ -454,20 +450,4 @@ void main(int MAXCONN) {
   (time (synthesize-dispatch-gadgets)))
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-;;; SCRATCH ;;;;
 

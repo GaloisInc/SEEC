@@ -4,11 +4,13 @@ SEEC (Synthesizing Evidence of Emergent Computation) is a framework for modeling
 
 SEEC is written in [Rosette](https://docs.racket-lang.org/rosette-guide/index.html), a dialogue of Racket. To install locally, navigate to the `seec` directory and invoke `raco pkg install`.
 
+SEEC has been tested with Racket 7.5 and 7.7.
+
 Additional documentation regarding how to use the framework is located in the `doc/` directory, and examples can be found in the `examples/` directory.
 
 # Case studies
 
-The five main case studies in this report are in the following directories:
+Five main case studies in this report are in the following directories:
 
 * `examples/list`
 * `examples/set`
@@ -79,8 +81,11 @@ See the READMEs in those subdirectories for more information about the case stud
 │   ├── tests.rkt - unit tests for synthesis queries
 
 │   ├── tinyC - Small C-to-assembly compiler
+│   │   ├── dispatch-query.rkt
+│   │   ├── dispatch.rkt
 │   │   ├── password-demo.rkt
 │   │   ├── secret-demo.rkt
+│   │   ├── server.rkt
 │   │   ├── synthesis.rkt
 │   │   ├── tinyAssembly.rkt
 │   │   ├── tinyA-test.rkt
