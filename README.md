@@ -124,4 +124,4 @@ See the READMEs in those subdirectories for more information about the case stud
 
 # Acknowledgment
 
-This material is based upon work supported by DARPA Contract No. HR00112090030. Any opinions, findings and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of DARPA.
+This material is based upon work supported by DARPA Contract No. HR00112090030. Any opinions, findings and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of DARPA. Use, duplication, or disclosure is subject to the restrictions as stated in Agreement HR00012090030 between the Government and the Performer.
