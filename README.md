@@ -8,7 +8,7 @@ Additional documentation regarding how to use the framework is located in the `d
 
 # Case studies
 
-The three main case studies in this report are in the following directories:
+The five main case studies in this report are in the following directories:
 
 * `examples/list`
 * `examples/set`
@@ -28,13 +28,16 @@ See the READMEs in those subdirectories for more information about the case stud
 │   ├── exp.rkt
 
 │   ├── heap - heap allocator case study
-│   │   ├── demo.rkt
-│   │   ├── freelist-lang.rkt
-│   │   ├── gadget-synthesis.rkt
-│   │   ├── heap-lang-hl.rkt
+│   │   ├── lib.rkt 
 │   │   ├── heap-lang.rkt
+│   │   ├── gadget-synthesis.rkt
+│   │   ├── abstract-lang.rkt
+│   │   ├── abstract-to-heap-compiler
+│   │   ├── upper-demo.rkt
+│   │   ├── freelist-lang.rkt
 │   │   ├── heap-to-freelist-compiler.rkt
-│   │   └── lib.rkt
+│   │   └── lower-demo.rkt
+
 
 │   ├── list - linked list API case study
 │   │   ├── alist-lang.rkt

@@ -7,12 +7,10 @@
                   raise-argument-error
                   raise-arguments-error))
 (require (file "lib.rkt"))
-(require (file "heap-lang-hl.rkt"))
+(require (file "heap-lang.rkt"))
 (provide (all-defined-out))
 
-; heap-loc version
-; Making a higher-abstraction model which described the content of a heap
-; and which can be compiled (non-deterministically) into a multiple equivalent heaps
+; Higher-abstraction view of memory
 (define-grammar abstract-model
   (pointer ::= (P natural selector) N)
   (selector ::= a b)
@@ -22,20 +20,16 @@
   (buf-loc ::= natural)
   (buf ::= list<value>)
   (heap ::= list<block>)
-  (state ::= (buf heap))
-  (heap-loc ::= pointer)
+  (state ::= (buf heap) E)
   (action ::=
-    (read heap-loc buf-loc) ; place the element at pointer (1)buf-loc in heap into the buffer at (2)buf-loc
-    (write buf-loc heap-loc); place the element at (1)buf-loc in buffer into the heap pointer (2)buf-loc
+    (read buf-loc buf-loc) ; place the element at pointer (1)buf-loc in heap into the buffer at (2)buf-loc
+    (write buf-loc buf-loc); place the element at (1)buf-loc in buffer into the heap pointer (2)buf-loc
     (copy buf-loc buf-loc) ; overwrite (2) with value of (1)
     (incr buf-loc) ; add 1 to value at buf-loc
     (decr buf-loc) ; remove 1 to value at buf-loc
-    (free heap-loc) ; free the object at the pointer held in buf-loc in buffer
+    (free buf-loc) ; free the object at the pointer held in buf-loc in buffer
     (alloc buf-loc)) ; alloc an object with n blocks, placing its pointer in buffer at buf-loc
-  (s-action ::=
-            (set buf-loc value))
-  (interaction ::= list<action>)
-  )
+  (interaction ::= list<action>))
 
 (define (abs-select s a1 a2)
   (match s
@@ -43,7 +37,6 @@
      a1]
     [(abstract-model b)
      a2]))
-
     
 (define (block-nth p n)
   (match p
@@ -68,6 +61,12 @@
 (define (abs-state b h)
   (abstract-model (,b ,h)))
 
+(define (abs-error-state)
+  (abstract-model E))
+
+(define (abs-is-null? p)
+  (equal? p (abstract-model N)))
+
 (define (abs-state->buf s)
   (match s
     [(abstract-model (b:buf any))
@@ -87,29 +86,6 @@
          (if (equal? n m)
              (abstract-model N)
              p))]
-    [(abstract-model N)
-     p]))
-
-; mark dangling pointer as -1
-(define (abs-shift-pointer-dangling n p)
-  (match p
-    [(abstract-model (P m:natural s:selector))
-     (if (< n m)
-         (abstract-model (P ,(- m 1) ,s))
-         (if (equal? n m)
-             (abstract-model (P -1 ,s))
-             p))]
-    [(abstract-model N)
-     p]))
-
-
-; this version has a bug, decreased pointers equal to n which results in wrongly adjusting pointers
-(define (abs-shift-pointer-bug n p)
-  (match p
-    [(abstract-model (P m:natural s:selector))
-     (if (<= n m)
-         (abstract-model (P ,(- m 1) ,s))
-         p)]
     [(abstract-model N)
      p]))
 
@@ -136,16 +112,18 @@
     [(abstract-model (b:buf h:heap))
      (abstract-model (,(abs-shift-buf n b) ,(abs-shift-heap n h)))]))
 
-; free the block at hl
-(define (abs-free b h hl)
-    (match hl
+; This version of abs-free doesn't force the selector to be "a"
+(define (abs-free b h bl)
+  (let* ([p (nth b bl)]) ; get the pointer
+    (match p
       [(abstract-model (P n:natural m:selector))
-       (let* ([h+ (drop-nth n h)]
-              [b++ (abs-shift-buf n b)]
+       (let* ([b+ (replace b bl (abstract-model N))]
+              [h+ (drop-nth n h)]
+              [b++ (abs-shift-buf n b+)]
               [h++ (abs-shift-heap n h+)])
         (abs-state b++ h++))]
       [any
-       (assert #f)]))
+       (abs-error-state)])))
 
 (define/debug #:suffix (abs-alloc b h bl)
   (begin
@@ -157,33 +135,39 @@
   (match loc
     [(abstract-model (P n:natural m:selector))
      (let* ([payload (nth h n)])
-       (block-nth payload m))]))
+       (block-nth payload m))]
+    [(abstract-model any)
+     #f]))
 
 (define (abs-write-heap h loc val)
   (match loc
     [(abstract-model (P n:natural m:selector))
      (let* ([payload (nth h n)]
             [payload+ (block-replace payload m val)])
-       (replace h n payload+))]))
+       (replace h n payload+))]
+    [(abstract-model any)
+     #f]))
 
 (define (abs-incr val)
   (match val
     [(abstract-model i:integer)
      (abstract-model ,(+ i 1))]
-    [(abstract-model (P n:natural a))
-     (abstract-model (P ,n b))]))
+    [(abstract-model (P n:natural s:selector))
+     (abs-select s                 
+                 (abstract-model (P ,n b))
+                 (abstract-model N))]))
 
 (define (abs-decr val)
   (match val
     [(abstract-model i:integer)
      (abstract-model ,(- i 1))]
-    [(abstract-model (P n:natural b))
-     (abstract-model (P ,n a))]))
-
+    [(abstract-model (P n:natural s:selector))
+     (abs-select s
+                 (abstract-model N)
+                 (abstract-model (P ,n a)))]))
 
 (define/debug #:suffix (abs-interpret-action a s)
  (for/all ([a a])
-;            [s s])
     (let ([b (abs-state->buf s)]
           [h (abs-state->heap s)])
      (match a
@@ -195,35 +179,33 @@
         (let* ([val (nth b bl)]
                [val+ (abs-incr val)]
                [b+ (replace b bl val+)])
-          (abs-state b+ h))]
+          (if (abs-is-null? val+)
+              (abs-error-state)
+              (abs-state b+ h)))]
        [(abstract-model (decr bl:buf-loc))
         (let* ([val (nth b bl)]
                [val+ (abs-decr val)]
                [b+ (replace b bl val+)])
-          (abs-state b+ h))]
-       [(abstract-model (free hl:heap-loc))
-        (abs-free b h hl)]
+          (if (abs-is-null? val+)
+              (abs-error-state)
+              (abs-state b+ h)))]
+       [(abstract-model (free bl:buf-loc))
+        (abs-free b h bl)]
        [(abstract-model (alloc bl:buf-loc))
         (abs-alloc b h bl)]
-       [(abstract-model (read hl:heap-loc bl:buf-loc))
-        (let* ([val (abs-read-heap h hl)] ; get the value at the location
-               [b+ (replace b bl val)]) ; place the value in the buffer
-             (abs-state b+ h))]
-       [(abstract-model (write bl:buf-loc hl:heap-loc))
+       [(abstract-model (read bhl:buf-loc bl:buf-loc))
+        (let* ([loc (nth b bhl)] ; get the pointer
+               [val (abs-read-heap h loc)]) ; get the value at the location
+          (if val
+              (abs-state (replace b bl val) h)
+              (abs-error-state)))]
+       [(abstract-model (write bl:buf-loc bhl:buf-loc))
         (let* ([val (nth b bl)]
-               [h+ (abs-write-heap h hl val)])
-          (abs-state b h+))]))))
-
-(define/debug #:suffix (abs-interpret-saction a s)
- (for/all ([a a])
-;            [s s])
-    (let ([b (abs-state->buf s)]
-          [h (abs-state->heap s)])
-     (match a
-       [(abstract-model (set bl:buf-loc v:value))
-        (let* ([b+ (replace b bl v)])
-          (abs-state b+ h))]))))
-
+               [loc (nth b bhl)]
+               [h+ (abs-write-heap h loc val)])
+          (if h+
+              (abs-state b h+)
+              (abs-error-state)))]))))
 
 (define (abs-interpret-interaction i s)
     (match i
@@ -232,13 +214,12 @@
     [(abstract-model nil)
      s]))
 
-
 (define-language abstract-lang
   #:grammar abstract-model
   #:expression state #:size 10
-  #:context interaction #:size 3
+  #:context action #:size 3
   #:link cons
-  #:evaluate (uncurry abs-interpret-interaction))
+  #:evaluate (uncurry abs-interpret-action))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; PREDICATES over abstract-model
@@ -279,8 +260,6 @@
     [(abstract-model (b:any h:any))
      (or (abs-buf-dangling? b)
          (abs-heap-dangling? h))]))
-
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Pretty-printing
@@ -347,6 +326,8 @@
 
 (define (display-abs-state s)
   (match s
+    [(abstract-model E)
+     (displayln "ERROR ABSTRACT STATE")]
     [(abstract-model (b:any h:any))
      (begin
        (displayln "BUFFER:")
@@ -355,20 +336,35 @@
        (display-abs-heap h))]))
 
 
-
+(define (display-abs-witness witness)
+  (if witness
+      (let* ([lwl-abstract (unpack-language-witness witness)])
+        (displayln "State: ")
+        (display-abs-state (first lwl-abstract))
+        (displayln "steps, under interaction...")
+        (display (second lwl-abstract))
+        (displayln ", to state: ")
+        (display-abs-state (fourth lwl-abstract)))
+      (displayln "No witness found")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; TESTING abstract-model
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
 (define ad (abs-init-state 4))
+(define ad+  (abs-interpret-action aa0 ad))
 
+(define ad++ (abs-interpret-action aa1 ad+))
+
+(define ad+3* (abs-interpret-action af0 ad++))
+(define ad+3** (abs-interpret-action af1 ad++))
+(define ad+4* (abs-interpret-action af1 ad+3*))
+(define ad+5* (abs-interpret-action aa0 ad+4*))
+(define ad+4** (abs-interpret-action af0 ad+3**))
 
 (define abuf (abstract-model (cons (P 0 a) (cons (P 1 b) (cons 4 (cons 5 nil))))))
 (define aheap (abstract-model (cons (6 (P 1 a)) (cons ((P 0 a) 7) nil))))
 (define astate (abstract-model (,abuf ,aheap)))
-
 
 (define asmallbuf (abstract-model (cons (P 0 a) (cons -1 (cons 0 (cons 1 nil))))))
 (define asmallheap (abstract-model (cons ((P 0 b) 2) nil)))
@@ -378,35 +374,8 @@
 (define ademoheap (abstract-model (cons (0 0) nil)))
 (define ademostate (abstract-model (,ademobuf ,ademoheap)))
 
-;(debug? #t)
-
-(define ad+  (abs-interpret-action aa0 ad))
-
-
-(define ad++ (abs-interpret-action aa1 ad+))
-
-(define abss0 (abstract-model (set 0 N)))
-(define absf0 (abstract-model (free (P 0 a))))
-(define abss1 (abstract-model (set 1 N)))
-(define absf1 (abstract-model (free (P 1 a))))
-
-(define ad+3* (abs-interpret-action absf0 (abs-interpret-saction abss0 ad++)))
-(define ad+3** (abs-interpret-action absf1 (abs-interpret-saction abss1 ad++)))
-
-(define ad+4* (abs-interpret-action absf0 (abs-interpret-saction abss1 ad+3*)))
- 
-
-
-
-(define ad+5* (abs-interpret-action aa0 ad+4*))
-
-(define ad+4** (abs-interpret-action absf0 (abs-interpret-saction abss0 ad+3**)))
-
-
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; QUERY over the abstract-model
+; Example of query over the abstract-model
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; initial state is ademostate
@@ -426,3 +395,49 @@
        [ah* (abstract-model heap 4)]
        [as* (abstract-model (,ab* ,ah*))])
     (cons as* (list ab0 ab1 ab2 ab3 ah*))))
+
+(define (make-small-abstract-state)
+  (let*
+      ([ab0 (abstract-model value 2)]
+       [ab1 (abstract-model value 2)]
+       [ab2 (abstract-model value 2)]
+       [ab3 (abstract-model value 2)]
+       [ab* (abstract-model (cons ,ab0 (cons ,ab1 (cons ,ab2 (cons ,ab3 nil)))))]
+       [ablock (abstract-model block 3)]
+       [ah* (abstract-model (cons ,ablock nil))]
+       [as* (abstract-model (,ab* ,ah*))])
+    (cons as* (list ab0 ab1 ab2 ab3 ah*))))
+
+(define (with-abstract-schema q)
+    (let* ([assert-store (asserts)]
+           [as* (make-small-abstract-state)])
+      (let* ([w (q (car as*))])
+        (clear-asserts!)
+        (for-each (lambda (arg) (assert arg)) assert-store)
+        w)))
+
+; resulting state is demostate
+(define (demo-behavior1 p b)
+  (let
+      ([ademostate+ (abs-interpret-action (abstract-model (alloc 0)) ademostate)])
+    (equal? b ademostate)))
+
+(define (demo-behavior1t p b)
+  #t)
+
+; -- much slower vs. sketched version (am-q0s)
+(define (am-q0) 
+  (display-abs-witness (first (find-gadget abstract-lang demo-behavior0))))
+
+(define (am-q0s)
+  (let* ([sv (make-symbolic-abstract-state)])
+    (display-abs-witness (first (find-gadget abstract-lang demo-behavior0 #:expression (car sv))))))
+
+; -- should be able to find ademostate after (free 1), and then alloc 1
+(define (am-q1) 
+  (display-abs-witness (first (find-gadget abstract-lang demo-behavior1))))
+
+
+(define (am-q1s)
+  (let* ([sv (make-symbolic-abstract-state)])
+    (display-abs-witness (first (find-gadget abstract-lang demo-behavior1 #:expression (car sv))))))

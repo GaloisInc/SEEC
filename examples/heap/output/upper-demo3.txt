@@ -1,21 +1,21 @@
 The following expression...
 
 BUFFER:
-0  > -1
-1  > null
-2  > 0
-3  > 5
+0  > 0
+1  > P 0 a
+2  > 5
+3  > null
 
 HEAP:
-0  > (1, 0) 
+0  > (null, 0) 
 
 
 ...has emergent behavior...
 
 BUFFER:
-0  > -1
-1  > null
-2  > 0
+0  > 0
+1  > 6
+2  > null
 3  > null
 
 HEAP:
@@ -27,5 +27,5 @@ FP HEAD:
 
 ...witnessed by the following target-level context...
 
-(free 3)
-cpu time: 313486 real time: 369550 gc time: 116214
+(free 2)
+cpu time: 157302 real time: 195384 gc time: 41366

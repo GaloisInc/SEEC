@@ -6,7 +6,12 @@
 (require seec/private/monad)
 
 (require (file "lib.rkt"))
+
 (require (file "heap-lang.rkt"))
+(require (file "abstract-lang.rkt"))
+(require (file "abstract-to-heap-compiler.rkt"))
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Trying to find a Resize gadget
@@ -23,6 +28,8 @@
              [val (nth (state->heap s+) (- hl 1))])
         (equal? size val))))
 
+
+;; need to create an abstract schema that has a freelist, and where an element in the buffer contains the target, and another a pointer to the valid block
 (define (resize-query)
   (begin
     (define target (heap-model integer 1))
@@ -243,3 +250,88 @@
           (display-state s-)
           (display "Results in state: ")
           (display-state s+)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Trying to find gadgets and decoders at the same time
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+; type: Integer
+(define-attack obs-heap
+  #:grammar heap-model
+  #:gadget complete-interaction #:size 5
+  #:evaluate-gadget interpret-complete-interaction
+  #:decoder interaction #:size 4
+  #:evaluate-decoder (lambda (dec state) (obs-buf-def 0 0 (interpret-interaction dec state))))
+
+; type: Boolean
+(define-attack obs-alloc
+  #:grammar heap-model
+  #:gadget complete-interaction #:size 5
+  #:evaluate-gadget interpret-complete-interaction
+  #:decoder interaction #:size 4
+  #:evaluate-decoder (lambda (dec state) (equal?
+                                          1
+                                          (obs-heap-def 0 0 (interpret-interaction dec state))))
+  )
+
+
+; based on obs-heap
+; assumes: state is valid, with head of the freelist in 0 (make that a validity predicate)
+; should find: 
+; get: find the head of the freelist (in 0), as decoder
+; put n: new head of the freelist is n (e.g. 6)
+(define (get-put-head-gadgets)
+  (define s-* dc)
+  (define s* (state-buf-set 0 2 s-*))
+  (define dec* (heap-model interaction 5)) ; find the head of the freelist
+  (define target* (heap-model integer 2))
+  (define s+* (state-buf-set 1 target* s*))  
+  (define gadget* (heap-model interaction 4)) ; set the next block to be 
+  (define s++* (interpret-interaction gadget* s+*));
+  (define s+++* (interpret-interaction dec* s++*))
+  (define sol (synthesize
+               #:forall (list target*)
+               #:guarantee (assert (equal? target*
+                                           (obs-buf 0 s+++*)))))
+  (if (unsat? sol)
+      (displayln "UNSAT")
+      (begin
+        (displayln "SAT")
+        (define target 4)
+        (define dec (concretize dec sol))
+        (define gadget (concretize gadget sol))
+        (displayln "Dec:")
+        (displayln dec)
+        (displayln "Gadget:")
+        (displayln gadget))))
+
+; based on obs-alloc
+; trying to get a gadget which toggles the alloc state of a block
+; trying to get a decoder which observes the alloc state of a block
+(define (toggle-alloc)
+  (define s-* dc)
+  (define s* (state-buf-set 0 2 s-*))
+  (define dec* (heap-model interaction 4)) ; get the value of nth
+  (define target* (heap-model integer 2))
+  (define s+* (state-buf-set 1 target* s*))  
+  (define gadget* (heap-model interaction 4)) ; set the next block to be 
+  (define s++* (interpret-interaction gadget* s+*));
+  (define s+++* (interpret-interaction dec* s++*))
+  (define sol (synthesize
+               #:forall (list target*)
+               #:guarantee (assert (not (equal? (obs-heap 0 s-*)
+                                                (obs-heap 0 s++*))))))
+  (if (unsat? sol)
+      (displayln "UNSAT")
+      (begin
+        (displayln "SAT")
+        (define target 4)
+        (define dec (concretize dec sol))
+        (define gadget (concretize gadget sol))
+        (displayln "Dec:")
+        (displayln dec)
+        (displayln "Gadget:")
+        (displayln gadget)))
+  #f)
+  

@@ -1,12 +1,11 @@
 #lang seec
 
-
 (require racket/format)
 (require seec/private/util)
 (require seec/private/monad)
 
 (provide (all-defined-out))
-(require (file "heap-lang-hl.rkt"))
+(require (file "heap-lang.rkt"))
 (require (file "freelist-lang.rkt"))
 
 (define/debug #:suffix (compile-into-freelist fuel h p bwd)
@@ -31,8 +30,6 @@
 (define (compile-heap-to-freelist s)
   (compile-into-freelist 3 (state->heap s) (state->pointer s) (heap-model null)))
 
-
-
 (define/debug #:suffix (compile-action a)
   (match a
     [(heap-model (free h:heap-loc))
@@ -41,7 +38,6 @@
      (freelist alloc)]
     [(heap-model a:action)
      *fail*]))
-
 
 (define/debug #:suffix (compile-interaction i)
   (match i
@@ -54,15 +50,12 @@
            (freelist (cons ,af ,(compile-interaction i+)))
            ))]))
 
-
-
 (define-compiler heap-to-freelist
-  #:source heap-lang-state
+  #:source heap-lang-hl
   #:target freelist-lang
   #:behavior-relation (lambda (s f) (equal? (compile-heap-to-freelist s) f))
   #:context-relation (lambda (i fi) (equal? (compile-interaction i) fi))
   #:compile (lambda (s) (compile-heap-to-freelist (make-state-struct s))))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Pretty-printing
