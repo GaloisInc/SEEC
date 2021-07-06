@@ -2,9 +2,10 @@ SEEC (Synthesizing Evidence of Emergent Computation) is a framework for modeling
 
 # Installation
 
-SEEC is written in [Rosette](https://docs.racket-lang.org/rosette-guide/index.html), a dialogue of Racket. To install locally, navigate to the `seec` directory and invoke `raco pkg install`.
+SEEC is written in [Rosette](https://docs.racket-lang.org/rosette-guide/index.html), a dialogue of Racket. To install locally, navigate to the `seec` directory and invoke `raco pkg install`. SEEC has been tested to work with Racket 7.5 and 7.7.
 
 Additional documentation regarding how to use the framework is located in the `doc/` directory, and examples can be found in the `examples/` directory.
+
 
 # Case studies
 
